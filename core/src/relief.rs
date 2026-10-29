@@ -3,7 +3,8 @@
 // Kirchhoff sum moves each element to its height and tilts it to the local
 // slope, so the coherent loss, the diffuse scatter, and the lobes of a
 // repeating shape all come from the same sum (class B while slopes are
-// gentle; the surface does not shade itself or scatter twice). Roughness is a
+// gentle). The repeating shape shades itself along each ray; roughness shades
+// statistically; nothing scatters twice within the surface. Roughness is a
 // sum of cosines with random directions and phases around one grain size,
 // fixed by a seed. The offset slides the whole field along its direction, so
 // moving it in time moves the sound.
@@ -11,6 +12,8 @@
 use std::f64::consts::PI;
 
 const ROUGH_COMPONENTS: usize = 32;
+const SHADOW_STEPS_PER_PERIOD: f64 = 16.0;
+const MOST_SHADOW_STEPS: usize = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shape {
@@ -115,6 +118,73 @@ impl Relief {
         (shape * shape + self.rough_height * self.rough_height).sqrt()
     }
 
+    fn shape_height(&self, q: [f64; 2]) -> f64 {
+        let d = self.direction;
+        let s = q[0] * d[0] + q[1] * d[1] + self.start[0] - self.offset;
+        let t = -q[0] * d[1] + q[1] * d[0] + self.start[1];
+        let w = 2.0 * PI / self.period;
+        match self.shape {
+            Shape::Flat => 0.0,
+            Shape::Waves => self.height * (w * s).sin(),
+            Shape::Arches => self.height * (PI * s / self.period).sin().abs(),
+            Shape::Scallops => -self.height * (PI * s / self.period).sin().abs(),
+            Shape::Egg => self.height * (w * s).sin() * (w * t).sin(),
+        }
+    }
+
+    fn shape_steepest(&self) -> f64 {
+        match self.shape {
+            Shape::Flat => 0.0,
+            Shape::Waves | Shape::Egg => self.height * 2.0 * PI / self.period,
+            Shape::Arches | Shape::Scallops => self.height * PI / self.period,
+        }
+    }
+
+    // Whether the repeating shape rises above a ray leaving the surface at
+    // plane point `q` and height `height`, with `along` its step in plane
+    // coordinates, `rise` its step along the normal per unit length, and
+    // `side` +1 or −1 for the side it leaves from. Rays steeper than the
+    // shape's steepest slope cannot be shaded and are not marched.
+    pub fn shades(&self, q: [f64; 2], height: f64, along: [f64; 2], rise: f64, side: f64, inside: impl Fn([f64; 2]) -> bool) -> bool {
+        let level = (along[0] * along[0] + along[1] * along[1]).sqrt();
+        let rise = rise * side;
+        if level < 1e-9 || rise >= self.shape_steepest() * level {
+            return false;
+        }
+        let step = self.period / SHADOW_STEPS_PER_PERIOD / level;
+        let reach = if rise > 0.0 { 2.0 * self.height / rise } else { f64::INFINITY };
+        let mut travelled = step;
+        for _ in 0..MOST_SHADOW_STEPS {
+            if travelled > reach {
+                return false;
+            }
+            let p = [q[0] + along[0] * travelled, q[1] + along[1] * travelled];
+            if !inside(p) {
+                return false;
+            }
+            if side * self.shape_height(p) > side * height + rise * travelled {
+                return true;
+            }
+            travelled += step;
+        }
+        false
+    }
+
+    // The share of rough surface a ray at `cos_angle` from the normal sees
+    // unshaded, for Gaussian slopes of the roughness's rms slope (Smith
+    // 1967, class B; averaged over heights).
+    pub fn rough_shadowing(&self, cos_angle: f64) -> f64 {
+        if self.components.is_empty() || cos_angle >= 1.0 {
+            return 1.0;
+        }
+        let mean_square_k = self.components.iter().map(|(k, _)| k[0] * k[0] + k[1] * k[1]).sum::<f64>() / ROUGH_COMPONENTS as f64;
+        let slope = self.rough_height * (mean_square_k / 2.0).sqrt();
+        let mu = cos_angle.max(1e-6) / (1.0 - cos_angle * cos_angle).sqrt();
+        let x = mu / (std::f64::consts::SQRT_2 * slope);
+        let lambda = ((-x * x).exp() / (x * PI.sqrt()) - erfc(x)) / 2.0;
+        1.0 / (1.0 + lambda)
+    }
+
     // Height and its gradient in plane coordinates.
     pub fn at(&self, q: [f64; 2]) -> (f64, [f64; 2]) {
         let d = self.direction;
@@ -152,4 +222,14 @@ impl Relief {
         }
         (height, gradient)
     }
+}
+
+// Abramowitz and Stegun 7.1.26, absolute error below 1.5e-7.
+fn erfc(x: f64) -> f64 {
+    if x < 0.0 {
+        return 2.0 - erfc(-x);
+    }
+    let t = 1.0 / (1.0 + 0.3275911 * x);
+    let poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+    poly * (-x * x).exp()
 }

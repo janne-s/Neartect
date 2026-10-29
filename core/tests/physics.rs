@@ -600,3 +600,44 @@ fn measured_ear_over_a_floor_matches_its_image() {
     // longer the reference.
     assert!(worst < 0.12, "largest error {worst}");
 }
+
+#[test]
+fn steep_ridges_shade_each_other_at_grazing_incidence() {
+    let length = 2048;
+    let microphone = [0.0, 0.0, 0.3];
+    let grazing = [0.0, 0.97, 0.243];
+    let flat = near_spectrum(&scene(vec![floor(3.0)], microphone, grazing, length, 1));
+    let ridged = near_spectrum(&scene(vec![relieved(floor(3.0), [2.0, 0.05, 0.1, std::f64::consts::FRAC_PI_2, 0.0, 0.0, 0.05, 1.0])], microphone, grazing, length, 1));
+    let reflected = |h: &[Complex64]| mean_magnitude(&h.iter().map(|x| x - Complex64::new(1.0, 0.0)).collect::<Vec<_>>(), length, 3000.0, 8000.0);
+    assert!(reflected(&ridged) < 0.6 * reflected(&flat), "ridged {} flat {}", reflected(&ridged), reflected(&flat));
+}
+
+#[test]
+fn ray_along_a_steep_wave_trough_is_shaded_and_a_steep_ray_is_not() {
+    let r = neartect_core::relief::Relief::new(1.0, 0.05, 0.1, [1.0, 0.0], [0.0, 0.0], 0.0, 0.0, 1.0, 0.0);
+    let inside = |_: [f64; 2]| true;
+    let trough = [0.075, 0.0];
+    let (h, _) = r.at(trough);
+    assert!(r.shades(trough, h, [1.0, 0.0], 0.2, 1.0, inside));
+    assert!(!r.shades(trough, h, [1.0, 0.0], 5.0, 1.0, inside));
+    assert!(!r.shades(trough, h, [0.0, 1.0], 0.0, 1.0, inside));
+}
+
+#[test]
+fn a_point_past_an_edge_mirrors_across_the_nearest_edge() {
+    let square = rectangle([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let inside = square.to_plane([0.6, 0.2, 0.0]);
+    let outside = square.to_plane([1.4, 0.2, 0.0]);
+    let (mirrored, normal) = square.mirror_across_nearest_edge(outside);
+    assert!((mirrored[0] - inside[0]).abs() < 1e-12 && (mirrored[1] - inside[1]).abs() < 1e-12, "{mirrored:?}");
+    assert!((normal[0].abs() + normal[1].abs() - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn rough_shadowing_is_none_overhead_and_grows_towards_grazing() {
+    let r = neartect_core::relief::Relief::new(0.0, 0.0, 1.0, [1.0, 0.0], [0.0, 0.0], 0.0, 0.01, 0.05, 3.0);
+    let seen: Vec<f64> = [1.0, 0.7, 0.3, 0.1, 0.02].iter().map(|&c| r.rough_shadowing(c)).collect();
+    assert_eq!(seen[0], 1.0);
+    assert!(seen.windows(2).all(|w| w[1] <= w[0] + 1e-12), "{seen:?}");
+    assert!(seen[4] < 0.5, "{seen:?}");
+}

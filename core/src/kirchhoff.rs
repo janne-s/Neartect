@@ -200,8 +200,19 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let skip = [context.index];
     let virtual_element = !real.contains(centre);
     let relief = &scene.surfaces[context.index].relief;
-    let shaped = !virtual_element && !relief.is_flat();
-    let (height, slope) = if shaped { relief.at(centre) } else { (0.0, [0.0, 0.0]) };
+    let shaped = !relief.is_flat();
+    // An element past a joined edge stands for the surface's mirror image in
+    // the joining surface, so it carries the relief mirrored across that edge.
+    let (height, slope) = if !shaped {
+        (0.0, [0.0, 0.0])
+    } else if virtual_element {
+        let (mirrored, edge_normal) = real.mirror_across_nearest_edge(centre);
+        let (h, g) = relief.at(mirrored);
+        let across = g[0] * edge_normal[0] + g[1] * edge_normal[1];
+        (h, [g[0] - 2.0 * across * edge_normal[0], g[1] - 2.0 * across * edge_normal[1]])
+    } else {
+        relief.at(centre)
+    };
     let normal = real.normal;
     let x = crate::geom::add(polygon.to_space(centre), scale(normal, height));
     let side = dot(context.lit_normal, normal);
@@ -210,6 +221,13 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let tangent_v = crate::geom::add(polygon.v, scale(normal, slope[1]));
     let incident = scene.incident(x);
     if shaped && dot(tilted, incident.towards_source) <= 0.0 {
+        return;
+    }
+    let shades = |towards: V3| {
+        let rise = dot(towards, normal);
+        shaped && relief.shades(centre, height, [dot(towards, polygon.u), dot(towards, polygon.v)], rise, side.signum(), |q| real.contains(q))
+    };
+    if shades(incident.towards_source) {
         return;
     }
     if !virtual_element && scene.occluded(&skip, x, incident.towards_source, incident.source_distance) {
@@ -222,6 +240,9 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if cos_scatter > 0.0 && !virtual_element && scene.occluded(&skip, x, direction, distance) {
         return;
     }
+    if cos_scatter > 0.0 && shades(direction) {
+        return;
+    }
     let c = scene.speed_of_sound;
     let delay = (incident.extra_metres + distance) / c * context.rate;
     let (listener_delay, weights) = scene.split(scale(direction, -1.0), distance);
@@ -230,7 +251,12 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if delay >= (length - 2) as f64 {
         return;
     }
-    let area = size * size * incident.amplitude;
+    let unshaded = if shaped {
+        relief.rough_shadowing(dot(normal, incident.towards_source).abs()) * relief.rough_shadowing(dot(normal, direction).abs())
+    } else {
+        1.0
+    };
+    let area = size * size * incident.amplitude * unshaded;
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
     let cos_incidence = dot(tilted, incident.towards_source).max(0.0);

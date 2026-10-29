@@ -100,7 +100,12 @@ fn surface_relief(polygon: &Polygon, v: &[f64]) -> relief::Relief {
     let n = polygon.normal;
     let wanted = [v[3], v[4], v[5]];
     let flat = sub(wanted, scale(n, dot(wanted, n)));
-    let along = if norm(flat) > 1e-6 { normalize(flat) } else { polygon.u };
+    let along = if norm(flat) > 1e-6 {
+        normalize(flat)
+    } else {
+        let level = geom::cross(n, [0.0, 0.0, 1.0]);
+        if norm(level) > 1e-6 { normalize(level) } else { [1.0, 0.0, 0.0] }
+    };
     let across = geom::cross(n, along);
     let anchor = [v[6], v[7], v[8]];
     let from_anchor = sub(polygon.origin, anchor);
