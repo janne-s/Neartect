@@ -21,7 +21,11 @@ pub enum Pattern {
 fn in_opening(q: [f64; 2], centre: [f64; 2], half: [f64; 2], round: bool) -> bool {
     let u = (q[0] - centre[0]) / half[0];
     let v = (q[1] - centre[1]) / half[1];
-    if round { u * u + v * v < 1.0 } else { u.abs() < 1.0 && v.abs() < 1.0 }
+    if round {
+        u * u + v * v < 1.0
+    } else {
+        u.abs() < 1.0 && v.abs() < 1.0
+    }
 }
 
 fn near_opening_edge(q: [f64; 2], size: f64, centre: [f64; 2], half: [f64; 2], round: bool) -> bool {
@@ -65,9 +69,7 @@ impl Pattern {
     pub fn may_cross(&self, centre: [f64; 2], size: f64) -> bool {
         match *self {
             Pattern::Solid => false,
-            Pattern::Grid { period, bar, .. } => {
-                crosses(centre[0], size, period[0], bar[0]) || crosses(centre[1], size, period[1], bar[1])
-            }
+            Pattern::Grid { period, bar, .. } => crosses(centre[0], size, period[0], bar[0]) || crosses(centre[1], size, period[1], bar[1]),
             Pattern::Opening { centre: c, half, round } => near_opening_edge(centre, size, c, half, round),
         }
     }
@@ -109,11 +111,7 @@ impl Pattern {
         }
         let gap = |i: usize| if period[i] > 0.0 { period[i] - bar[i] } else { f64::INFINITY };
         let longest_period = period[0].max(period[1]);
-        let hole_radius = if gap(0).is_finite() && gap(1).is_finite() {
-            (gap(0) * gap(1) / PI).sqrt()
-        } else {
-            gap(0).min(gap(1)) / 2.0
-        };
+        let hole_radius = if gap(0).is_finite() && gap(1).is_finite() { (gap(0) * gap(1) / PI).sqrt() } else { gap(0).min(gap(1)) / 2.0 };
         let mass = AIR_DENSITY * (thickness + 2.0 * END_CORRECTION_PER_RADIUS * hole_radius) / open;
         let omega_mass = 2.0 * PI * frequency_hz * mass;
         let sheet = omega_mass / (omega_mass.powi(2) + (2.0 * AIR_DENSITY * speed_of_sound).powi(2)).sqrt();
@@ -130,11 +128,7 @@ impl Pattern {
                 let bar = [values[2].clamp(0.0, period[0]), values[3].clamp(0.0, period[1])];
                 Pattern::Grid { period, bar, thickness: values[4].max(0.0) }
             }
-            2 => Pattern::Opening {
-                centre: [values[0], values[1]],
-                half: [values[2].max(1e-4), values[3].max(1e-4)],
-                round: values[4] > 0.5,
-            },
+            2 => Pattern::Opening { centre: [values[0], values[1]], half: [values[2].max(1e-4), values[3].max(1e-4)], round: values[4] > 0.5 },
             _ => Pattern::Solid,
         }
     }

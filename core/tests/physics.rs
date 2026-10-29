@@ -9,11 +9,7 @@ const C: f64 = 343.0;
 const RIGID: [f64; 8] = [1.0; 8];
 
 fn rectangle(centre: V3, half_u: V3, half_v: V3) -> Polygon {
-    let p = |a: f64, b: f64| [
-        centre[0] + a * half_u[0] + b * half_v[0],
-        centre[1] + a * half_u[1] + b * half_v[1],
-        centre[2] + a * half_u[2] + b * half_v[2],
-    ];
+    let p = |a: f64, b: f64| [centre[0] + a * half_u[0] + b * half_v[0], centre[1] + a * half_u[1] + b * half_v[1], centre[2] + a * half_u[2] + b * half_v[2]];
     Polygon::new(&[p(-1.0, -1.0), p(1.0, -1.0), p(1.0, 1.0), p(-1.0, 1.0)]).unwrap()
 }
 
@@ -26,7 +22,21 @@ fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
-    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0, listener: Listener::omni(), quality: Default::default() }
+    Scene {
+        surfaces,
+        microphone,
+        arrival: normalize(arrival),
+        speed_of_sound: C,
+        sample_rate: FS,
+        length,
+        max_order,
+        pipe: None,
+        source: None,
+        gain: 1.0,
+        delay_seconds: 0.0,
+        listener: Listener::omni(),
+        quality: Default::default(),
+    }
 }
 
 fn at(spectrum: &[Complex64], length: usize, hz: f64) -> Complex64 {
@@ -199,9 +209,7 @@ fn slats_seen_at_an_angle_give_a_repetition_pitch() {
     let slats = grating([0.05, 0.0], [0.01, 0.0], 1.0);
     let h = near_filter(&scene(vec![slats], [0.0, 0.0, 0.5], [-1.0, 0.0, 1.0], length, 1));
     let peak = h[1..].iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-    let taps = (2..length - 1)
-        .filter(|&i| h[i].abs() > 0.2 * peak && h[i].abs() >= h[i - 1].abs() && h[i].abs() >= h[i + 1].abs())
-        .count();
+    let taps = (2..length - 1).filter(|&i| h[i].abs() > 0.2 * peak && h[i].abs() >= h[i - 1].abs() && h[i].abs() >= h[i + 1].abs()).count();
     assert!(taps >= 5, "only {taps} taps: the bars do not repeat");
 }
 
@@ -321,10 +329,7 @@ fn point_source_over_a_rigid_floor_matches_its_image() {
 fn absorbing_floor_under_a_near_point_source_reflects_nothing() {
     let length = 4096;
     let h = near_spectrum(&from_point(vec![surface(floor(10.0).polygon, [0.0; 8])], [0.2, 0.0, 0.2], [0.0, 0.0, 0.3], length, 1));
-    let worst = [20.0, 40.0, 80.0, 160.0, 320.0, 1000.0, 4000.0]
-        .iter()
-        .map(|&hz| (at(&h, length, hz).norm() - 1.0).abs())
-        .fold(0.0, f64::max);
+    let worst = [20.0, 40.0, 80.0, 160.0, 320.0, 1000.0, 4000.0].iter().map(|&hz| (at(&h, length, hz).norm() - 1.0).abs()).fold(0.0, f64::max);
     assert!(worst < 0.05, "largest deviation {worst}");
 }
 
@@ -425,15 +430,17 @@ fn cardioid_over_a_floor_matches_its_image_with_proximity() {
     let image_point = [0.0, 0.0, -1.0];
     let image = distance(image_point, microphone);
     let towards = |p: V3| normalize([p[0] - microphone[0], p[1] - microphone[1], p[2] - microphone[2]]);
-    let cos = |p: V3| { let d = towards(p); d[0] * facing[0] + d[1] * facing[1] + d[2] * facing[2] };
+    let cos = |p: V3| {
+        let d = towards(p);
+        d[0] * facing[0] + d[1] * facing[1] + d[2] * facing[2]
+    };
     let n = spectrum_size(length);
     let mut worst: f64 = 0.0;
     for hz in [60.0, 125.0, 250.0, 500.0, 1000.0, 2000.0] {
         let bin = (hz * n as f64 / FS).round() as usize;
         let f = bin as f64 * FS / n as f64;
         let k = 2.0 * std::f64::consts::PI * f / C;
-        let exact = first_order(0.5, cos(source), k, direct)
-            + first_order(0.5, cos(image_point), k, image) * Complex64::from_polar(direct / image, -k * (image - direct));
+        let exact = first_order(0.5, cos(source), k, direct) + first_order(0.5, cos(image_point), k, image) * Complex64::from_polar(direct / image, -k * (image - direct));
         worst = worst.max((h[bin] - exact).norm());
     }
     // Each rigid element's dipole field is differentiated exactly; what is
@@ -590,8 +597,7 @@ fn measured_ear_over_a_floor_matches_its_image() {
         let bin = (hz * n as f64 / FS).round() as usize;
         let omega = 2.0 * std::f64::consts::PI * bin as f64 * FS / n as f64;
         let k = omega / C;
-        let exact = s.response(towards(source), direct, omega)
-            + s.response(towards(image_point), image, omega) * Complex64::from_polar(direct / image, -k * (image - direct));
+        let exact = s.response(towards(source), direct, omega) + s.response(towards(image_point), image, omega) * Complex64::from_polar(direct / image, -k * (image - direct));
         worst = worst.max((h[bin] - exact).norm());
     }
     // Each element takes the head's response and delay for its own direction,

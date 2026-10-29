@@ -189,13 +189,7 @@ fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
     }
     let direct = norm(sub(source, scene.microphone));
     let c = scene.speed_of_sound;
-    Some(Path {
-        delay_seconds: (path_length - direct) / c,
-        gain: direct / path_length,
-        from,
-        distance: path_length,
-        reflections: rindel(scene, sequence, &hits, Some(source)),
-    })
+    Some(Path { delay_seconds: (path_length - direct) / c, gain: direct / path_length, from, distance: path_length, reflections: rindel(scene, sequence, &hits, Some(source)) })
 }
 
 fn trace_plane(scene: &Scene, sequence: &[usize]) -> Option<Path> {
@@ -246,16 +240,8 @@ fn rindel(scene: &Scene, sequence: &[usize], hits: &[(V3, f64, f64)], source: Op
         .enumerate()
         .map(|(k, &i)| {
             let (hit, to_microphone, cos_incidence) = hits[k];
-            let to_source = if k + 1 < hits.len() {
-                norm(sub(hits[k + 1].0, hit))
-            } else {
-                source.map_or(f64::INFINITY, |s| norm(sub(s, hit)))
-            };
-            let characteristic = if to_source.is_infinite() {
-                2.0 * to_microphone
-            } else {
-                2.0 * to_source * to_microphone / (to_source + to_microphone)
-            };
+            let to_source = if k + 1 < hits.len() { norm(sub(hits[k + 1].0, hit)) } else { source.map_or(f64::INFINITY, |s| norm(sub(s, hit))) };
+            let characteristic = if to_source.is_infinite() { 2.0 * to_microphone } else { 2.0 * to_source * to_microphone / (to_source + to_microphone) };
             let area = scene.surfaces[i].pattern.solid_area(scene.surfaces[i].polygon.area);
             let cutoff_hz = design_frequency(c, characteristic, area, cos_incidence);
             let rough_metres = scene.surfaces[i].relief.rms() * cos_incidence;

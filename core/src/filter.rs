@@ -1,6 +1,6 @@
+use crate::geom::{dot, scale, sub, V3};
 use crate::images::specular_paths;
 use crate::kirchhoff::{relief_floor, scatter_into, traversals, Histograms, Part, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
-use crate::geom::{dot, scale, sub, V3};
 use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
 use crate::spectrum::{angular_frequency, minimum_phase, Fft};
@@ -14,7 +14,11 @@ use std::f64::consts::PI;
 const HORIZON_MARGIN_SAMPLES: f64 = 256.0;
 
 fn sinc(x: f64) -> f64 {
-    if x.abs() < 1e-12 { 1.0 } else { (PI * x).sin() / (PI * x) }
+    if x.abs() < 1e-12 {
+        1.0
+    } else {
+        (PI * x).sin() / (PI * x)
+    }
 }
 
 pub fn spectrum_size(length: usize) -> usize {
@@ -95,8 +99,7 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
             let (p_b, u_b) = (p_b * plane_b + cross_p_b, u_b * plane_b + cross_u_b);
             let heard_a = p_a * pattern - u_a * (gradient * facing_along);
             let heard_b = p_b * pattern + u_b * (gradient * facing_along);
-            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * heard_a
-                + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * heard_b
+            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * heard_a + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * heard_b
         })
         .collect()
 }
@@ -119,11 +122,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex
     let direct_split = scene.split(direct_from, direct_distance);
     let whole = part.index == 0;
     let mut total: Vec<Complex64> = (0..=half).map(|k| if whole { heard(&direct_split, k) } else { Complex64::new(0.0, 0.0) }).collect();
-    let reflection: Vec<Vec<Complex64>> = scene
-        .surfaces
-        .iter()
-        .map(|s| minimum_phase(&s.reflection, n, fs, &mut fft))
-        .collect();
+    let reflection: Vec<Vec<Complex64>> = scene.surfaces.iter().map(|s| minimum_phase(&s.reflection, n, fs, &mut fft)).collect();
     let j = Complex64::new(0.0, 1.0);
 
     let mut groups: Vec<(Vec<u64>, usize, Option<usize>, Histograms)> = Vec::new();

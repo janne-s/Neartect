@@ -126,9 +126,7 @@ struct Context<'a> {
 }
 
 fn element_size(distance: f64) -> f64 {
-    (distance * ELEMENT_PER_DISTANCE)
-        .min((CURVATURE_LENGTH_METRES * distance).sqrt())
-        .clamp(SHORTEST_ELEMENT_METRES, LONGEST_ELEMENT_METRES)
+    (distance * ELEMENT_PER_DISTANCE).min((CURVATURE_LENGTH_METRES * distance).sqrt()).clamp(SHORTEST_ELEMENT_METRES, LONGEST_ELEMENT_METRES)
 }
 
 fn edge_element_size(distance: f64) -> f64 {
@@ -185,11 +183,7 @@ fn extension(scene: &Scene, bins: usize) -> f64 {
 // limit.
 pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<usize>)], bins: usize) -> f64 {
     let reach = extension(scene, bins);
-    let area: f64 = traversals
-        .iter()
-        .filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat())
-        .map(|&(i, via)| domain(scene, i, reach, via).area)
-        .sum();
+    let area: f64 = traversals.iter().filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat()).map(|&(i, via)| domain(scene, i, reach, via).area).sum();
     (area / scene.quality.element_limit).sqrt()
 }
 
@@ -216,11 +210,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<u
     let rate = scene.sample_rate * OVERSAMPLING as f64;
     let reach = extension(scene, histograms.bins());
     let relief = &surface.relief;
-    let relief_element = if relief.is_flat() {
-        0.0
-    } else {
-        (relief.finest() / scene.quality.relief_detail).max(relief_floor)
-    };
+    let relief_element = if relief.is_flat() { 0.0 } else { (relief.finest() / scene.quality.relief_detail).max(relief_floor) };
     let mut context = Context {
         scene,
         index,
@@ -251,9 +241,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<u
 // outside of a box, and other angles keep their edges (class B diffraction).
 fn domain(scene: &Scene, index: usize, extension: f64, via: Option<usize>) -> Polygon {
     let polygon = &scene.surfaces[index].polygon;
-    let distances: Vec<f64> = (0..polygon.points.len())
-        .map(|i| if joined(scene, index, polygon.edge(i), via) { extension } else { 0.0 })
-        .collect();
+    let distances: Vec<f64> = (0..polygon.points.len()).map(|i| if joined(scene, index, polygon.edge(i), via) { extension } else { 0.0 }).collect();
     polygon.offset(&distances)
 }
 
@@ -301,13 +289,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: u
     }
     let surface = &context.scene.surfaces[context.index];
     let h = size / 2.0;
-    let samples = [
-        centre,
-        [centre[0] - h, centre[1] - h],
-        [centre[0] + h, centre[1] - h],
-        [centre[0] - h, centre[1] + h],
-        [centre[0] + h, centre[1] + h],
-    ];
+    let samples = [centre, [centre[0] - h, centre[1] - h], [centre[0] + h, centre[1] - h], [centre[0] - h, centre[1] + h], [centre[0] + h, centre[1] + h]];
     let domain = &context.domain;
     let is_solid = |q: [f64; 2]| domain.contains(q) && surface.pattern.is_solid(q);
     let solid = samples.iter().filter(|&&q| is_solid(q)).count();
@@ -407,11 +389,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if delay >= (length - 2) as f64 {
         return;
     }
-    let unshaded = if shaped {
-        relief.rough_shadowing(dot(normal, incident.towards_source).abs()) * relief.rough_shadowing(dot(normal, direction).abs())
-    } else {
-        1.0
-    };
+    let unshaded = if shaped { relief.rough_shadowing(dot(normal, incident.towards_source).abs()) * relief.rough_shadowing(dot(normal, direction).abs()) } else { 1.0 };
     let area = size * size * incident.amplitude * unshaded;
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
@@ -437,11 +415,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         }
     }
     let towards = incident.towards_source;
-    let gradient = scale([
-        -towards[0] - direction[0],
-        -towards[1] - direction[1],
-        -towards[2] - direction[2],
-    ], size * context.rate / c);
+    let gradient = scale([-towards[0] - direction[0], -towards[1] - direction[1], -towards[2] - direction[2]], size * context.rate / c);
     let spread_u = dot(gradient, tangent_u);
     let spread_v = dot(gradient, tangent_v);
     let count_u = ((spread_u.abs().ceil() as usize) + 1).min(MOST_SUBPOINTS);

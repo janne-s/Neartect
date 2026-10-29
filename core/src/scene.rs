@@ -146,7 +146,11 @@ impl Scene {
             }
             Listener::Ear { radius, .. } => {
                 let x = j * omega * radius / (2.0 * self.speed_of_sound);
-                if set == 0 { Complex64::new(1.0, 0.0) / (1.0 + x) } else { x / (1.0 + x) }
+                if set == 0 {
+                    Complex64::new(1.0, 0.0) / (1.0 + x)
+                } else {
+                    x / (1.0 + x)
+                }
             }
             Listener::MeasuredEar { .. } => crate::hrtf::table().factor(set, omega),
         }
@@ -187,12 +191,7 @@ impl Scene {
                 let to_source = crate::geom::sub(source, x);
                 let r1 = crate::geom::norm(to_source).max(NEAREST_SOURCE_METRES);
                 let r0 = crate::geom::norm(crate::geom::sub(source, self.microphone)).max(NEAREST_SOURCE_METRES);
-                Incident {
-                    amplitude: r0 / r1,
-                    extra_metres: r1 - r0,
-                    towards_source: crate::geom::scale(to_source, 1.0 / r1),
-                    source_distance: r1,
-                }
+                Incident { amplitude: r0 / r1, extra_metres: r1 - r0, towards_source: crate::geom::scale(to_source, 1.0 / r1), source_distance: r1 }
             }
         }
     }
@@ -212,7 +211,13 @@ impl Scene {
             if gap.abs() >= SMALLEST_GAP_METRES || !polygon.contains(polygon.to_plane(scene.microphone)) {
                 continue;
             }
-            let side = if gap != 0.0 { gap.signum() } else if self.source_side(polygon) < 0.0 { -1.0 } else { 1.0 };
+            let side = if gap != 0.0 {
+                gap.signum()
+            } else if self.source_side(polygon) < 0.0 {
+                -1.0
+            } else {
+                1.0
+            };
             scene.microphone = crate::geom::add(scene.microphone, crate::geom::scale(polygon.normal, side * SMALLEST_GAP_METRES - gap));
         }
         scene

@@ -17,11 +17,7 @@ pub fn dot(a: V3, b: V3) -> f64 {
 }
 
 pub fn cross(a: V3, b: V3) -> V3 {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
 pub fn norm(a: V3) -> f64 {
@@ -30,7 +26,11 @@ pub fn norm(a: V3) -> f64 {
 
 pub fn normalize(a: V3) -> V3 {
     let n = norm(a);
-    if n > 0.0 { scale(a, 1.0 / n) } else { a }
+    if n > 0.0 {
+        scale(a, 1.0 / n)
+    } else {
+        a
+    }
 }
 
 const EPSILON_METRES: f64 = 1e-9;
@@ -182,11 +182,13 @@ impl Polygon {
                 [p1[0] + t * d1[0], p1[1] + t * d1[1]]
             })
             .collect::<Vec<_>>();
-        let twice_area: f64 = (0..n).map(|i| {
-            let a = points[i];
-            let b = points[(i + 1) % n];
-            a[0] * b[1] - b[0] * a[1]
-        }).sum();
+        let twice_area: f64 = (0..n)
+            .map(|i| {
+                let a = points[i];
+                let b = points[(i + 1) % n];
+                a[0] * b[1] - b[0] * a[1]
+            })
+            .sum();
         Polygon { origin: self.origin, normal: self.normal, u: self.u, v: self.v, points, area: twice_area.abs() / 2.0 }
     }
 
@@ -200,7 +202,11 @@ impl Polygon {
             return None;
         }
         let hit = add(from, scale(direction, t));
-        if self.contains(self.to_plane(hit)) { Some(t) } else { None }
+        if self.contains(self.to_plane(hit)) {
+            Some(t)
+        } else {
+            None
+        }
     }
 
     pub fn mirror_point(&self, p: V3) -> V3 {
@@ -213,10 +219,7 @@ impl Polygon {
 }
 
 pub fn blocked(polygons: &[Polygon], skip: &[usize], from: V3, direction: V3, max_length: f64) -> bool {
-    polygons
-        .iter()
-        .enumerate()
-        .any(|(i, p)| !skip.contains(&i) && p.ray_hit(from, direction, max_length).is_some())
+    polygons.iter().enumerate().any(|(i, p)| !skip.contains(&i) && p.ray_hit(from, direction, max_length).is_some())
 }
 
 #[cfg(test)]
@@ -236,10 +239,7 @@ mod tests {
 
     #[test]
     fn contains_concave_l_shape() {
-        let p = Polygon::new(&[
-            [0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0], [1.0, 2.0, 0.0], [0.0, 2.0, 0.0],
-        ]).unwrap();
+        let p = Polygon::new(&[[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 2.0, 0.0], [0.0, 2.0, 0.0]]).unwrap();
         assert!(p.contains(p.to_plane([0.5, 1.5, 0.0])));
         assert!(!p.contains(p.to_plane([1.5, 1.5, 0.0])));
     }

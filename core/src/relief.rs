@@ -46,7 +46,18 @@ fn random(seed: &mut u64) -> f64 {
 
 impl Relief {
     pub fn flat() -> Relief {
-        Relief { shape: Shape::Flat, height: 0.0, period: 1.0, direction: [1.0, 0.0], start: [0.0, 0.0], offset: 0.0, rough_height: 0.0, grain: 1.0, components: Vec::new(), rough_slope: 0.0 }
+        Relief {
+            shape: Shape::Flat,
+            height: 0.0,
+            period: 1.0,
+            direction: [1.0, 0.0],
+            start: [0.0, 0.0],
+            offset: 0.0,
+            rough_height: 0.0,
+            grain: 1.0,
+            components: Vec::new(),
+            rough_slope: 0.0,
+        }
     }
 
     // [shape, height, period, direction radians, offset, rough height, grain,
@@ -113,12 +124,13 @@ impl Relief {
     }
 
     pub fn rms(&self) -> f64 {
-        let shape = self.height * match self.shape {
-            Shape::Flat => 0.0,
-            Shape::Waves => std::f64::consts::FRAC_1_SQRT_2,
-            Shape::Arches | Shape::Scallops => (0.5 - 4.0 / (PI * PI)).sqrt(),
-            Shape::Egg => 0.5,
-        };
+        let shape = self.height
+            * match self.shape {
+                Shape::Flat => 0.0,
+                Shape::Waves => std::f64::consts::FRAC_1_SQRT_2,
+                Shape::Arches | Shape::Scallops => (0.5 - 4.0 / (PI * PI)).sqrt(),
+                Shape::Egg => 0.5,
+            };
         (shape * shape + self.rough_height * self.rough_height).sqrt()
     }
 

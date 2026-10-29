@@ -26,16 +26,43 @@ pub const RELIEF_VALUES: usize = 13;
 // spherical head, and 2 for an ear on the measured head, which also takes
 // the head's front and up.
 pub const SETTINGS: [&str; 37] = [
-    "sampleRateHz", "speedOfSoundMetresPerSecond", "lengthSamples", "order",
-    "microphoneX", "microphoneY", "microphoneZ",
-    "arrivalX", "arrivalY", "arrivalZ",
-    "pointSource", "sourceX", "sourceY", "sourceZ",
-    "gain", "delaySeconds",
-    "pipeRadiusMetres", "pipeMouthAX", "pipeMouthAY", "pipeMouthAZ", "pipeMouthBX", "pipeMouthBY", "pipeMouthBZ",
-    "pattern", "facingX", "facingY", "facingZ",
-    "listenerKind", "headRadiusMetres",
-    "reliefDetail", "elementLimit",
-    "headFrontX", "headFrontY", "headFrontZ", "headUpX", "headUpY", "headUpZ",
+    "sampleRateHz",
+    "speedOfSoundMetresPerSecond",
+    "lengthSamples",
+    "order",
+    "microphoneX",
+    "microphoneY",
+    "microphoneZ",
+    "arrivalX",
+    "arrivalY",
+    "arrivalZ",
+    "pointSource",
+    "sourceX",
+    "sourceY",
+    "sourceZ",
+    "gain",
+    "delaySeconds",
+    "pipeRadiusMetres",
+    "pipeMouthAX",
+    "pipeMouthAY",
+    "pipeMouthAZ",
+    "pipeMouthBX",
+    "pipeMouthBY",
+    "pipeMouthBZ",
+    "pattern",
+    "facingX",
+    "facingY",
+    "facingZ",
+    "listenerKind",
+    "headRadiusMetres",
+    "reliefDetail",
+    "elementLimit",
+    "headFrontX",
+    "headFrontY",
+    "headFrontZ",
+    "headUpX",
+    "headUpY",
+    "headUpZ",
 ];
 const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
 const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
@@ -85,11 +112,7 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         source: (get("pointSource") > 0.0).then(|| vector("source")),
         gain: get("gain"),
         delay_seconds: get("delaySeconds"),
-        pipe: (get("pipeRadiusMetres") > 0.0).then(|| pipe::PipeInside {
-            radius: get("pipeRadiusMetres"),
-            mouth_a: vector("pipeMouthA"),
-            mouth_b: vector("pipeMouthB"),
-        }),
+        pipe: (get("pipeRadiusMetres") > 0.0).then(|| pipe::PipeInside { radius: get("pipeRadiusMetres"), mouth_a: vector("pipeMouthA"), mouth_b: vector("pipeMouthB") }),
         listener: match get("listenerKind").round() as i64 {
             2 => scene::Listener::MeasuredEar { front: normalize(vector("headFront")), outward: normalize(vector("facing")), up: normalize(vector("headUp")) },
             1 => scene::Listener::Ear { axis: normalize(vector("facing")), radius: get("headRadiusMetres") },
@@ -111,22 +134,16 @@ fn surface_relief(polygon: &Polygon, v: &[f64]) -> relief::Relief {
         normalize(flat)
     } else {
         let level = geom::cross(n, [0.0, 0.0, 1.0]);
-        if norm(level) > 1e-6 { normalize(level) } else { [1.0, 0.0, 0.0] }
+        if norm(level) > 1e-6 {
+            normalize(level)
+        } else {
+            [1.0, 0.0, 0.0]
+        }
     };
     let across = geom::cross(n, along);
     let anchor = [v[6], v[7], v[8]];
     let from_anchor = sub(polygon.origin, anchor);
-    relief::Relief::new(
-        v[0],
-        v[1],
-        v[2],
-        [dot(along, polygon.u), dot(along, polygon.v)],
-        [dot(from_anchor, along), dot(from_anchor, across)],
-        v[9],
-        v[10],
-        v[11],
-        v[12],
-    )
+    relief::Relief::new(v[0], v[1], v[2], [dot(along, polygon.u), dot(along, polygon.v)], [dot(from_anchor, along), dot(from_anchor, across)], v[9], v[10], v[11], v[12])
 }
 
 // One part's share of the near spectrum, as interleaved real and imaginary
