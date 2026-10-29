@@ -3,8 +3,8 @@ import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, readSpace, SpaceError } from './domain/space.js';
 import { RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
-import { aimAt, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject } from './domain/objects.js';
-import { BUILD_KINDS, headIcon, objectIcon, patternIcon, situationIcon } from './ui/icons.js';
+import { aimAt, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
+import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
 import { SMALLEST_GAP_METRES, spaceCentre } from './domain/placement.js';
@@ -13,6 +13,7 @@ import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
+import { listeners } from './domain/near-filter.js';
 
 const STORAGE_KEY = 'neartect.space';
 const PREFERENCES_KEY = 'neartect.preferences';
@@ -20,6 +21,7 @@ const GAP_RANGE_METRES = [SMALLEST_GAP_METRES, 5];
 const HORIZONTAL_RANGE_METRES = [-5, 5];
 const HEIGHT_RANGE_METRES = [0, 5];
 const SLIDER_STEPS = 1000;
+const MOST_GLIDE_SECONDS = 2;
 const SHEET_TITLES = Object.freeze({ emitters: 'Objects', receivers: 'Microphones and source', output: 'Air and output' });
 
 const $ = id => document.getElementById(id);
@@ -61,42 +63,81 @@ const view = createNearView($('near-view'), {
   snapSurfaces: () => preferences.snapSurfaces
 });
 
-const worker = new Worker(new URL('./filter-worker.js', import.meta.url), { type: 'module' });
+// Each channel is computed on its own worker, so several microphones and
+// layouts take about as long as one.
+const WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
+const workers = Array.from({ length: WORKERS }, () => new Worker(new URL('./filter-worker.js', import.meta.url), { type: 'module' }));
 let requestId = 0;
 let busy = false;
 let dirty = true;
 const waiting = new Map();
 
-function computeFilter(space) {
+workers.forEach(worker => worker.addEventListener('message', ({ data }) => {
+  const job = waiting.get(data.id);
+  waiting.delete(data.id);
+  if (data.error) job?.reject(new Error(data.error)); else job?.resolve(data.samples);
+}));
+
+function channelJob(worker, space, index) {
   requestId += 1;
   const id = requestId;
   return new Promise((resolve, reject) => {
     waiting.set(id, { resolve, reject });
-    worker.postMessage({ id, space });
+    worker.postMessage({ id, space, index });
   });
 }
-worker.addEventListener('message', ({ data }) => {
-  const job = waiting.get(data.id);
-  waiting.delete(data.id);
-  if (data.error) job?.reject(new Error(data.error)); else job?.resolve(data);
-});
+
+async function computeFilter(space) {
+  const started = performance.now();
+  const list = listeners(space);
+  const channels = new Array(list.length);
+  let next = 0;
+  await Promise.all(workers.map(async worker => {
+    while (next < list.length) {
+      const index = next;
+      next += 1;
+      channels[index] = await channelJob(worker, space, index);
+    }
+  }));
+  return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan), milliseconds: performance.now() - started };
+}
+
+// Relief with a speed moves while the preview plays: each new filter takes
+// the relief where it is now and glides in over the time since the last one.
+function moving(space) {
+  return space.objects.some(o => o.relief.speedMetresPerSecond !== 0 && (o.relief.shape !== 'flat' || o.relief.roughMetres > 0));
+}
+
+function liveSpace() {
+  const space = clone(state.space);
+  if (state.audioRate) space.render.sampleRateHz = state.audioRate;
+  if (preview.playing && moving(space)) {
+    const t = preview.time;
+    space.objects.forEach(o => { o.relief.offsetMetres += o.relief.speedMetresPerSecond * t; });
+  }
+  return space;
+}
+
+let lastGlide = 0;
 
 async function refreshFilter() {
   if (busy) { dirty = true; return; }
   busy = true;
   dirty = false;
-  const space = clone(state.space);
+  const space = liveSpace();
   try {
     const result = await computeFilter(space);
     state.filter = result;
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
-    if (state.audioRate && state.audioRate !== result.sampleRateHz) {
-      const live = await computeFilter({ ...space, render: { ...space.render, sampleRateHz: state.audioRate } });
-      preview.setFilter(live);
-    } else {
-      preview.setFilter(result);
-    }
+    const now = performance.now();
+    const gliding = preview.playing && moving(space);
+    preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, (now - lastGlide) / 1000) : undefined);
+    lastGlide = now;
     drawPlots();
+    if (gliding) {
+      dirty = true;
+      if (!animating) animateRelief();
+    }
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -194,9 +235,11 @@ function paint(input) {
   input.style.setProperty('--to', `calc(6px + (100% - 12px) * ${t})`);
 }
 
-function macro(container, { label, title, read, write, range: [low, high], log = false, signed = false, format, fallback }) {
+// `zero` keeps the leftmost few steps for an exact zero on a log slider.
+function macro(container, { label, title, read, write, range: [low, high], log = false, signed = false, zero = false, format, fallback }) {
   const span = Math.log(high / low);
   const toSlider = value => {
+    if (zero) return value < low ? 0 : Math.round(SLIDER_STEPS * (0.03 + 0.97 * Math.min(1, Math.log(value / low) / span)));
     if (signed) {
       if (Math.abs(value) < low) return SLIDER_STEPS / 2;
       const t = Math.min(1, Math.log(Math.abs(value) / low) / span);
@@ -206,6 +249,7 @@ function macro(container, { label, title, read, write, range: [low, high], log =
   };
   const fromSlider = position => {
     const t = position / SLIDER_STEPS;
+    if (zero) return t < 0.03 ? 0 : low * (high / low) ** ((t - 0.03) / 0.97);
     if (signed) {
       const offset = t - 0.5;
       if (Math.abs(offset) < 0.02) return 0;
@@ -308,6 +352,7 @@ function objectCard(container, object) {
     }
     macro(macros, { label: '%', title: 'Strength', range: [0, 2], fallback: 1, format: v => `${Math.round(v * 100)} %`, read: () => current().strength, write: v => { current().strength = v; } });
     card.append(macros);
+    reliefControls(card, current);
     const material = element('div', 'fields');
     fields.selectField(material, {
       label: 'Material', value: object.material, reliability: MATERIALS[object.material].reliability,
@@ -338,6 +383,43 @@ function objectCard(container, object) {
     card.append(actions);
   }
   container.append(card);
+}
+
+const RELIEF_LABELS = Object.freeze({ flat: 'Flat', waves: 'Waves', arches: 'Arches', scallops: 'Scallops', egg: 'Egg crate' });
+
+function reliefControls(card, current) {
+  const relief = () => current().relief;
+  const shapes = element('div', 'build-menu pattern-menu');
+  shapes.setAttribute('role', 'radiogroup');
+  shapes.setAttribute('aria-label', 'Relief');
+  RELIEF_SHAPES.forEach(shape => {
+    const button = element('button', 'build-button');
+    button.type = 'button';
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', String(relief().shape === shape));
+    button.title = RELIEF_LABELS[shape];
+    button.setAttribute('aria-label', RELIEF_LABELS[shape]);
+    button.innerHTML = reliefIcon(shape);
+    button.addEventListener('click', () => { relief().shape = shape; changed({ panel: true }); });
+    shapes.append(button);
+  });
+  card.append(shapes);
+  const macros = element('div', 'macros');
+  const shaped = relief().shape !== 'flat';
+  if (shaped) {
+    macro(macros, { label: '↕', title: 'Relief height', range: [0.001, 0.5], log: true, format: formatGap, fallback: 0.02, read: () => relief().heightMetres, write: v => { relief().heightMetres = v; } });
+    macro(macros, { label: '↔', title: 'Relief period', range: [0.01, 5], log: true, format: formatGap, fallback: 0.2, read: () => relief().periodMetres, write: v => { relief().periodMetres = v; } });
+    macro(macros, { label: '∠', title: 'Relief direction', range: [0, 180], format: degrees, fallback: 0, read: () => relief().directionDegrees % 180, write: v => { relief().directionDegrees = v; } });
+  }
+  macro(macros, { label: '≈', title: 'Roughness', range: [0.0005, 0.05], zero: true, format: v => (v ? formatGap(v) : 'smooth'), fallback: 0, read: () => relief().roughMetres, write: v => { relief().roughMetres = v; } });
+  if (relief().roughMetres > 0) {
+    macro(macros, { label: '◦', title: 'Roughness grain', range: [0.01, 1], log: true, format: formatGap, fallback: 0.05, read: () => relief().grainMetres, write: v => { relief().grainMetres = v; } });
+  }
+  if (shaped || relief().roughMetres > 0) {
+    macro(macros, { label: '⇢', title: 'Motion while playing (m/s)', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
+    macro(macros, { label: '⇥', title: 'Relief position', range: [0.001, 5], signed: true, format: formatGap, fallback: 0, read: () => relief().offsetMetres, write: v => { relief().offsetMetres = v; } });
+  }
+  card.append(macros);
 }
 
 function removeObject(id) {
@@ -750,6 +832,19 @@ async function startPlayback() {
   await preview.play(samples, sampleRate);
   $('play').setAttribute('aria-pressed', 'true');
   $('play').textContent = 'Stop';
+  if (moving(state.space)) refreshFilter();
+}
+
+let animating = false;
+function animateRelief() {
+  if (preview.playing && moving(state.space)) {
+    animating = true;
+    view.setReliefTime(preview.time);
+    requestAnimationFrame(animateRelief);
+  } else {
+    animating = false;
+    view.setReliefTime(0);
+  }
 }
 
 function stopPlayback() {

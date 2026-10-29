@@ -1,10 +1,9 @@
-import { nearFilter } from './domain/near-filter.js';
+import { channelFilter } from './domain/near-filter.js';
 
-self.addEventListener('message', async ({ data: { id, space } }) => {
+self.addEventListener('message', async ({ data: { id, space, index } }) => {
   try {
-    const started = performance.now();
-    const { channels, names, pans, sampleRateHz } = await nearFilter(space);
-    self.postMessage({ id, channels, names, pans, sampleRateHz, milliseconds: performance.now() - started }, channels.map(c => c.buffer));
+    const samples = await channelFilter(space, index);
+    self.postMessage({ id, samples }, [samples.buffer]);
   } catch (error) {
     self.postMessage({ id, error: error.message });
   }

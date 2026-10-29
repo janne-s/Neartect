@@ -4,6 +4,7 @@ pub mod images;
 pub mod kirchhoff;
 pub mod pattern;
 pub mod pipe;
+pub mod relief;
 pub mod scene;
 pub mod spectrum;
 
@@ -14,12 +15,15 @@ use spectrum::BAND_COUNT;
 use wasm_bindgen::prelude::*;
 
 pub const PATTERN_VALUES: usize = 6;
+// Relief: shape, height, period, direction xyz, anchor xyz, offset, rough
+// height, grain, seed.
+pub const RELIEF_VALUES: usize = 13;
 // Settings: rate, speed of sound, length, order, microphone xyz, arrival xyz,
 // point source flag and xyz, gain, delay seconds, pipe radius (0 = none),
 // pipe mouths xyz, pickup pattern (1 omni … 0 figure of eight), facing xyz
 // (an ear's outward axis), listener kind (0 microphone, 1 ear), head radius.
 pub const SETTINGS_LENGTH: usize = 29;
-const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES;
+const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES + RELIEF_VALUES;
 
 pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
     if settings.len() < SETTINGS_LENGTH {
@@ -38,13 +42,16 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         reflection.copy_from_slice(&r[2..2 + BAND_COUNT]);
         let pattern_at = 2 + BAND_COUNT;
         let pattern = Pattern::from_numbers(r[pattern_at], &r[pattern_at + 1..pattern_at + 1 + PATTERN_VALUES]);
+        let relief_at = pattern_at + 1 + PATTERN_VALUES;
+        let relief_values = &r[relief_at..relief_at + RELIEF_VALUES];
         let vertex_count = r[SURFACE_HEADER - 1] as usize;
         if SURFACE_HEADER + vertex_count * 3 != record {
             return Err(format!("surface record at {at} has the wrong length"));
         }
         let vertices: Vec<[f64; 3]> = r[SURFACE_HEADER..].chunks(3).map(|v| [v[0], v[1], v[2]]).collect();
         if let Some(polygon) = Polygon::new(&vertices) {
-            list.push(Surface { polygon, strength, reflection, pattern });
+            let relief = surface_relief(&polygon, relief_values);
+            list.push(Surface { polygon, strength, reflection, pattern, relief });
         }
         at += record;
     }
@@ -70,6 +77,28 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
             scene::Listener::Microphone { pattern: settings[23], facing: normalize([settings[24], settings[25], settings[26]]) }
         },
     })
+}
+
+fn surface_relief(polygon: &Polygon, v: &[f64]) -> relief::Relief {
+    use geom::{dot, norm, scale, sub};
+    let n = polygon.normal;
+    let wanted = [v[3], v[4], v[5]];
+    let flat = sub(wanted, scale(n, dot(wanted, n)));
+    let along = if norm(flat) > 1e-6 { normalize(flat) } else { polygon.u };
+    let across = geom::cross(n, along);
+    let anchor = [v[6], v[7], v[8]];
+    let from_anchor = sub(polygon.origin, anchor);
+    relief::Relief::new(
+        v[0],
+        v[1],
+        v[2],
+        [dot(along, polygon.u), dot(along, polygon.v)],
+        [dot(from_anchor, along), dot(from_anchor, across)],
+        v[9],
+        v[10],
+        v[11],
+        v[12],
+    )
 }
 
 #[wasm_bindgen(js_name = nearFilter)]

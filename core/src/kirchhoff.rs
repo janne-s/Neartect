@@ -22,6 +22,7 @@ const MOST_SUBPOINTS: usize = 16;
 const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
+const RELIEF_ELEMENTS_PER_PERIOD: f64 = 6.0;
 
 // One group of four histograms per listener set (rigid far and near, soft far
 // and near), each element weighted by the set's weight for its arrival.
@@ -160,7 +161,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let distance = norm(to_microphone);
     let c = context.scene.speed_of_sound;
     let incident = context.scene.incident(x);
-    let earliest = (incident.extra_metres + distance - size * std::f64::consts::SQRT_2) / c;
+    let earliest = (incident.extra_metres + distance - size * std::f64::consts::SQRT_2 - 2.0 * surface.relief.bound()) / c;
     if earliest * context.rate > context.histograms.len() as f64 {
         return;
     }
@@ -172,6 +173,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let reach = distance * incident.source_distance / (distance + incident.source_distance);
     let reach = if reach.is_finite() { reach } else { distance };
     let target = if uniform { element_size(reach) } else { edge_element_size(reach) };
+    let target = target.min(surface.relief.finest() / RELIEF_ELEMENTS_PER_PERIOD).max(SHORTEST_ELEMENT_METRES);
     if size <= target || level >= DEEPEST_LEVEL {
         if is_solid(centre) {
             element(context, centre, size);
@@ -188,17 +190,28 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let scene = context.scene;
     let real = &scene.surfaces[context.index].polygon;
     let polygon = &context.domain;
-    let x = polygon.to_space(centre);
     let skip = [context.index];
     let virtual_element = !real.contains(centre);
+    let relief = &scene.surfaces[context.index].relief;
+    let shaped = !virtual_element && !relief.is_flat();
+    let (height, slope) = if shaped { relief.at(centre) } else { (0.0, [0.0, 0.0]) };
+    let normal = real.normal;
+    let x = crate::geom::add(polygon.to_space(centre), scale(normal, height));
+    let side = dot(context.lit_normal, normal);
+    let tilted = scale(sub(normal, crate::geom::add(scale(polygon.u, slope[0]), scale(polygon.v, slope[1]))), side);
+    let tangent_u = crate::geom::add(polygon.u, scale(normal, slope[0]));
+    let tangent_v = crate::geom::add(polygon.v, scale(normal, slope[1]));
     let incident = scene.incident(x);
+    if shaped && dot(tilted, incident.towards_source) <= 0.0 {
+        return;
+    }
     if !virtual_element && scene.occluded(&skip, x, incident.towards_source, incident.source_distance) {
         return;
     }
     let to_microphone = sub(scene.microphone, x);
     let distance = norm(to_microphone).max(NEAREST_DISTANCE_METRES);
     let direction = scale(to_microphone, 1.0 / distance);
-    let cos_scatter = dot(context.lit_normal, direction);
+    let cos_scatter = dot(tilted, direction);
     if cos_scatter > 0.0 && !virtual_element && scene.occluded(&skip, x, direction, distance) {
         return;
     }
@@ -213,7 +226,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let area = size * size * incident.amplitude;
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
-    let cos_incidence = dot(context.lit_normal, incident.towards_source).max(0.0);
+    let cos_incidence = dot(tilted, incident.towards_source).max(0.0);
     let soft = cos_incidence * area / (2.0 * PI * distance);
     let soft_near = soft / incident.source_distance;
     let towards = incident.towards_source;
@@ -222,8 +235,8 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         -towards[1] - direction[1],
         -towards[2] - direction[2],
     ], size * context.rate / c);
-    let spread_u = dot(gradient, polygon.u);
-    let spread_v = dot(gradient, polygon.v);
+    let spread_u = dot(gradient, tangent_u);
+    let spread_v = dot(gradient, tangent_v);
     let count_u = ((spread_u.abs().ceil() as usize) + 1).min(MOST_SUBPOINTS);
     let count_v = ((spread_v.abs().ceil() as usize) + 1).min(MOST_SUBPOINTS);
     let share = 1.0 / (count_u * count_v) as f64;

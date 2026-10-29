@@ -138,7 +138,8 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
             for r in &path.reflections {
                 let cutoff = 2.0 * PI * r.cutoff_hz;
                 let grating = scene.surfaces[r.surface].pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
-                gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff) * grating;
+                let rough = (-2.0 * (omega / c * r.rough_metres).powi(2)).exp();
+                gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff) * (grating * rough);
             }
             total[k] += gain;
         }

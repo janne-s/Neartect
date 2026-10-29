@@ -22,7 +22,7 @@ fn floor(half: f64) -> Surface {
 }
 
 fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
-    Surface { polygon, strength: 1.0, reflection, pattern: Pattern::Solid }
+    Surface { polygon, strength: 1.0, reflection, pattern: Pattern::Solid, relief: neartect_core::relief::Relief::flat() }
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
@@ -156,6 +156,7 @@ fn grating(period: [f64; 2], bar: [f64; 2], half: f64) -> Surface {
         strength: 1.0,
         reflection: RIGID,
         pattern: Pattern::Grid { period, bar, thickness: 0.003 },
+        relief: neartect_core::relief::Relief::flat(),
     }
 }
 
@@ -217,6 +218,7 @@ fn niche_lip_is_not_extended_into_the_room() {
         strength: 1.0,
         reflection: RIGID,
         pattern: Pattern::Opening { centre: [1.0, 1.0], half: [0.2, 0.2], round: false },
+        relief: neartect_core::relief::Relief::flat(),
     };
     let side = surface(rectangle([-0.2, -0.1, 1.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.2]), RIGID);
     let length = 2048;
@@ -444,4 +446,65 @@ fn ears_hear_a_source_on_the_left_earlier_and_brighter_on_the_left() {
     assert!(level(&lh, 100.0).abs() < 0.5 && level(&rh, 100.0).abs() < 0.5);
     assert!(level(&lh, 10000.0) > 5.0, "left {}", level(&lh, 10000.0));
     assert!(level(&rh, 10000.0) < -8.0, "right {}", level(&rh, 10000.0));
+}
+
+fn relieved(mut s: Surface, values: [f64; 8]) -> Surface {
+    s.relief = neartect_core::relief::Relief::from_numbers(&values);
+    s
+}
+
+#[test]
+fn rough_floor_keeps_the_coherent_reflection_eckart_predicts() {
+    let length = 4096;
+    let sigma = 0.01;
+    let n = spectrum_size(length);
+    let microphone = [0.0, 0.0, 0.5];
+    let flat = near_spectrum(&scene(vec![floor(3.0)], microphone, [0.0, 0.0, 1.0], length, 1));
+    let seeds = 12;
+    let mut mean = vec![Complex64::new(0.0, 0.0); flat.len()];
+    for seed in 0..seeds {
+        let rough = relieved(floor(3.0), [0.0, 0.0, 1.0, 0.0, 0.0, sigma, 0.05, seed as f64]);
+        let h = near_spectrum(&scene(vec![rough], microphone, [0.0, 0.0, 1.0], length, 1));
+        for (m, x) in mean.iter_mut().zip(&h) {
+            *m += (x - Complex64::new(1.0, 0.0)) / seeds as f64;
+        }
+    }
+    for (lo, hi) in [(300.0, 600.0), (1500.0, 2500.0), (3500.0, 4500.0)] {
+        let (a, b) = ((lo * n as f64 / FS) as usize, (hi * n as f64 / FS) as usize);
+        let ratio = (a..=b).map(|i| mean[i].norm()).sum::<f64>() / (a..=b).map(|i| (flat[i] - Complex64::new(1.0, 0.0)).norm()).sum::<f64>();
+        let k = 2.0 * std::f64::consts::PI * (lo + hi) / 2.0 / C;
+        let eckart = (-2.0 * (k * sigma).powi(2)).exp();
+        assert!((ratio - eckart).abs() < 0.12, "{lo}–{hi} Hz: coherent {ratio}, Eckart {eckart}");
+    }
+}
+
+#[test]
+fn moving_the_relief_changes_the_filter_and_flat_relief_changes_nothing() {
+    let length = 2048;
+    let waves = |offset: f64| relieved(floor(2.0), [1.0, 0.02, 0.2, 0.0, offset, 0.0, 1.0, 0.0]);
+    let a = near_filter(&scene(vec![waves(0.0)], [0.0, 0.0, 0.3], [0.3, 0.0, 1.0], length, 1));
+    let b = near_filter(&scene(vec![waves(0.05)], [0.0, 0.0, 0.3], [0.3, 0.0, 1.0], length, 1));
+    assert!(a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum::<f32>() > 0.01);
+    let zero = relieved(floor(2.0), [1.0, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0, 0.0]);
+    let flat = near_filter(&scene(vec![zero], [0.0, 0.0, 0.3], [0.3, 0.0, 1.0], length, 1));
+    let plain = near_filter(&scene(vec![floor(2.0)], [0.0, 0.0, 0.3], [0.3, 0.0, 1.0], length, 1));
+    assert!(flat.iter().zip(&plain).all(|(x, y)| (x - y).abs() < 1e-6));
+}
+
+#[test]
+fn corrugated_floor_sends_a_grating_lobe() {
+    let length = 4096;
+    let period = 0.1;
+    let waves = relieved(floor(3.0), [1.0, 0.01, period, 0.0, 0.0, 0.0, 1.0, 0.0]);
+    let microphone = [0.0, 0.0, 1.0];
+    let h = near_spectrum(&scene(vec![waves], microphone, [0.0, 0.0, 1.0], length, 1));
+    let flat = near_spectrum(&scene(vec![floor(3.0)], microphone, [0.0, 0.0, 1.0], length, 1));
+    let spread = |h: &[Complex64]| mean_magnitude(h, length, 4000.0, 12000.0);
+    let differs: f64 = {
+        let n = spectrum_size(length);
+        let (a, b) = ((4000.0 * n as f64 / FS) as usize, (12000.0 * n as f64 / FS) as usize);
+        (a..=b).map(|i| (h[i] - flat[i]).norm()).sum::<f64>() / (b - a + 1) as f64
+    };
+    assert!(differs > 0.2, "corrugation changes the treble by only {differs}");
+    assert!(spread(&h).is_finite());
 }

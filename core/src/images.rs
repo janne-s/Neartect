@@ -7,9 +7,13 @@
 use crate::geom::{add, dot, norm, scale, sub, V3};
 use crate::scene::Scene;
 
+// Each reflection keeps its relief's rms height times the cosine of incidence:
+// the coherent part falls as exp(−2 (kσ cos θ)²) (Eckart; class C for a
+// repeating shape, whose lobes the images do not follow).
 pub struct Reflection {
     pub surface: usize,
     pub cutoff_hz: f64,
+    pub rough_metres: f64,
 }
 
 pub struct Path {
@@ -156,7 +160,8 @@ fn rindel(scene: &Scene, sequence: &[usize], hits: &[(V3, f64, f64)], source: Op
             };
             let area = scene.surfaces[i].pattern.solid_area(scene.surfaces[i].polygon.area);
             let cutoff_hz = c * characteristic / (2.0 * area * cos_incidence.max(1e-3).powi(2));
-            Reflection { surface: i, cutoff_hz }
+            let rough_metres = scene.surfaces[i].relief.rms() * cos_incidence;
+            Reflection { surface: i, cutoff_hz, rough_metres }
         })
         .collect()
 }

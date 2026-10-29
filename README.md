@@ -25,7 +25,8 @@ WebAssembly and heard live through a crossfading convolver.
   material from published absorption tables or a porous ground model, and a
   creative strength (1 is physical).
 - **Situations** — start from a microphone by a wall, in a corner, in a niche,
-  under a grating, at a pipe mouth, in a doorway, or over water.
+  under a grating, at a pipe mouth, in a doorway, by a corrugated wall, over
+  moving waves, or over water.
 - **Handles** — hover or select an object to move it along east, north, and
   up, resize it from its faces, and turn or tilt it on its rings; values snap
   to the grid and to 5°, and Shift moves freely; the magnet snaps an object's sides to other objects.
@@ -37,6 +38,13 @@ WebAssembly and heard live through a crossfading convolver.
   follow it. Delete removes the selection.
 - **Situations** keep your microphones and point source, moving them with the
   first microphone.
+- **Relief** — any object's faces can be waves, arches, scallops, or an egg
+  crate at a set height, period, and direction, plus random roughness with a
+  height and grain. Each piece of the surface moves to its height and tilts to
+  its slope, so rough surfaces lose their coherent treble and scatter it, and
+  repeating shapes send their own lobes. A speed moves the relief while the
+  preview plays (moving water), and each new filter glides in over the time
+  since the last one.
 - **Gratings** — bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
 - **Microphones** — up to eight, each bound to an object of your choice and

@@ -1,5 +1,6 @@
 const CROSSFADE_SECONDS = 0.04;
 const OUTPUT_GAIN = 0.35;
+const BRANCHES = 4;
 
 // Each channel plays at its [left, right] gains: free microphones spread from
 // left to right, stereo pairs sit at their sides, and mid-side decodes.
@@ -33,7 +34,7 @@ export function createPreview() {
     const output = context.createGain();
     output.gain.value = OUTPUT_GAIN;
     output.connect(context.destination);
-    branches = [0, 1].map(() => {
+    branches = Array.from({ length: BRANCHES }, () => {
       const convolver = context.createConvolver();
       convolver.normalize = false;
       const gain = context.createGain();
@@ -48,24 +49,32 @@ export function createPreview() {
     return context;
   }
 
-  function levels(time) {
-    branches.forEach((branch, index) => {
-      branch.gain.gain.cancelScheduledValues(time);
-      branch.gain.gain.setTargetAtTime(!bypass && index === active && branch.convolver.buffer ? 1 : 0, time, CROSSFADE_SECONDS / 3);
-    });
-    dry.gain.cancelScheduledValues(time);
-    dry.gain.setTargetAtTime(bypass ? 1 : 0, time, CROSSFADE_SECONDS / 3);
+  // Consecutive filters glide: the new one rises and the others fall in
+  // straight lines over the fade, which is a linear interpolation between
+  // the two filters while it lasts. Moving relief passes the time between
+  // updates as the fade, so the sound slides from one filter to the next.
+  function ramp(param, target, time, fade) {
+    param.cancelScheduledValues(time);
+    param.setValueAtTime(param.value, time);
+    param.linearRampToValueAtTime(target, time + fade);
   }
 
-  function setFilter(filter) {
+  function levels(time, fade = CROSSFADE_SECONDS) {
+    branches.forEach((branch, index) => ramp(branch.gain.gain, !bypass && index === active && branch.convolver.buffer ? 1 : 0, time, fade));
+    ramp(dry.gain, bypass ? 1 : 0, time, CROSSFADE_SECONDS);
+  }
+
+  function setFilter(filter, fade = CROSSFADE_SECONDS) {
     pending = filter;
-    if (!context) return;
+    if (!context || filter.sampleRateHz !== context.sampleRate) return;
     const sides = stereo(filter.channels, filter.pans);
     const buffer = context.createBuffer(sides.length, sides[0].length, filter.sampleRateHz);
     sides.forEach((side, index) => buffer.copyToChannel(side, index));
-    active = 1 - active;
+    active = (active + 1) % BRANCHES;
+    branches[active].gain.gain.cancelScheduledValues(context.currentTime);
+    branches[active].gain.gain.setValueAtTime(0, context.currentTime);
     branches[active].convolver.buffer = buffer;
-    levels(context.currentTime);
+    levels(context.currentTime, Math.max(CROSSFADE_SECONDS, fade));
   }
 
   function connect(node) {
@@ -76,6 +85,7 @@ export function createPreview() {
   return {
     get sampleRate() { return ensure().sampleRate; },
     get playing() { return Boolean(source); },
+    get time() { return context ? context.currentTime : 0; },
     async play(samples, sampleRate) {
       const audio = ensure();
       await audio.resume();

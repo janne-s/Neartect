@@ -68,6 +68,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   let drag = null;
   let readout = null;
   let areaArmed = false;
+  let reliefTime = 0;
 
   function basis() {
     const forward = [Math.cos(camera.pitch) * Math.sin(camera.yaw), Math.cos(camera.pitch) * Math.cos(camera.yaw), -Math.sin(camera.pitch)];
@@ -211,6 +212,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       context.stroke();
       context.lineWidth = 1;
       if (face.pattern.kind === 'grid') drawBars(context, face, highlighted ? colors.accent : edge);
+      if (object.relief && object.relief.shape !== 'flat') drawRelief(context, object, face, highlighted ? colors.accent : edge);
       context.globalAlpha = 1;
     }
   }
@@ -256,6 +258,40 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
         context.fill();
       }
     });
+  }
+
+  // Lines where the relief's shape repeats: the crests of waves, the seams
+  // of arches and scallops, and both directions of an egg crate.
+  function drawRelief(context, object, face, color) {
+    const r = object.relief;
+    const { across, up } = objectFrame(object);
+    const a = r.directionDegrees * Math.PI / 180;
+    const along = across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
+    const sideways = across.map((v, i) => -v * Math.sin(a) + up[i] * Math.cos(a));
+    const shifted = r.offsetMetres + r.speedMetresPerSecond * reliefTime;
+    const directions = r.shape === 'egg' ? [[along, shifted], [sideways, 0]] : [[along, shifted]];
+    const start = r.shape === 'waves' ? r.periodMetres / 4 : 0;
+    const step = r.shape === 'egg' ? r.periodMetres / 2 : r.periodMetres;
+    context.strokeStyle = color;
+    context.setLineDash([2, 3]);
+    for (const [d, shift] of directions) {
+      const s = face.vertices.map(v => dot(sub(v, object.position), d) - shift);
+      const [lo, hi] = [Math.min(...s), Math.max(...s)];
+      const first = Math.ceil((lo - start) / step);
+      const last = Math.floor((hi - start) / step);
+      const every = Math.max(1, Math.ceil((last - first + 1) / MOST_BARS_DRAWN));
+      for (let n = first; n <= last; n += every) {
+        const level = start + n * step;
+        const cuts = [];
+        face.vertices.forEach((v, i) => {
+          const w = face.vertices[(i + 1) % face.vertices.length];
+          const [sv, sw] = [s[i], s[(i + 1) % s.length]];
+          if ((sv - level) * (sw - level) < 0) cuts.push(add(v, scale(sub(w, v), (level - sv) / (sw - sv))));
+        });
+        if (cuts.length >= 2) line(context, cuts[0], cuts[1]);
+      }
+    }
+    context.setLineDash([]);
   }
 
   function arrowHead(context, from, to) {
@@ -1010,6 +1046,10 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     },
     centre(point) {
       camera.target = [...point];
+      draw();
+    },
+    setReliefTime(seconds) {
+      reliefTime = seconds;
       draw();
     },
     setAreaSelect(on) {

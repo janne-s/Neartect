@@ -78,6 +78,7 @@ export function packSpace(space, listener, aligned, longest) {
       ...reflectionBands(surface.material),
       PATTERN_CODES[surface.pattern.kind],
       ...surface.pattern.values,
+      ...surface.relief,
       surface.vertices.length,
       ...surface.vertices.flat()
     ];
@@ -86,14 +87,18 @@ export function packSpace(space, listener, aligned, longest) {
   return { settings, surfaces: new Float64Array(records) };
 }
 
-export async function nearFilter(space) {
+export async function channelFilter(space, index) {
   const core = await loadCore();
   const list = listeners(space);
   const aligned = alignment(space, list.map(l => l.position));
   const longest = Math.max(...aligned.map(a => a.delaySeconds));
-  const channels = list.map((listener, index) => {
-    const { settings, surfaces } = packSpace(space, listener, aligned[index], longest);
-    return core.nearFilter(settings, surfaces);
-  });
+  const { settings, surfaces } = packSpace(space, list[index], aligned[index], longest);
+  return core.nearFilter(settings, surfaces);
+}
+
+export async function nearFilter(space) {
+  const list = listeners(space);
+  const channels = [];
+  for (let index = 0; index < list.length; index += 1) channels.push(await channelFilter(space, index));
   return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan), samples: channels[0] };
 }

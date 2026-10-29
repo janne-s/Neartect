@@ -170,3 +170,15 @@ test('a mid-side pair decodes to a left and right that favour the source side', 
   const energy = channel => channel.reduce((sum, x) => sum + x * x, 0);
   assert.ok(energy(left) > 2 * energy(right));
 });
+
+test('a corrugated wall changes the filter, and moving its relief changes it again', async () => {
+  const wall = relief => ({ kind: 'plane', position: [0, 1, 1], size: [3, 0, 2], material: 'rigid', relief });
+  const space = relief => readSpace({ kind: 'neartect.space', render: { lengthMilliseconds: 20, order: 1 }, microphones: [{ position: [0, 0.6, 1] }], objects: [wall(relief)] });
+  const flat = (await nearFilter(space({ shape: 'flat' }))).samples;
+  const arches = (await nearFilter(space({ shape: 'arches', heightMetres: 0.03, periodMetres: 0.12 }))).samples;
+  const moved = (await nearFilter(space({ shape: 'arches', heightMetres: 0.03, periodMetres: 0.12, offsetMetres: 0.04 }))).samples;
+  const difference = (a, b) => a.reduce((sum, x, i) => sum + Math.abs(x - b[i]), 0);
+  assert.ok(difference(flat, arches) > 0.05);
+  assert.ok(difference(arches, moved) > 0.01);
+  assert.ok(arches.every(Number.isFinite));
+});

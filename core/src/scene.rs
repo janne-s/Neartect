@@ -12,6 +12,7 @@ pub struct Surface {
     pub strength: f64,
     pub reflection: [f64; BAND_COUNT],
     pub pattern: Pattern,
+    pub relief: crate::relief::Relief,
 }
 
 impl Surface {

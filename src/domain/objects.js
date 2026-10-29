@@ -103,12 +103,37 @@ function planePattern(object) {
   return { kind: 'solid', values: [0, 0, 0, 0, 0, 0] };
 }
 
+export const RELIEF_SHAPES = Object.freeze(['flat', 'waves', 'arches', 'scallops', 'egg']);
+export const FLAT_RELIEF = Object.freeze({ shape: 'flat', heightMetres: 0.02, periodMetres: 0.2, directionDegrees: 0, roughMetres: 0, grainMetres: 0.05, offsetMetres: 0, speedMetresPerSecond: 0 });
+
+function seedOf(id) {
+  let hash = 2166136261;
+  for (const ch of id) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return hash % 1000003;
+}
+
+// The relief's direction lies in the object's across–up plane (0° along
+// across, 90° along up) and its field is anchored at the object's position,
+// so every face of the object shares one field.
+export function reliefValues(object, shift = 0) {
+  const r = object.relief ?? FLAT_RELIEF;
+  const { across, up } = objectFrame(object);
+  const a = r.directionDegrees * Math.PI / 180;
+  const direction = across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
+  return [
+    RELIEF_SHAPES.indexOf(r.shape), r.shape === 'flat' ? 0 : r.heightMetres, r.periodMetres,
+    ...direction, ...object.position,
+    r.offsetMetres + shift, r.roughMetres, r.grainMetres, seedOf(object.id)
+  ];
+}
+
 export function expandObject(object) {
   return localFaces(object).map(({ local, pattern }) => ({
     vertices: local.map(point => toWorld(object, point)),
     material: object.material,
     strength: object.strength,
-    pattern: pattern ?? { kind: 'solid', values: [0, 0, 0, 0, 0, 0] }
+    pattern: pattern ?? { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
+    relief: reliefValues(object)
   }));
 }
 

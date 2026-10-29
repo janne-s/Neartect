@@ -1,5 +1,5 @@
 import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
-import { OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo } from './objects.js';
+import { FLAT_RELIEF, OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo, RELIEF_SHAPES } from './objects.js';
 import { RIG_ANGLE_DEGREES, RIG_KINDS, RIG_SPACING_METRES } from './rigs.js';
 
 export const SPACE_KIND = 'neartect.space';
@@ -23,7 +23,12 @@ export const RANGES = Object.freeze({
   lengthMilliseconds: [10, 1000],
   order: [1, 6],
   periodMetres: [0, 1],
-  thicknessMetres: [0, 0.2]
+  thicknessMetres: [0, 0.2],
+  reliefHeightMetres: [0, 0.5],
+  reliefPeriodMetres: [0.01, 5],
+  roughMetres: [0, 0.05],
+  grainMetres: [0.01, 1],
+  speedMetresPerSecond: [-5, 5]
 });
 
 export class SpaceError extends Error {}
@@ -78,6 +83,7 @@ function readObject(value, index = 0) {
     strength: number(o.strength, RANGES.strength, 1)
   };
   if (kind === 'pipe') object.size[2] = object.size[0];
+  object.relief = readRelief(o.relief);
   if (kind === 'grating') object.pattern = readPattern(o.pattern ?? defaults.pattern);
   if (kind === 'wall') object.opening = readOpening(o.opening ?? defaults.opening, size);
   return object;
@@ -139,6 +145,21 @@ function readSource(value) {
     kind: choice(s.kind, SOURCE_KINDS, 'far'),
     ...readPoint(s, [0, 2, 1.5]),
     distance: typeof s.distance === 'boolean' ? s.distance : true
+  };
+}
+
+function readRelief(value) {
+  const r = isRecord(value) ? value : {};
+  const d = FLAT_RELIEF;
+  return {
+    shape: choice(r.shape, RELIEF_SHAPES, 'flat'),
+    heightMetres: number(r.heightMetres, RANGES.reliefHeightMetres, d.heightMetres),
+    periodMetres: number(r.periodMetres, RANGES.reliefPeriodMetres, d.periodMetres),
+    directionDegrees: angle(r.directionDegrees, d.directionDegrees),
+    roughMetres: number(r.roughMetres, RANGES.roughMetres, d.roughMetres),
+    grainMetres: number(r.grainMetres, RANGES.grainMetres, d.grainMetres),
+    offsetMetres: number(r.offsetMetres, RANGES.positionMetres, 0),
+    speedMetresPerSecond: number(r.speedMetresPerSecond, RANGES.speedMetresPerSecond, 0)
   };
 }
 

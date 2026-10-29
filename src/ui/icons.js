@@ -27,7 +27,9 @@ const SITUATION_ICONS = Object.freeze({
   grating: stroke(`<path d="M3 9h18M6 9v-2M10 9v-2M14 9v-2M18 9v-2M3 20h18"/>${dot(12, 15)}`),
   pipe: stroke(`<path d="M3 8h11M3 16h11"/><ellipse cx="14" cy="12" rx="2" ry="4"/>${dot(19, 12)}`),
   doorway: stroke(`<path d="M3 21V4h18v17M9 21V9h6v12"/>${dot(12, 15)}`),
-  water: stroke(`<path d="M3 17c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>${dot(12, 10)}`)
+  water: stroke(`<path d="M3 17c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>${dot(12, 10)}`),
+  corrugated: stroke(`<path d="M5 3v18M5 4a3 3 0 0 1 0 4a3 3 0 0 1 0 4a3 3 0 0 1 0 4a3 3 0 0 1 0 4"/>${dot(14, 12)}`),
+  waves: stroke(`<path d="M3 15c1.5-3 3-3 4.5 0s3 3 4.5 0 3-3 4.5 0 3 3 4.5 0M3 19c1.5-3 3-3 4.5 0s3 3 4.5 0 3-3 4.5 0 3 3 4.5 0"/>${dot(12, 8)}`)
 });
 
 export const situationIcon = id => SITUATION_ICONS[id];
@@ -45,3 +47,13 @@ export function patternIcon(a) {
 export function headIcon() {
   return stroke('<path d="M9 20v-3.2c-2.4-1.3-4-3.7-4-6.6C5 6.2 8.1 3.5 12 3.5s7 2.7 7 6.4l1.6 3.3-1.6.5V16a1.5 1.5 0 0 1-1.5 1.5H16V20"/><path d="M15 9.5h.01"/>');
 }
+
+const RELIEF_PATHS = Object.freeze({
+  flat: 'M3 14h18',
+  waves: 'M3 14c1.5-4 3-4 4.5 0s3 4 4.5 0 3-4 4.5 0 3 4 4.5 0',
+  arches: 'M3 16a3 3 0 0 1 6 0a3 3 0 0 1 6 0a3 3 0 0 1 6 0',
+  scallops: 'M3 12a3 3 0 0 0 6 0a3 3 0 0 0 6 0a3 3 0 0 0 6 0',
+  egg: 'M3 10c1.5-3 3-3 4.5 0s3 3 4.5 0 3-3 4.5 0 3 3 4.5 0M3 16c1.5 3 3 3 4.5 0s3-3 4.5 0 3 3 4.5 0 3-3 4.5 0'
+});
+
+export const reliefIcon = shape => stroke(`<path d="${RELIEF_PATHS[shape]}"/>`);
