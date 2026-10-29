@@ -91,18 +91,48 @@ export function packSpace(space, listener, aligned, longest) {
   return { settings, surfaces: new Float64Array(records) };
 }
 
-export async function channelFilter(space, index) {
-  const core = await loadCore();
+// Channels with relief split their scattering into parts that workers share;
+// the cut is fixed by the space, so the filter does not depend on how many
+// workers there are. Flat spaces gain less than a part costs, and a part on
+// the measured head costs its 17 spectral sets.
+const RELIEF_PARTS = 16;
+const MEASURED_HEAD_PARTS = 4;
+
+const hasRelief = object => object.strength > 0 && ((object.relief.shape !== 'flat' && object.relief.heightMetres > 0) || object.relief.roughMetres > 0);
+
+export function channelJobs(space) {
   const list = listeners(space);
   const aligned = alignment(space, list.map(l => l.position));
   const longest = Math.max(...aligned.map(a => a.delaySeconds));
-  const { settings, surfaces } = packSpace(space, list[index], aligned[index], longest);
-  return core.nearFilter(settings, surfaces);
+  return list.map((listener, index) => {
+    const packed = packSpace(space, listener, aligned[index], longest);
+    const split = !pipeAround(space, listener.position) && space.objects.some(hasRelief);
+    const parts = !split ? 1 : listener.ear?.head === 'measured' ? MEASURED_HEAD_PARTS : RELIEF_PARTS;
+    return { ...packed, parts };
+  });
+}
+
+export function runJob(core, job) {
+  return job.spectra
+    ? core.nearFilterFromParts(job.settings, job.spectra)
+    : core.nearSpectrumPart(job.settings, job.surfaces, job.part, job.parts);
+}
+
+// `run` computes one job (a part's spectrum, or a channel's filter from its
+// parts' spectra) and may run them anywhere; the parts are summed in order.
+export async function computeFilter(space, run) {
+  const list = listeners(space);
+  const channels = await Promise.all(channelJobs(space).map(async ({ settings, surfaces, parts }) => {
+    const spectra = await Promise.all(Array.from({ length: parts }, (_, part) => run({ settings, surfaces, part, parts })));
+    const joined = new Float64Array(spectra.reduce((sum, s) => sum + s.length, 0));
+    spectra.reduce((at, s) => { joined.set(s, at); return at + s.length; }, 0);
+    return run({ settings, spectra: joined });
+  }));
+  return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan) };
 }
 
 export async function nearFilter(space) {
-  const list = listeners(space);
-  const channels = [];
-  for (let index = 0; index < list.length; index += 1) channels.push(await channelFilter(space, index));
-  return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan), samples: channels[0] };
+  const core = await loadCore();
+  const result = await computeFilter(space, async job => runJob(core, job));
+  return { ...result, samples: result.channels[0] };
 }

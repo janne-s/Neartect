@@ -1,5 +1,5 @@
 use crate::images::specular_paths;
-use crate::kirchhoff::{relief_floor, scatter_into, traversals, Histograms, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
+use crate::kirchhoff::{relief_floor, scatter_into, traversals, Histograms, Part, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
 use crate::geom::{dot, scale, sub, V3};
 use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
@@ -21,11 +21,22 @@ pub fn spectrum_size(length: usize) -> usize {
     2 * length.max(16).next_power_of_two()
 }
 
+pub fn half_length(scene: &Scene) -> usize {
+    spectrum_size(scene.length) / 2 + 1
+}
+
 pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
+    near_spectrum_part(scene, Part::WHOLE)
+}
+
+// A part's share of the spectrum: its Kirchhoff cells, and in part 0 also the
+// direct sound, the specular paths, and the inside of a pipe whole.
+pub fn near_spectrum_part(scene: &Scene, part: Part) -> Vec<Complex64> {
     let scene = &scene.off_surfaces();
     let mut spectrum = match scene.pipe {
+        Some(_) if part.index > 0 => return vec![Complex64::new(0.0, 0.0); half_length(scene)],
         Some(pipe) => inside_pipe(scene, pipe),
-        None => outside_spectrum(scene, 0.0),
+        None => outside_spectrum(scene, 0.0, part),
     };
     if scene.gain != 1.0 || scene.delay_seconds != 0.0 {
         let n = spectrum_size(scene.length);
@@ -58,7 +69,7 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         outside.microphone = mouth;
         outside.listener = crate::scene::Listener::omni();
         let incident = scene.incident(mouth);
-        let spectrum = outside_spectrum(&outside, (length + pipe.radius) / c);
+        let spectrum = outside_spectrum(&outside, (length + pipe.radius) / c, Part::WHOLE);
         let travel = scale(incident.towards_source, -1.0);
         (spectrum, incident.amplitude, incident.extra_metres / c, dot(travel, axis), sideways(travel))
     };
@@ -90,7 +101,7 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         .collect()
 }
 
-fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
+fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex64> {
     let n = spectrum_size(scene.length);
     let n_fine = n * OVERSAMPLING;
     let horizon = (((scene.length as f64 + HORIZON_MARGIN_SAMPLES + lead_seconds * scene.sample_rate) as usize) * OVERSAMPLING).min(n_fine);
@@ -106,7 +117,8 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
         sum * Complex64::from_polar(1.0, -angular_frequency(k, n, fs) * delay)
     };
     let direct_split = scene.split(direct_from, direct_distance);
-    let mut total: Vec<Complex64> = (0..=half).map(|k| heard(&direct_split, k)).collect();
+    let whole = part.index == 0;
+    let mut total: Vec<Complex64> = (0..=half).map(|k| if whole { heard(&direct_split, k) } else { Complex64::new(0.0, 0.0) }).collect();
     let reflection: Vec<Vec<Complex64>> = scene
         .surfaces
         .iter()
@@ -117,7 +129,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
     let mut groups: Vec<(Vec<u64>, usize, Option<usize>, Histograms)> = Vec::new();
     let traversals = traversals(scene);
     let floor = relief_floor(scene, &traversals, horizon);
-    for &(index, also) in &traversals {
+    for (traversal, &(index, also)) in traversals.iter().enumerate() {
         let surface = &scene.surfaces[index];
         let mut key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
         if let Some(j) = also {
@@ -130,7 +142,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
             groups.push((key, index, also, Histograms::new(scene.sets(), horizon)));
             groups.len() - 1
         });
-        if scatter_into(scene, index, also, s, floor, &mut groups[at].3).is_none() && existing.is_none() {
+        if scatter_into(scene, traversal, index, also, s, floor, part, &mut groups[at].3).is_none() && existing.is_none() {
             groups.pop();
         }
     }
@@ -166,7 +178,8 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
         }
     }
 
-    for path in specular_paths(scene) {
+    let paths = if whole { specular_paths(scene) } else { Vec::new() };
+    for path in paths {
         let strength: f64 = path.reflections.iter().map(|r| scene.surfaces[r.surface].strength).product();
         let path_split = scene.split(path.from, path.distance);
         for k in 0..=half {
@@ -185,7 +198,10 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
 }
 
 pub fn near_filter(scene: &Scene) -> Vec<f32> {
-    let half_spectrum = near_spectrum(scene);
+    filter_from_spectrum(scene, &near_spectrum(scene))
+}
+
+pub fn filter_from_spectrum(scene: &Scene, half_spectrum: &[Complex64]) -> Vec<f32> {
     let n = spectrum_size(scene.length);
     let mut full = vec![Complex64::new(0.0, 0.0); n];
     for k in 0..=n / 2 {

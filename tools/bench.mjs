@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import init from '../src/core/neartect_core.js';
 import { loadCore } from '../src/domain/core.js';
-import { channelFilter, listeners } from '../src/domain/near-filter.js';
+import { listeners, nearFilter } from '../src/domain/near-filter.js';
 import { SITUATIONS, situationSpace } from '../src/domain/situations.js';
 import { defaultRig, defaultSpace, readSpace } from '../src/domain/space.js';
 
@@ -54,8 +54,7 @@ for (const [name, make] of cases) {
   const space = fixedIds(make());
   const count = listeners(space).length;
   const started = performance.now();
-  const channels = [];
-  for (let index = 0; index < count; index += 1) channels.push(await channelFilter(space, index));
+  const { channels } = await nearFilter(space);
   const milliseconds = performance.now() - started;
   saved[name] = channels.map(channel => Array.from(channel));
   const memory = wasm.memory.buffer.byteLength / 1e6;

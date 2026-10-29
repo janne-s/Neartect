@@ -706,7 +706,7 @@ fn cardioid_on_or_a_hair_from_a_wall_stays_bounded() {
 
 #[test]
 fn relief_takes_no_more_elements_than_the_limit() {
-    use neartect_core::kirchhoff::{relief_floor, scatter_into, traversals, Histograms};
+    use neartect_core::kirchhoff::{relief_floor, scatter_into, traversals, Histograms, Part};
     let length = 4096;
     let water = relieved(floor(4.0), [1.0, 0.05, 0.8, 0.0, 0.0, 0.004, 0.1, 0.0]);
     let wall = surface(rectangle([0.0, -1.0, 1.0], [2.0, 0.0, 0.0], [0.0, 0.0, 1.0]), RIGID);
@@ -718,8 +718,9 @@ fn relief_takes_no_more_elements_than_the_limit() {
         let floor = relief_floor(&s, &list, bins);
         let elements: usize = list
             .iter()
-            .filter(|&&(i, _)| i == 0)
-            .filter_map(|&(i, via)| scatter_into(&s, i, via, 1.0, floor, &mut Histograms::new(s.sets(), bins)))
+            .enumerate()
+            .filter(|(_, &(i, _))| i == 0)
+            .filter_map(|(t, &(i, via))| scatter_into(&s, t, i, via, 1.0, floor, Part::WHOLE, &mut Histograms::new(s.sets(), bins)))
             .sum();
         assert!(elements as f64 <= limit * 1.05, "limit {limit}: {elements} elements");
         assert!(elements as f64 >= limit * 0.25, "limit {limit}: {elements} elements");
@@ -743,5 +744,27 @@ fn pruned_image_search_keeps_every_image_of_a_closed_box() {
     for k in 2..=order {
         let found = paths.iter().filter(|p| p.reflections.len() == k).count();
         assert_eq!(found, 4 * k * k + 2, "order {k}");
+    }
+}
+
+#[test]
+fn parts_sum_to_the_whole_spectrum() {
+    use neartect_core::filter::near_spectrum_part;
+    use neartect_core::kirchhoff::Part;
+    let length = 2048;
+    let wall = relieved(surface(rectangle([0.0, -0.4, 1.0], [1.5, 0.0, 0.0], [0.0, 0.0, 1.0]), RIGID), [2.0, 0.03, 0.15, 0.0, 0.0, 0.002, 0.05, 3.0]);
+    let mut s = scene(vec![floor(2.0), wall], [0.1, 0.0, 0.6], [0.2, 0.8, 0.4], length, 3);
+    s.listener = Listener::MeasuredEar { front: [0.0, 1.0, 0.0], outward: [1.0, 0.0, 0.0], up: [0.0, 0.0, 1.0] };
+    let whole = near_spectrum(&s);
+    for count in [3, 8] {
+        let mut sum = vec![Complex64::new(0.0, 0.0); whole.len()];
+        for index in 0..count {
+            for (a, b) in sum.iter_mut().zip(near_spectrum_part(&s, Part { index, count })) {
+                *a += b;
+            }
+        }
+        let worst = sum.iter().zip(&whole).map(|(a, b)| (a - b).norm()).fold(0.0, f64::max);
+        let peak = whole.iter().map(|x| x.norm()).fold(0.0, f64::max);
+        assert!(worst < 1e-12 * peak, "{count} parts: {worst}");
     }
 }

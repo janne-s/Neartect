@@ -13,7 +13,8 @@ import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
-import { listeners } from './domain/near-filter.js';
+import { computeFilter, listeners } from './domain/near-filter.js';
+import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
 
 const STORAGE_KEY = 'neartect.space';
@@ -65,43 +66,21 @@ const view = createNearView($('near-view'), {
   showGrid: () => preferences.showGrid
 });
 
-// Each channel is computed on its own worker, so several microphones and
-// layouts take about as long as one.
+// Channels, and the parts of a channel with relief, are shared by a pool of
+// workers. A build that an edit has made stale drops its jobs that have not
+// started, unless the build before it was dropped too, so that a continuous
+// drag still shows every other result.
 const WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
-const workers = Array.from({ length: WORKERS }, () => new Worker(new URL('./filter-worker.js', import.meta.url), { type: 'module' }));
-let requestId = 0;
+const pool = createPool(new URL('./filter-worker.js', import.meta.url), WORKERS);
 let busy = false;
 let dirty = true;
-const waiting = new Map();
+let building = null;
+let mayCancel = true;
 
-workers.forEach(worker => worker.addEventListener('message', ({ data }) => {
-  const job = waiting.get(data.id);
-  waiting.delete(data.id);
-  if (data.error) job?.reject(new Error(data.error)); else job?.resolve(data.samples);
-}));
-
-function channelJob(worker, space, index) {
-  requestId += 1;
-  const id = requestId;
-  return new Promise((resolve, reject) => {
-    waiting.set(id, { resolve, reject });
-    worker.postMessage({ id, space, index });
-  });
-}
-
-async function computeFilter(space) {
+async function timedFilter(space, build = Symbol('build')) {
   const started = performance.now();
-  const list = listeners(space);
-  const channels = new Array(list.length);
-  let next = 0;
-  await Promise.all(workers.map(async worker => {
-    while (next < list.length) {
-      const index = next;
-      next += 1;
-      channels[index] = await channelJob(worker, space, index);
-    }
-  }));
-  return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan), milliseconds: performance.now() - started };
+  const result = await computeFilter(space, pool.runner(build));
+  return { ...result, milliseconds: performance.now() - started };
 }
 
 // While relief moves or something is dragged, the preview drops to the
@@ -131,7 +110,11 @@ function liveSpace() {
 }
 
 async function refreshFilter() {
-  if (busy) { dirty = true; return; }
+  if (busy) {
+    dirty = true;
+    if (mayCancel) pool.cancel(building);
+    return;
+  }
   busy = true;
   dirty = false;
   const space = liveSpace();
@@ -143,8 +126,10 @@ async function refreshFilter() {
     busy = false;
     return;
   }
+  building = Symbol('build');
   try {
-    const result = await computeFilter(space);
+    const result = await timedFilter(space, building);
+    mayCancel = true;
     state.filter = result;
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
     const gliding = preview.playing && moving(space);
@@ -155,7 +140,8 @@ async function refreshFilter() {
       if (!animating) animateRelief();
     }
   } catch (error) {
-    setStatus(error.message, true);
+    if (error instanceof FilterCancelled) mayCancel = false;
+    else setStatus(error.message, true);
   }
   busy = false;
   if (dirty) refreshFilter();
@@ -1012,7 +998,7 @@ $('export').addEventListener('click', () => {
 });
 $('export-filter').addEventListener('click', async () => {
   if (!listeners(state.space).length) return;
-  const result = await computeFilter(clone(state.space));
+  const result = await timedFilter(clone(state.space));
   const channels = $('export-mix').checked ? stereo(result.channels, result.pans) : result.channels;
   if ($('export-normalise').checked) {
     const peak = Math.max(1e-9, ...channels.map(c => c.reduce((m, x) => Math.max(m, Math.abs(x)), 0)));
@@ -1026,7 +1012,7 @@ $('export-processed').addEventListener('click', async () => {
     const { samples, sampleRate } = await signalSamples(state.space.render.sampleRateHz);
     const space = clone(state.space);
     space.render.sampleRateHz = sampleRate;
-    const filter = await computeFilter(space);
+    const filter = await timedFilter(space);
     const frames = samples.length + filter.channels[0].length - 1;
     const offline = new OfflineAudioContext(filter.channels.length, frames, sampleRate);
     const input = offline.createBuffer(1, samples.length, sampleRate);

@@ -123,10 +123,33 @@ fn surface_relief(polygon: &Polygon, v: &[f64]) -> relief::Relief {
     )
 }
 
-#[wasm_bindgen(js_name = nearFilter)]
-pub fn near_filter(settings: &[f64], surfaces: &[f64]) -> Result<Vec<f32>, JsError> {
+// One part's share of the near spectrum, as interleaved real and imaginary
+// parts of the bins from 0 to half the FFT length.
+#[wasm_bindgen(js_name = nearSpectrumPart)]
+pub fn near_spectrum_part(settings: &[f64], surfaces: &[f64], part: usize, parts: usize) -> Result<Vec<f64>, JsError> {
     let scene = read_scene(settings, surfaces).map_err(|e| JsError::new(&e))?;
-    Ok(filter::near_filter(&scene))
+    if part >= parts {
+        return Err(JsError::new("part out of range"));
+    }
+    let spectrum = filter::near_spectrum_part(&scene, kirchhoff::Part { index: part, count: parts });
+    Ok(spectrum.iter().flat_map(|x| [x.re, x.im]).collect())
+}
+
+// The filter from all parts' spectra, summed in their order.
+#[wasm_bindgen(js_name = nearFilterFromParts)]
+pub fn near_filter_from_parts(settings: &[f64], spectra: &[f64]) -> Result<Vec<f32>, JsError> {
+    let scene = read_scene(settings, &[]).map_err(|e| JsError::new(&e))?;
+    let size = 2 * filter::half_length(&scene);
+    if spectra.is_empty() || spectra.len() % size != 0 {
+        return Err(JsError::new("spectra do not match the filter length"));
+    }
+    let mut sum = vec![rustfft::num_complex::Complex64::new(0.0, 0.0); size / 2];
+    for part in spectra.chunks(size) {
+        for (value, pair) in sum.iter_mut().zip(part.chunks(2)) {
+            *value += rustfft::num_complex::Complex64::new(pair[0], pair[1]);
+        }
+    }
+    Ok(filter::filter_from_spectrum(&scene, &sum))
 }
 
 #[wasm_bindgen(js_name = coreVersion)]

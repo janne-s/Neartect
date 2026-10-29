@@ -16,20 +16,41 @@ export function coreVersion() {
 
 /**
  * @param {Float64Array} settings
- * @param {Float64Array} surfaces
+ * @param {Float64Array} spectra
  * @returns {Float32Array}
  */
-export function nearFilter(settings, surfaces) {
+export function nearFilterFromParts(settings, spectra) {
     const ptr0 = passArrayF64ToWasm0(settings, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passArrayF64ToWasm0(surfaces, wasm.__wbindgen_malloc);
+    const ptr1 = passArrayF64ToWasm0(spectra, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.nearFilter(ptr0, len0, ptr1, len1);
+    const ret = wasm.nearFilterFromParts(ptr0, len0, ptr1, len1);
     if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
     }
     var v3 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v3;
+}
+
+/**
+ * @param {Float64Array} settings
+ * @param {Float64Array} surfaces
+ * @param {number} part
+ * @param {number} parts
+ * @returns {Float64Array}
+ */
+export function nearSpectrumPart(settings, surfaces, part, parts) {
+    const ptr0 = passArrayF64ToWasm0(settings, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(surfaces, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.nearSpectrumPart(ptr0, len0, ptr1, len1, part, parts);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
     return v3;
 }
 
@@ -66,6 +87,11 @@ function __wbg_get_imports() {
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayF64FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
 
 let cachedFloat32ArrayMemory0 = null;

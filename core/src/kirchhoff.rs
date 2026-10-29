@@ -23,6 +23,23 @@ const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
 
+// One of `count` fixed shares of the Kirchhoff work: every traversal's
+// quadtree is cut into cells at a fixed level, and the cells are dealt to the
+// parts in turn. The parts' spectra sum to the whole one, and the cut does not
+// depend on how many workers compute them.
+#[derive(Clone, Copy, Debug)]
+pub struct Part {
+    pub index: usize,
+    pub count: usize,
+}
+
+impl Part {
+    pub const WHOLE: Part = Part { index: 0, count: 1 };
+}
+
+const CELL_LEVEL: u32 = 3;
+const CELLS: usize = 1 << (2 * CELL_LEVEL);
+
 pub const RIGID_FAR: usize = 0;
 pub const RIGID_NEAR: usize = 1;
 pub const SOFT_FAR: usize = 2;
@@ -104,6 +121,8 @@ struct Context<'a> {
     histograms: &'a mut Histograms,
     kernel: Vec<f64>,
     elements: usize,
+    part: Part,
+    traversal: usize,
 }
 
 fn element_size(distance: f64) -> f64 {
@@ -117,6 +136,11 @@ fn edge_element_size(distance: f64) -> f64 {
 }
 
 impl Context<'_> {
+    fn owns(&self, cell: usize, level: u32) -> bool {
+        let first = cell << (2 * CELL_LEVEL.saturating_sub(level));
+        self.part.count <= 1 || (self.traversal * CELLS + first) % self.part.count == self.part.index
+    }
+
     fn incident(&self, x: V3) -> crate::scene::Incident {
         match self.via {
             Some(j) => {
@@ -172,7 +196,8 @@ pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<usize>)], bins: 
 // Adds surface `index`'s scattering, times `strength`, to `histograms` and
 // returns the number of elements it took; none when the surface is seen
 // edge-on from the source.
-pub fn scatter_into(scene: &Scene, index: usize, via: Option<usize>, strength: f64, relief_floor: f64, histograms: &mut Histograms) -> Option<usize> {
+#[allow(clippy::too_many_arguments)]
+pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<usize>, strength: f64, relief_floor: f64, part: Part, histograms: &mut Histograms) -> Option<usize> {
     let surface = &scene.surfaces[index];
     let facing = match via {
         Some(j) => {
@@ -208,12 +233,14 @@ pub fn scatter_into(scene: &Scene, index: usize, via: Option<usize>, strength: f
         histograms,
         kernel: Vec::new(),
         elements: 0,
+        part,
+        traversal,
     };
     let (lo, hi) = context.domain.bounds();
     let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]);
     let limited = relief_element > 0.0 && relief_element == relief_floor;
     let size = if limited { relief_element * 2.0_f64.powi((extent / relief_element).log2().ceil().max(0.0) as i32) } else { extent };
-    visit(&mut context, [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0], size, 0);
+    visit(&mut context, [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0], size, 0, 0);
     Some(context.elements)
 }
 
@@ -268,7 +295,10 @@ fn joined(scene: &Scene, index: usize, (a, b): (V3, V3), only: Option<usize>) ->
     })
 }
 
-fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
+fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: usize) {
+    if level == CELL_LEVEL && !context.owns(cell, level) {
+        return;
+    }
     let surface = &context.scene.surfaces[context.index];
     let h = size / 2.0;
     let samples = [
@@ -301,14 +331,15 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let target = if uniform { element_size(reach) } else { edge_element_size(reach) };
     let target = if context.relief_element > 0.0 { target.min(context.relief_element) } else { target }.max(SHORTEST_ELEMENT_METRES);
     if size <= target || level >= DEEPEST_LEVEL {
-        if is_solid(centre) {
+        if is_solid(centre) && (level >= CELL_LEVEL || context.owns(cell, level)) {
             element(context, centre, size);
         }
         return;
     }
     let q = size / 4.0;
-    for (du, dv) in [(-q, -q), (q, -q), (-q, q), (q, q)] {
-        visit(context, [centre[0] + du, centre[1] + dv], size / 2.0, level + 1);
+    for (quarter, (du, dv)) in [(-q, -q), (q, -q), (-q, q), (q, q)].into_iter().enumerate() {
+        let child = if level < CELL_LEVEL { cell * 4 + quarter } else { cell };
+        visit(context, [centre[0] + du, centre[1] + dv], size / 2.0, level + 1, child);
     }
 }
 
