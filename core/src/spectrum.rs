@@ -10,6 +10,12 @@ pub struct Fft {
     planner: FftPlanner<f64>,
 }
 
+impl Default for Fft {
+    fn default() -> Fft {
+        Fft::new()
+    }
+}
+
 impl Fft {
     pub fn new() -> Fft {
         Fft { planner: FftPlanner::new() }
@@ -49,12 +55,8 @@ pub fn minimum_phase(bands: &[f64; BAND_COUNT], n: usize, sample_rate: f64, fft:
         })
         .collect();
     fft.inverse(&mut cepstrum);
-    for k in 1..n / 2 {
-        cepstrum[k] *= 2.0;
-    }
-    for k in n / 2 + 1..n {
-        cepstrum[k] = Complex64::new(0.0, 0.0);
-    }
+    cepstrum[1..n / 2].iter_mut().for_each(|c| *c *= 2.0);
+    cepstrum[n / 2 + 1..].fill(Complex64::new(0.0, 0.0));
     fft.forward(&mut cepstrum);
     cepstrum.iter().map(|c| c.exp()).collect()
 }

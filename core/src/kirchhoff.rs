@@ -60,7 +60,7 @@ impl Histograms {
         Histograms { sets, bins, values: vec![0.0; bins * sets * LISTS] }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn bins(&self) -> usize {
         self.bins
     }
 
@@ -214,7 +214,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<u
     }
     let lit_normal = if facing > 0.0 { surface.polygon.normal } else { scale(surface.polygon.normal, -1.0) };
     let rate = scene.sample_rate * OVERSAMPLING as f64;
-    let reach = extension(scene, histograms.len());
+    let reach = extension(scene, histograms.bins());
     let relief = &surface.relief;
     let relief_element = if relief.is_flat() {
         0.0
@@ -318,7 +318,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: u
     let c = context.scene.speed_of_sound;
     let incident = context.incident(x);
     let earliest = (incident.extra_metres + distance - size * std::f64::consts::SQRT_2 - 2.0 * surface.relief.bound()) / c;
-    if earliest * context.rate > context.histograms.len() as f64 {
+    if earliest * context.rate > context.histograms.bins() as f64 {
         return;
     }
     let pattern_edge = surface.pattern.may_cross(centre, size);
@@ -403,7 +403,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let delay = (incident.extra_metres + distance) / c * context.rate;
     let (listener_delay, weights) = scene.split(scale(direction, -1.0), distance);
     let listener_shift = listener_delay * context.rate;
-    let length = context.histograms.len();
+    let length = context.histograms.bins();
     if delay >= (length - 2) as f64 {
         return;
     }

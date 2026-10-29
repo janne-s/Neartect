@@ -149,7 +149,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex
 
     for (_, index, also, h) in &groups {
         let surface = &scene.surfaces[*index];
-        for set in 0..h.sets() {
+        for (set, factor) in factors.iter().enumerate().take(h.sets()) {
             let mut packed: Vec<Complex64> = h.list(set, RIGID_FAR).zip(h.list(set, SOFT_FAR)).map(|(a, b)| Complex64::new(a, b)).collect();
             let mut near: Vec<Complex64> = h.list(set, RIGID_NEAR).zip(h.list(set, SOFT_NEAR)).map(|(a, b)| Complex64::new(a, b)).collect();
             packed.resize(n_fine, Complex64::new(0.0, 0.0));
@@ -173,7 +173,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex
                 let hz = k as f64 * fs / n as f64;
                 let grating = surface.pattern.low_frequency_factor(hz, c);
                 let second = also.map_or(Complex64::new(1.0, 0.0), |j| reflection[j][k] * scene.surfaces[j].pattern.low_frequency_factor(hz, c));
-                total[k] += scattered * second * factors[set][k] * (compensation * grating);
+                total[k] += scattered * second * factor[k] * (compensation * grating);
             }
         }
     }

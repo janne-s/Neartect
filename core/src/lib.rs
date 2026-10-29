@@ -146,7 +146,7 @@ pub fn near_spectrum_part(settings: &[f64], surfaces: &[f64], part: usize, parts
 pub fn near_filter_from_parts(settings: &[f64], spectra: &[f64]) -> Result<Vec<f32>, JsError> {
     let scene = read_scene(settings, &[]).map_err(|e| JsError::new(&e))?;
     let size = 2 * filter::half_length(&scene);
-    if spectra.is_empty() || spectra.len() % size != 0 {
+    if spectra.is_empty() || !spectra.len().is_multiple_of(size) {
         return Err(JsError::new("spectra do not match the filter length"));
     }
     let mut sum = vec![rustfft::num_complex::Complex64::new(0.0, 0.0); size / 2];

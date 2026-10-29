@@ -4,7 +4,6 @@
 // also gives native and WebAssembly builds the same result.
 
 const LARGEST_REDUCED: f64 = 823_550.0;
-const TWO_OVER_PI: f64 = 6.366_197_723_675_814e-1;
 const PIO2_1: f64 = 1.570_796_326_734_125_6;
 const PIO2_2: f64 = 6.077_100_506_303_966e-11;
 const PIO2_2T: f64 = 2.022_266_248_795_950_6e-21;
@@ -39,10 +38,10 @@ fn kernel_cos(x: f64) -> f64 {
 }
 
 pub fn sin_cos(x: f64) -> (f64, f64) {
-    if !(x.abs() < LARGEST_REDUCED) {
+    if x.is_nan() || x.abs() >= LARGEST_REDUCED {
         return x.sin_cos();
     }
-    let n = (x * TWO_OVER_PI).round_ties_even();
+    let n = (x * std::f64::consts::FRAC_2_PI).round_ties_even();
     let r = ((x - n * PIO2_1) - n * PIO2_2) - n * PIO2_2T;
     let (s, c) = (kernel_sin(r), kernel_cos(r));
     match (n as i64).rem_euclid(4) {
