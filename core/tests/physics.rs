@@ -436,9 +436,9 @@ fn cardioid_over_a_floor_matches_its_image_with_proximity() {
             + first_order(0.5, cos(image_point), k, image) * Complex64::from_polar(direct / image, -k * (image - direct));
         worst = worst.max((h[bin] - exact).norm());
     }
-    // Each surface element's gradient is taken as a spherical wave's; a rigid
-    // element is a dipole, which leaves about 0.12 at 60 Hz here (class B).
-    assert!(worst < 0.13, "largest error {worst}");
+    // Each rigid element's dipole field is differentiated exactly; what is
+    // left is the Kirchhoff sum's own discretisation.
+    assert!(worst < 0.03, "largest error {worst}");
 }
 
 #[test]

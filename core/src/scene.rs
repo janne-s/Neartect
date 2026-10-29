@@ -55,7 +55,8 @@ impl Default for Quality {
 
 // What hears the field. A first-order microphone takes a + (1 − a) cos θ of
 // each arrival, and its gradient part grows by 1 + 1/(jkr) for a wave from a
-// distance r (the proximity effect). An ear on a spherical head (Brown and
+// distance r (the proximity effect; a rigid Kirchhoff element's dipole field
+// is differentiated exactly in `kirchhoff`). An ear on a spherical head (Brown and
 // Duda 1998) takes a head shadow (1 + jαω/2ω0)/(1 + jω/2ω0), ω0 = c/a, with α
 // set by the angle from the ear's axis, and Woodworth's delay. An ear on the
 // measured head takes the arrival in its head frame: `outward` points to its

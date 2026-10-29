@@ -342,6 +342,23 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let cos_incidence = dot(tilted, incident.towards_source).max(0.0);
     let soft = cos_incidence * area / (2.0 * PI * distance);
     let soft_near = soft / incident.source_distance;
+    let mut values = [[0.0; 4]; crate::scene::MOST_SETS];
+    for (set, weight) in weights.iter().enumerate().take(context.histograms.sets.len()) {
+        values[set] = [rigid_far * weight, rigid_near * weight, soft * weight, soft_near * weight];
+    }
+    // A first-order microphone's gradient part hears the rigid element's
+    // dipole field exactly: the radial part takes 2/(jkR) where a spherical
+    // wave takes 1/(jkR), and the field across the radius adds
+    // (n·f − (n·u)(u·f)) (1 + 1/(jkR)) / R².
+    if let crate::scene::Listener::Microphone { pattern, facing } = scene.listener {
+        if pattern < 1.0 {
+            let toward_facing = -dot(direction, facing);
+            let across = (dot(tilted, facing) + cos_scatter * toward_facing) * area / (2.0 * PI * distance * distance);
+            let radial = toward_facing * rigid_near;
+            values[1][0] = (1.0 - pattern) * (radial + across);
+            values[1][1] = (1.0 - pattern) * (2.0 * radial + across) / distance;
+        }
+    }
     let towards = incident.towards_source;
     let gradient = scale([
         -towards[0] - direction[0],
@@ -358,9 +375,8 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         for j in 0..count_v {
             let offset_v = ((j as f64 + 0.5) / count_v as f64 - 0.5) * spread_v;
             let t = (delay + listener_shift + offset_u + offset_v).max(0.0);
-            for (set, weight) in weights.iter().enumerate().take(context.histograms.sets.len()) {
-                let w = share * weight;
-                deposit(&mut context.histograms.sets[set], t, [rigid_far * w, rigid_near * w, soft * w, soft_near * w]);
+            for (set, v) in values.iter().enumerate().take(context.histograms.sets.len()) {
+                deposit(&mut context.histograms.sets[set], t, v.map(|x| x * share));
             }
         }
     }
