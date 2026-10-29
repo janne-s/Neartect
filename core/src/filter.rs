@@ -137,9 +137,11 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
     let reflection: Vec<Vec<Complex64>> = scene.surfaces.iter().map(|s| minimum_phase(&s.reflection, n, fs, &mut fft)).collect();
     let j = Complex64::new(0.0, 1.0);
 
-    let mut groups: Vec<(Vec<u64>, usize, Option<usize>, Histograms)> = Vec::new();
+    // Surfaces of one material share their histograms; each group is filled,
+    // transformed, and freed before the next, so only one is held at a time.
     let traversals = traversals(scene);
     let floor = relief_floor(scene, &traversals, horizon);
+    let mut groups: Vec<(Vec<u64>, Vec<usize>)> = Vec::new();
     for (traversal, &(index, also)) in traversals.iter().enumerate() {
         let surface = &scene.surfaces[index];
         let mut key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
@@ -147,19 +149,24 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
             key.push(u64::MAX);
             key.extend(scene.surfaces[j].reflection.iter().map(|r| r.to_bits()).chain(scene.surfaces[j].pattern.low_frequency_key()));
         }
-        let s = surface.strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
-        let existing = groups.iter().position(|(k, _, _, _)| *k == key);
-        let at = existing.unwrap_or_else(|| {
-            groups.push((key, index, also, Histograms::new(scene.sets(), horizon)));
-            groups.len() - 1
-        });
-        if scatter_into(scene, traversal, index, also, s, floor, part, &mut groups[at].3).is_none() && existing.is_none() {
-            groups.pop();
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, members)) => members.push(traversal),
+            None => groups.push((key, vec![traversal])),
         }
     }
 
-    for (_, index, also, h) in &groups {
-        let surface = &scene.surfaces[*index];
+    for (_, members) in &groups {
+        let mut h = Histograms::new(scene.sets(), horizon);
+        let mut heard_from = None;
+        for &traversal in members {
+            let (index, also) = traversals[traversal];
+            let s = scene.surfaces[index].strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
+            if scatter_into(scene, traversal, index, also, s, floor, part, &mut h).is_some() && heard_from.is_none() {
+                heard_from = Some((index, also));
+            }
+        }
+        let Some((index, also)) = heard_from else { continue };
+        let surface = &scene.surfaces[index];
         for (set, factor) in factors.iter().enumerate().take(h.sets()) {
             let total = &mut total[scene.capsule_of(set)];
             let mut packed: Vec<Complex64> = h.list(set, RIGID_FAR).zip(h.list(set, SOFT_FAR)).map(|(a, b)| Complex64::new(a, b)).collect();
@@ -180,7 +187,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
                 let soft_near = (near[k] - near_mirror) * Complex64::new(0.0, -0.5);
                 let rigid = j * omega_over_c * rigid_far + rigid_near;
                 let pressure_release = -(j * omega_over_c * soft + soft_near);
-                let r = reflection[*index][k];
+                let r = reflection[index][k];
                 let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
                 let hz = k as f64 * fs / n as f64;
                 let grating = surface.pattern.low_frequency_factor(hz, c);

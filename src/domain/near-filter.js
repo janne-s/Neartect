@@ -155,8 +155,8 @@ const BASE_BYTES = 8 * 2 ** 20;
 const nextPowerOfTwo = value => 2 ** Math.ceil(Math.log2(Math.max(1, value)));
 
 // An upper estimate of the WebAssembly memory one job takes, after the
-// core's allocations in `outside_spectrum`: the histograms of each group of
-// equal materials, the listener's spectral sets, each surface's reflection,
+// core's allocations in `outside_spectrum`: the histograms of one group of
+// equal materials at a time, the listener's spectral sets, each surface's reflection,
 // and the FFT buffers; inside a pipe, both mouths. Summing parts into a
 // filter takes the spectra twice over.
 export function jobBytes({ settings, surfaces, spectra }) {
@@ -167,24 +167,14 @@ export function jobBytes({ settings, surfaces, spectra }) {
   const fine = OVERSAMPLING * n;
   const kind = value('listenerKind');
   const sets = kind === 2 ? 17 : kind === 3 ? 4 : kind === 1 || value('pattern') < 1 ? 2 : 1;
-  const keys = new Set();
   let count = 0;
-  let relief = 0;
-  for (let at = 0; at < surfaces.length; at += surfaces[at]) {
-    const record = surfaces.subarray(at, at + surfaces[at]);
-    count += 1;
-    if (!(record[1] > 0)) continue;
-    keys.add(Array.from(record.subarray(2, 17)).join());
-    const shape = record.subarray(17, 30);
-    if ((shape[0] > 0 && shape[1] > 0) || shape[10] > 0) relief += 1;
-  }
-  const groups = keys.size + (value('order') >= 2 ? relief : 0);
+  for (let at = 0; at < surfaces.length; at += surfaces[at]) count += 1;
   const pipe = value('pipeRadiusMetres') > 0;
   const pipeMetres = Math.hypot(...['X', 'Y', 'Z'].map(axis => value(`pipeMouthB${axis}`) - value(`pipeMouthA${axis}`))) + value('pipeRadiusMetres');
   const lead = pipe ? Math.ceil(pipeMetres / value('speedOfSoundMetresPerSecond') * value('sampleRateHz')) : 0;
   const horizon = Math.min(fine, OVERSAMPLING * (length + HORIZON_MARGIN_SAMPLES + lead));
   const bins = n / 2 + 1;
-  const outside = groups * horizon * sets * HISTOGRAM_LISTS * 8 + (sets * bins + count * n + 3 * fine) * BYTES_PER_COMPLEX;
+  const outside = horizon * sets * HISTOGRAM_LISTS * 8 + (sets * bins + count * n + 3 * fine) * BYTES_PER_COMPLEX;
   return ALLOCATION_SLACK * ((pipe ? 2 : 1) * outside + 2 * bins * BYTES_PER_COMPLEX) + BASE_BYTES;
 }
 
