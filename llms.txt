@@ -1,0 +1,20 @@
+# Neartect
+
+> Neartect designs a microphone's near environment — walls, floors, panels, and gratings from centimetres to metres — and computes the filter it imposes on sound arriving from a direction. Browser app, no backend; the filter comes from a Rust core compiled to WebAssembly.
+
+## Space document
+
+A space is JSON with `kind: "neartect.space"`. Every field has a default; unknown fields are dropped and out-of-range values are clamped.
+
+- `air.temperatureCelsius` — sets the speed of sound.
+- `microphone.position` — [east, north, up] in metres (ENU frame).
+- `arrival.azimuthDegrees` (compass, toward the source), `arrival.elevationDegrees`.
+- `render.sampleRateHz`, `render.lengthMilliseconds`, `render.order` (1–6).
+- `surfaces[]` — `shape: "rectangle"`, `centre` [e, n, u], `widthMetres`, `heightMetres`, `yawDegrees` (direction the front faces), `tiltDegrees` (0 vertical, 90 facing up), `material`, `strength` (1 physical), `pattern` (`{ kind: "solid" }` or `{ kind: "grid", periodMetres: [across, up], barMetres: [across, up], thicknessMetres }`; a period of 0 leaves that axis without bars).
+
+The filter is normalised to the free field: with no surfaces it is a unit impulse at time zero.
+
+## Links
+
+- App: https://janne-s.github.io/Neartect/
+- Repository: https://github.com/janne-s/Neartect

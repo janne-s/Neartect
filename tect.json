@@ -1,10 +1,11 @@
 {
   "name": "Neartect",
   "storage": "neartect",
-  "title": "Neartect · Design the near space",
+  "title": "Neartect \u00b7 Design the near space",
   "description": "Neartect designs what a microphone's surroundings do to sound: walls, corners, recesses, and small spaces from centimetres to metres.",
   "socialDescription": "Build walls, corners, recesses, and small spaces around a microphone, give each surface a material, and hear how the near environment colours the sound.",
   "imageAlt": "Neartect showing surfaces around a microphone",
   "url": "https://janne-s.github.io/Neartect/",
-  "repository": "https://github.com/janne-s/Neartect"
+  "repository": "https://github.com/janne-s/Neartect",
+  "page": false
 }
