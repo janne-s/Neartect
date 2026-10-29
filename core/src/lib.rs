@@ -1,5 +1,6 @@
 pub mod filter;
 pub mod geom;
+pub mod hrtf;
 pub mod images;
 pub mod kirchhoff;
 pub mod pattern;
@@ -22,8 +23,9 @@ pub const RELIEF_VALUES: usize = 13;
 // point source flag and xyz, gain, delay seconds, pipe radius (0 = none),
 // pipe mouths xyz, pickup pattern (1 omni … 0 figure of eight), facing xyz
 // (an ear's outward axis), listener kind (0 microphone, 1 ear), head radius,
-// relief detail, element limit.
-pub const SETTINGS_LENGTH: usize = 31;
+// relief detail, element limit, head front xyz and up xyz (kind 2, an ear on
+// the measured head).
+pub const SETTINGS_LENGTH: usize = 37;
 const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
 const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
 const FEWEST_ELEMENTS: f64 = 1000.0;
@@ -75,7 +77,13 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
             mouth_a: [settings[17], settings[18], settings[19]],
             mouth_b: [settings[20], settings[21], settings[22]],
         }),
-        listener: if settings[27] > 0.5 {
+        listener: if settings[27] > 1.5 {
+            scene::Listener::MeasuredEar {
+                front: normalize([settings[31], settings[32], settings[33]]),
+                outward: normalize([settings[24], settings[25], settings[26]]),
+                up: normalize([settings[34], settings[35], settings[36]]),
+            }
+        } else if settings[27] > 0.5 {
             scene::Listener::Ear { axis: normalize([settings[24], settings[25], settings[26]]), radius: settings[28] }
         } else {
             scene::Listener::Microphone { pattern: settings[23], facing: normalize([settings[24], settings[25], settings[26]]) }

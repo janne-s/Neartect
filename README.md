@@ -58,7 +58,8 @@ WebAssembly and heard live through a crossfading convolver.
   pattern starts aimed at the source. Directional patterns have the proximity
   effect: a near source or a near reflection lifts their bass.
 - **Layouts** — XY, Blumlein, mid-side, ORTF, NOS, spaced pair, Decca tree,
-  and a head with two ears; each is one element that binds, moves, and turns
+  and a head with two ears, either the measured KU100 (SADIE II) or a
+  spherical model of adjustable width; each is one element that binds, moves, and turns
   as a whole, with its spacing and angle on sliders. Mid-side decodes to left
   and right in the preview; export writes every capsule, or a stereo mix.
   Microphones and layouts share one list: any of them can be removed, and a
@@ -90,7 +91,9 @@ WebAssembly and heard live through a crossfading convolver.
 Specular reflection from rigid surfaces is class A for a plane wave and a point source alike, absorption tables and the
 finite-size correction class B, the grating's low-frequency blend, the
 continuation of joined edges at other than right angles, and the strength
-control class C. The pipe interior is class B below its first cross mode. Not modelled: the
+control class C. Both heads are class B: the measured one as minimum-phase
+responses with delays interpolated between directions, the sphere as Brown
+and Duda's model. The pipe interior is class B below its first cross mode. Not modelled: the
 microphone capsule's own size, a smooth change at a pipe mouth (the model
 switches from outside to inside there), cross modes in wide pipes, room modes
 of closed small spaces, edge diffraction beyond the Kirchhoff
@@ -107,4 +110,6 @@ copy of tect-shared.
 
 ## License
 
-MIT. Absorption coefficients: RoomTreat, CC BY 4.0.
+MIT. Absorption coefficients: RoomTreat, CC BY 4.0. Measured head: SADIE II
+(KU100), © 2018 University of York, Apache 2.0, derived table in `core/data/`
+with its license (Armstrong et al. 2018, Applied Sciences 8(11), 2029).

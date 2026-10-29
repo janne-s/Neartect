@@ -57,12 +57,17 @@ impl Default for Quality {
 // each arrival, and its gradient part grows by 1 + 1/(jkr) for a wave from a
 // distance r (the proximity effect). An ear on a spherical head (Brown and
 // Duda 1998) takes a head shadow (1 + jαω/2ω0)/(1 + jω/2ω0), ω0 = c/a, with α
-// set by the angle from the ear's axis, and Woodworth's delay.
+// set by the angle from the ear's axis, and Woodworth's delay. An ear on the
+// measured head takes the arrival in its head frame: `outward` points to its
+// own side, so the right ear reads the left ear's table mirrored.
 #[derive(Clone, Copy, Debug)]
 pub enum Listener {
     Microphone { pattern: f64, facing: V3 },
     Ear { axis: V3, radius: f64 },
+    MeasuredEar { front: V3, outward: V3, up: V3 },
 }
+
+pub const MOST_SETS: usize = crate::hrtf::SETS;
 
 const PROXIMITY_FLOOR_HZ: f64 = 10.0;
 const SHADOW_DEEPEST: f64 = 0.1;
@@ -93,16 +98,24 @@ impl Scene {
     pub fn sets(&self) -> usize {
         match self.listener {
             Listener::Microphone { pattern, .. } if pattern >= 1.0 => 1,
+            Listener::MeasuredEar { .. } => MOST_SETS,
             _ => 2,
         }
     }
 
-    pub fn split(&self, from: V3, distance: f64) -> (f64, [f64; 2]) {
+    pub fn split(&self, from: V3, distance: f64) -> (f64, [f64; MOST_SETS]) {
+        let mut weights = [0.0; MOST_SETS];
         match self.listener {
             Listener::Microphone { pattern, facing } => {
                 let gradient = (1.0 - pattern) * crate::geom::dot(facing, from);
                 let near = if distance.is_finite() { gradient / distance.max(1e-3) } else { 0.0 };
-                (0.0, [pattern + gradient, near])
+                weights[0] = pattern + gradient;
+                weights[1] = near;
+                (0.0, weights)
+            }
+            Listener::MeasuredEar { front, outward, up } => {
+                use crate::geom::dot;
+                crate::hrtf::table().split(dot(from, front), dot(from, outward), dot(from, up))
             }
             Listener::Ear { axis, radius } => {
                 let theta = crate::geom::dot(axis, from).clamp(-1.0, 1.0).acos();
@@ -110,7 +123,9 @@ impl Scene {
                 let half = std::f64::consts::FRAC_PI_2;
                 let delay = if theta < half { -radius / c * theta.cos() } else { radius / c * (theta - half) } + radius / c;
                 let alpha = (1.0 + SHADOW_DEEPEST / 2.0) + (1.0 - SHADOW_DEEPEST / 2.0) * (theta / SHADOW_DEEPEST_RADIANS * std::f64::consts::PI).cos();
-                (delay, [1.0, alpha])
+                weights[0] = 1.0;
+                weights[1] = alpha;
+                (delay, weights)
             }
         }
     }
@@ -129,11 +144,15 @@ impl Scene {
                 let x = j * omega * radius / (2.0 * self.speed_of_sound);
                 if set == 0 { Complex64::new(1.0, 0.0) / (1.0 + x) } else { x / (1.0 + x) }
             }
+            Listener::MeasuredEar { .. } => crate::hrtf::table().factor(set, omega),
         }
     }
 
     pub fn response(&self, from: V3, distance: f64, omega: f64) -> Complex64 {
-        let (delay, weights) = self.split(from, distance);
+        self.split_response(&self.split(from, distance), omega)
+    }
+
+    pub fn split_response(&self, (delay, weights): &(f64, [f64; MOST_SETS]), omega: f64) -> Complex64 {
         let sum: Complex64 = (0..self.sets()).map(|i| weights[i] * self.set_factor(i, omega)).sum();
         sum * Complex64::from_polar(1.0, -omega * delay)
     }

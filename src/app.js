@@ -2,7 +2,7 @@ import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
-import { RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
+import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, firstListener, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
@@ -641,7 +641,14 @@ function rigCard(container, rig, index) {
     macro(macros, { label: 'Facing', title: 'Facing around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
     macro(macros, { label: 'Tilt', title: 'Tilt up or down', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     const defaults = RIG_KINDS[rig.kind];
-    if (defaults.spacingMetres > 0) {
+    if (rig.kind === 'binaural') {
+      selectRow(macros, {
+        label: 'Model', title: 'Measured dummy head or spherical model',
+        value: rig.head, options: Object.entries(HEADS),
+        onChange: head => { current().head = head; changed({ panel: true }); }
+      });
+    }
+    if (defaults.spacingMetres > 0 && !(rig.kind === 'binaural' && rig.head === 'measured')) {
       const binaural = rig.kind === 'binaural';
       macro(macros, { label: binaural ? 'Head width' : 'Spacing', range: binaural ? [0.1, 0.3] : [0.01, 5], log: true, format: formatGap, fallback: defaults.spacingMetres, read: () => current().spacingMetres, write: v => { current().spacingMetres = v; } });
     }
@@ -694,6 +701,7 @@ function changeLayout(point, kind) {
     point.kind = kind;
     point.spacingMetres = fresh.spacingMetres;
     point.angleDegrees = fresh.angleDegrees;
+    if (fresh.head) point.head = point.head ?? fresh.head; else delete point.head;
   } else {
     const rig = defaultRig(kind, place);
     if (aim) rig.aim = aim; else aimAt(space, rig, towardsSource({ ...rig }));
@@ -1046,7 +1054,7 @@ $('export-processed').addEventListener('click', async () => {
   }
 });
 
-$('attribution-text').textContent = MATERIAL_ATTRIBUTION;
+$('attribution-text').textContent = `${MATERIAL_ATTRIBUTION} ${HEAD_ATTRIBUTION}`;
 $('attribution-button').addEventListener('click', () => {
   const text = $('attribution-text');
   text.hidden = !text.hidden;

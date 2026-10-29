@@ -99,3 +99,8 @@ test('render quality takes defaults and clamps into range', () => {
   const odd = readSpace({ kind: 'neartect.space', render: { quality: { reliefDetail: 100, elementLimit: 3, movingDetail: 'x' } } });
   assert.deepEqual(odd.render.quality, { reliefDetail: 24, elementLimit: 1000, movingDetail: 0.5 });
 });
+
+test('a head reads its model, measured by default, and other layouts carry none', () => {
+  const space = readSpace({ kind: 'neartect.space', rigs: [{ kind: 'binaural' }, { kind: 'binaural', head: 'sphere' }, { kind: 'binaural', head: 'wax' }, { kind: 'xy', head: 'sphere' }] });
+  assert.deepEqual(space.rigs.map(r => r.head), ['measured', 'sphere', 'measured', undefined]);
+});

@@ -182,3 +182,16 @@ test('a corrugated wall changes the filter, and moving its relief changes it aga
   assert.ok(difference(arches, moved) > 0.01);
   assert.ok(arches.every(Number.isFinite));
 });
+
+test('a measured head and a spherical head both hear a source on the left louder in the left ear', async () => {
+  for (const head of ['measured', 'sphere']) {
+    const space = readSpace({
+      kind: 'neartect.space', microphones: [],
+      rigs: [{ kind: 'binaural', head, position: [0, 0, 1.5], aim: { azimuthDegrees: 0, elevationDegrees: 0 } }],
+      arrival: { azimuthDegrees: 270, elevationDegrees: 0 }, render: { lengthMilliseconds: 20 }
+    });
+    const { channels } = await nearFilter(space);
+    const energy = c => c.reduce((sum, x) => sum + x * x, 0);
+    assert.ok(energy(channels[0]) > 2 * energy(channels[1]), head);
+  }
+});

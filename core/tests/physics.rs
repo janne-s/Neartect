@@ -540,3 +540,63 @@ fn element_limit_coarsens_relief_and_leaves_flat_surfaces_alone() {
     assert_ne!(fine, limited);
     assert!(limited.iter().all(|x| x.is_finite()));
 }
+
+fn measured(mut s: Scene, outward: V3) -> Scene {
+    s.listener = Listener::MeasuredEar { front: [0.0, 1.0, 0.0], outward, up: [0.0, 0.0, 1.0] };
+    s
+}
+
+#[test]
+fn measured_head_hears_a_source_on_the_left_earlier_and_brighter_on_the_left() {
+    let length = 2048;
+    let free = || scene(vec![], [0.0, 0.0, 1.5], [-1.0, 0.0, 0.0], length, 1);
+    let left = near_filter(&measured(free(), [-1.0, 0.0, 0.0]));
+    let right = near_filter(&measured(free(), [1.0, 0.0, 0.0]));
+    let onset = |h: &[f32]| {
+        let peak = h.iter().fold(0.0_f32, |m, x| m.max(x.abs()));
+        h.iter().position(|x| x.abs() > 0.3 * peak).unwrap() as f64 / FS
+    };
+    let itd = onset(&right) - onset(&left);
+    assert!(itd > 0.55e-3 && itd < 0.8e-3, "itd {itd}");
+    let lh = near_spectrum(&measured(free(), [-1.0, 0.0, 0.0]));
+    let rh = near_spectrum(&measured(free(), [1.0, 0.0, 0.0]));
+    let band = |h: &[Complex64]| 20.0 * mean_magnitude(h, length, 4000.0, 8000.0).log10();
+    assert!(band(&lh) - band(&rh) > 10.0, "level difference {}", band(&lh) - band(&rh));
+    assert!(lh.iter().chain(&rh).all(|x| x.re.is_finite() && x.im.is_finite()));
+}
+
+#[test]
+fn measured_head_is_symmetric_for_a_source_in_front() {
+    let length = 2048;
+    let front = || scene(vec![], [0.0, 0.0, 1.5], [0.0, 1.0, 0.0], length, 1);
+    let left = near_filter(&measured(front(), [-1.0, 0.0, 0.0]));
+    let right = near_filter(&measured(front(), [1.0, 0.0, 0.0]));
+    assert_eq!(left, right);
+}
+
+#[test]
+fn measured_ear_over_a_floor_matches_its_image() {
+    let length = 4096;
+    let (microphone, source) = ([1.0, 0.0, 0.5], [0.0, 0.0, 1.0]);
+    let s = measured(from_point(vec![floor(20.0)], microphone, source, length, 1), [-1.0, 0.0, 0.0]);
+    let h = near_spectrum(&s);
+    let direct = distance(source, microphone);
+    let image_point = [0.0, 0.0, -1.0];
+    let image = distance(image_point, microphone);
+    let towards = |p: V3| normalize([p[0] - microphone[0], p[1] - microphone[1], p[2] - microphone[2]]);
+    let n = spectrum_size(length);
+    let mut worst: f64 = 0.0;
+    for hz in [125.0, 250.0, 500.0, 1000.0, 2000.0] {
+        let bin = (hz * n as f64 / FS).round() as usize;
+        let omega = 2.0 * std::f64::consts::PI * bin as f64 * FS / n as f64;
+        let k = omega / C;
+        let exact = s.response(towards(source), direct, omega)
+            + s.response(towards(image_point), image, omega) * Complex64::from_polar(direct / image, -k * (image - direct));
+        worst = worst.max((h[bin] - exact).norm());
+    }
+    // Each element takes the head's response and delay for its own direction,
+    // as for the cardioid's proximity; above a few kHz the ear's offset from
+    // the head centre moves its specular point, so the centre's image is no
+    // longer the reference.
+    assert!(worst < 0.12, "largest error {worst}");
+}

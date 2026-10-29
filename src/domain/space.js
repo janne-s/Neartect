@@ -1,6 +1,6 @@
 import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
 import { FLAT_RELIEF, OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo, RELIEF_SHAPES } from './objects.js';
-import { RIG_ANGLE_DEGREES, RIG_KINDS, RIG_SPACING_METRES } from './rigs.js';
+import { HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, RIG_SPACING_METRES } from './rigs.js';
 
 export const SPACE_KIND = 'neartect.space';
 export const SPACE_VERSION = 1;
@@ -136,7 +136,8 @@ function readRig(value) {
     ...readPoint(r, [0, 0, 1]),
     aim: readAim(r.aim),
     spacingMetres: number(r.spacingMetres, RIG_SPACING_METRES, defaults.spacingMetres),
-    angleDegrees: number(r.angleDegrees, RIG_ANGLE_DEGREES, defaults.angleDegrees ?? 0)
+    angleDegrees: number(r.angleDegrees, RIG_ANGLE_DEGREES, defaults.angleDegrees ?? 0),
+    ...(kind === 'binaural' ? { head: choice(r.head, Object.keys(HEADS), 'measured') } : {})
   };
 }
 

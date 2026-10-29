@@ -17,6 +17,12 @@ export const RIG_KINDS = Object.freeze({
   binaural: { label: 'Head', spacingMetres: 0.175 }
 });
 
+// A head is the spherical model (Brown and Duda 1998, B1), sized by its
+// width, or the measured KU100 (SADIE II, B2), whose size is fixed.
+export const HEADS = Object.freeze({ measured: 'KU100', sphere: 'Sphere' });
+
+export const HEAD_ATTRIBUTION = 'Measured head: SADIE II, KU100, © 2018 University of York, Apache 2.0 (Armstrong et al. 2018, Applied Sciences 8, 2029).';
+
 export const RIG_SPACING_METRES = Object.freeze([0, 5]);
 export const RIG_ANGLE_DEGREES = Object.freeze([0, 180]);
 
@@ -32,12 +38,12 @@ export function rigFrame(space, rig) {
   const front = aimVector(space, rig);
   let right = normalize(cross(front, [0, 0, 1]));
   if (Math.hypot(...right) < 0.5) right = [1, 0, 0];
-  return { front, right };
+  return { front, right, up: cross(right, front) };
 }
 
 export function rigMembers(space, rig) {
   const centre = pointPosition(space, rig);
-  const { front, right } = rigFrame(space, rig);
+  const { front, right, up } = rigFrame(space, rig);
   const left = right.map(v => -v);
   const half = rig.spacingMetres / 2;
   const kind = RIG_KINDS[rig.kind];
@@ -58,8 +64,8 @@ export function rigMembers(space, rig) {
       ];
     case 'binaural':
       return [
-        { name: 'L', position: centre, ear: { axis: left, radius: Math.max(0.05, half) }, facing: left, pan: [1, 0] },
-        { name: 'R', position: centre, ear: { axis: right, radius: Math.max(0.05, half) }, facing: right, pan: [0, 1] }
+        { name: 'L', position: centre, ear: { axis: left, radius: Math.max(0.05, half), head: rig.head, front, up }, facing: left, pan: [1, 0] },
+        { name: 'R', position: centre, ear: { axis: right, radius: Math.max(0.05, half), head: rig.head, front, up }, facing: right, pan: [0, 1] }
       ];
     default:
       return pair(kind.pattern, rig.angleDegrees);

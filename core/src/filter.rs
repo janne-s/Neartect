@@ -48,7 +48,7 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
     };
     let (pattern, gradient, facing_along) = match scene.listener {
         crate::scene::Listener::Microphone { pattern, facing } => (pattern, 1.0 - pattern, dot(facing, axis)),
-        crate::scene::Listener::Ear { .. } => (1.0, 0.0, 0.0),
+        crate::scene::Listener::Ear { .. } | crate::scene::Listener::MeasuredEar { .. } => (1.0, 0.0, 0.0),
     };
     let (from_a, gain_a, delay_a, inward_a) = at_mouth(pipe.mouth_a);
     let (from_b, gain_b, delay_b, inward_b) = at_mouth(pipe.mouth_b);
@@ -76,7 +76,13 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
     let mut fft = Fft::new();
     let direct_distance = scene.direct_distance();
     let direct_from = scene.direct_from();
-    let mut total: Vec<Complex64> = (0..=half).map(|k| scene.response(direct_from, direct_distance, angular_frequency(k, n, fs))).collect();
+    let factors: Vec<Vec<Complex64>> = (0..scene.sets()).map(|set| (0..=half).map(|k| scene.set_factor(set, angular_frequency(k, n, fs))).collect()).collect();
+    let heard = |(delay, weights): &(f64, [f64; crate::scene::MOST_SETS]), k: usize| -> Complex64 {
+        let sum: Complex64 = factors.iter().zip(weights).map(|(f, w)| f[k] * w).sum();
+        sum * Complex64::from_polar(1.0, -angular_frequency(k, n, fs) * delay)
+    };
+    let direct_split = scene.split(direct_from, direct_distance);
+    let mut total: Vec<Complex64> = (0..=half).map(|k| heard(&direct_split, k)).collect();
     let reflection: Vec<Vec<Complex64>> = scene
         .surfaces
         .iter()
@@ -125,16 +131,17 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
                 let r = reflection[*index][k];
                 let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
                 let grating = surface.pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
-                total[k] += scattered * scene.set_factor(set, omega) * (compensation * grating);
+                total[k] += scattered * factors[set][k] * (compensation * grating);
             }
         }
     }
 
     for path in specular_paths(scene) {
         let strength: f64 = path.reflections.iter().map(|r| scene.surfaces[r.surface].strength).product();
+        let path_split = scene.split(path.from, path.distance);
         for k in 0..=half {
             let omega = angular_frequency(k, n, fs);
-            let mut gain = scene.response(path.from, path.distance, omega) * (strength * path.gain) * Complex64::from_polar(1.0, -omega * path.delay_seconds);
+            let mut gain = heard(&path_split, k) * (strength * path.gain) * Complex64::from_polar(1.0, -omega * path.delay_seconds);
             for r in &path.reflections {
                 let cutoff = 2.0 * PI * r.cutoff_hz;
                 let grating = scene.surfaces[r.surface].pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
