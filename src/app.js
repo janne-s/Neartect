@@ -1,9 +1,9 @@
 import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
-import { defaultMicrophone, defaultObject, defaultSpace, MOST_MICROPHONES, readSpace, SpaceError } from './domain/space.js';
-import { FLAT_KINDS, placePoints, referTo, referenceObject, releaseObject } from './domain/objects.js';
-import { BUILD_KINDS, objectIcon, situationIcon } from './ui/icons.js';
+import { arrivalVector, defaultMicrophone, defaultObject, defaultSpace, MOST_MICROPHONES, PATTERNS, readSpace, SpaceError } from './domain/space.js';
+import { aimAt, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject } from './domain/objects.js';
+import { BUILD_KINDS, objectIcon, patternIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
 import { SMALLEST_GAP_METRES, spaceCentre } from './domain/placement.js';
@@ -427,8 +427,33 @@ function microphoneCard(container, microphone, index) {
   card.append(header);
   if (selected) {
     const macros = element('div', 'macros');
+    const current = () => state.space.microphones.find(m => m.id === microphone.id);
+    const patterns = element('div', 'build-menu pattern-menu');
+    patterns.setAttribute('role', 'radiogroup');
+    patterns.setAttribute('aria-label', 'Pickup pattern');
+    Object.entries(PATTERNS).forEach(([name, a]) => {
+      const button = element('button', 'build-button');
+      button.type = 'button';
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', String(microphone.pattern === name));
+      button.title = PATTERN_LABELS[name];
+      button.setAttribute('aria-label', PATTERN_LABELS[name]);
+      button.innerHTML = patternIcon(a);
+      button.addEventListener('click', () => {
+        const mic = current();
+        if (mic.pattern === 'omni' && name !== 'omni') aimAt(state.space, mic, towardsSource(mic));
+        mic.pattern = name;
+        changed({ panel: true });
+      });
+      patterns.append(button);
+    });
+    card.append(patterns);
     card.append(macros);
-    pointControls(macros, () => state.space.microphones.find(m => m.id === microphone.id), 0.3);
+    pointControls(macros, current, 0.3);
+    if (microphone.pattern !== 'omni') {
+      macro(macros, { label: '↻', title: 'Aim', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
+      macro(macros, { label: '⤢', title: 'Aim up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
+    }
   }
   container.append(card);
 }
@@ -447,6 +472,17 @@ function setAreaSelect(on) {
   view.setAreaSelect(on);
 }
 $('select-area').addEventListener('click', () => setAreaSelect($('select-area').getAttribute('aria-pressed') !== 'true'));
+
+const PATTERN_LABELS = Object.freeze({ omni: 'Omni', wide: 'Wide cardioid', cardioid: 'Cardioid', supercardioid: 'Supercardioid', hypercardioid: 'Hypercardioid', figure8: 'Figure of eight' });
+
+function towardsSource(microphone) {
+  if (state.space.source.kind === 'far') return arrivalVector(state.space.arrival);
+  const from = pointPosition(state.space, microphone);
+  const to = pointPosition(state.space, state.space.source);
+  const d = to.map((v, i) => v - from[i]);
+  const n = Math.hypot(...d) || 1;
+  return d.map(v => v / n);
+}
 
 function removeMicrophone(id) {
   if (state.space.microphones.length <= 1) return;

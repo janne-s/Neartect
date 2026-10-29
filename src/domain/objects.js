@@ -156,10 +156,36 @@ export function pointPosition(space, point) {
 
 export function referTo(space, point, id) {
   const position = pointPosition(space, point);
+  const facing = point.aim ? aimVector(space, point) : null;
   const object = id ? space.objects.find(o => o.id === id) : null;
   point.reference = object ? object.id : null;
   point.offset = object ? toLocal(object, position).map((v, i) => v - anchor(object)[i]) : [0, 0, 0];
   point.position = position;
+  if (facing) aimAt(space, point, facing);
+}
+
+// A microphone's aim is a compass-style azimuth and an elevation in its
+// reference frame: the object's across, front, and up when bound, east,
+// north, and up otherwise.
+export function aimVector(space, microphone) {
+  const az = microphone.aim.azimuthDegrees * Math.PI / 180;
+  const el = microphone.aim.elevationDegrees * Math.PI / 180;
+  const local = [Math.cos(el) * Math.sin(az), Math.cos(el) * Math.cos(az), Math.sin(el)];
+  const object = referenceObject(space, microphone);
+  if (!object) return local;
+  const { across, front, up } = objectFrame(object);
+  return [0, 1, 2].map(i => local[0] * across[i] + local[1] * front[i] + local[2] * up[i]);
+}
+
+export function aimAt(space, microphone, direction) {
+  const object = referenceObject(space, microphone);
+  const d = object ? (() => { const { across, front, up } = objectFrame(object); return [dot(direction, across), dot(direction, front), dot(direction, up)]; })() : direction;
+  const n = Math.hypot(...d) || 1;
+  const az = Math.atan2(d[0], d[1]) * 180 / Math.PI;
+  microphone.aim = {
+    azimuthDegrees: ((az % 360) + 360) % 360,
+    elevationDegrees: Math.asin(Math.max(-1, Math.min(1, d[2] / n))) * 180 / Math.PI
+  };
 }
 
 export function placePointAt(space, point, position) {

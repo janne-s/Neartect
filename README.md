@@ -43,7 +43,10 @@ WebAssembly and heard live through a crossfading convolver.
   moving with it, or free in the world. Across, gap, and up are signed (a
   negative gap is behind the face or inside the object) on sliders from 1 mm
   to 5 m. Microphones keep their time and level differences; the preview
-  spreads them from left to right, and export writes one channel each.
+  spreads them from left to right, and export writes one channel each. Each
+  has a pickup pattern — omni, wide cardioid, cardioid, supercardioid,
+  hypercardioid, or figure of eight — aimed on its ring or sliders; a new
+  pattern starts aimed at the source.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
   resonances at the end-corrected length, the open ends' radiation, and the
   walls' losses.

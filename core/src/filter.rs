@@ -41,10 +41,14 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         let mut outside = scene.clone();
         outside.pipe = None;
         outside.microphone = mouth;
+        outside.pattern = 1.0;
         let incident = scene.incident(mouth);
         let spectrum = outside_spectrum(&outside);
         (spectrum, incident.amplitude, incident.extra_metres / c, dot(scale(incident.towards_source, -1.0), axis))
     };
+    let pattern = scene.pattern;
+    let gradient = 1.0 - scene.pattern;
+    let facing_along = dot(scene.facing, axis);
     let (from_a, gain_a, delay_a, inward_a) = at_mouth(pipe.mouth_a);
     let (from_b, gain_b, delay_b, inward_b) = at_mouth(pipe.mouth_b);
     (0..=n / 2)
@@ -52,8 +56,12 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
             let f = k as f64 * fs / n as f64;
             let omega = angular_frequency(k, n, fs);
             let ka = 2.0 * PI * f / c * pipe.radius;
-            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * received(ka, inward_a) * transfer(f, c, pipe.radius, length, along)
-                + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * received(ka, -inward_b) * transfer(f, c, pipe.radius, length, length - along)
+            let (p_a, u_a) = transfer(f, c, pipe.radius, length, along);
+            let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along);
+            let heard_a = p_a * pattern - u_a * (gradient * facing_along);
+            let heard_b = p_b * pattern + u_b * (gradient * facing_along);
+            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * received(ka, inward_a) * heard_a
+                + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * received(ka, -inward_b) * heard_b
         })
         .collect()
 }
@@ -65,7 +73,7 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
     let fs = scene.sample_rate;
     let c = scene.speed_of_sound;
     let mut fft = Fft::new();
-    let mut total = vec![Complex64::new(1.0, 0.0); half + 1];
+    let mut total = vec![Complex64::new(scene.pickup(scene.direct_from()), 0.0); half + 1];
     let reflection: Vec<Vec<Complex64>> = scene
         .surfaces
         .iter()

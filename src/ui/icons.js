@@ -31,3 +31,13 @@ const SITUATION_ICONS = Object.freeze({
 });
 
 export const situationIcon = id => SITUATION_ICONS[id];
+
+// A pickup pattern drawn as its polar curve |a + (1 − a) cos θ|, front up.
+export function patternIcon(a) {
+  const points = Array.from({ length: 73 }, (_, i) => {
+    const t = 2 * Math.PI * i / 72;
+    const r = 9 * Math.abs(a + (1 - a) * Math.cos(t));
+    return `${(12 + r * Math.sin(t)).toFixed(2)},${(12 - r * Math.cos(t)).toFixed(2)}`;
+  });
+  return stroke(`<circle cx="12" cy="12" r="1" fill="currentColor"/><polyline points="${points.join(' ')}"/>`);
+}

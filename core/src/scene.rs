@@ -32,6 +32,8 @@ pub struct Scene {
     pub source: Option<V3>,
     pub gain: f64,
     pub delay_seconds: f64,
+    pub pattern: f64,
+    pub facing: V3,
 }
 
 // The incident wave at a point, relative to the direct sound at the
@@ -46,6 +48,20 @@ pub struct Incident {
 }
 
 impl Scene {
+    // First-order pickup a + (1 − a) cos θ for sound arriving from `from`
+    // (a unit vector from the microphone towards where the sound comes from):
+    // 1 omni, 0.5 cardioid, 0 figure of eight with its rear lobe inverted.
+    pub fn pickup(&self, from: V3) -> f64 {
+        self.pattern + (1.0 - self.pattern) * crate::geom::dot(self.facing, from)
+    }
+
+    pub fn direct_from(&self) -> V3 {
+        match self.source {
+            None => self.arrival,
+            Some(source) => crate::geom::normalize(crate::geom::sub(source, self.microphone)),
+        }
+    }
+
     pub fn incident(&self, x: V3) -> Incident {
         match self.source {
             None => Incident {

@@ -26,7 +26,7 @@ fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
-    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0 }
+    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0, pattern: 1.0, facing: [0.0, 1.0, 0.0] }
 }
 
 fn at(spectrum: &[Complex64], length: usize, hz: f64) -> Complex64 {
@@ -333,4 +333,45 @@ fn alignment_delays_and_scales_the_filter() {
     let h = near_filter(&s);
     assert!((h[48] - 0.5).abs() < 1e-4, "{}", h[48]);
     assert!(h.iter().enumerate().all(|(i, x)| i == 48 || x.abs() < 1e-4));
+}
+
+fn aimed(mut s: Scene, pattern: f64, facing: V3) -> Scene {
+    s.pattern = pattern;
+    s.facing = normalize(facing);
+    s
+}
+
+#[test]
+fn cardioid_hears_its_front_fully_and_its_rear_not_at_all() {
+    let front = near_filter(&aimed(scene(vec![], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0], 64, 1), 0.5, [0.0, 1.0, 0.0]));
+    let rear = near_filter(&aimed(scene(vec![], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0], 64, 1), 0.5, [0.0, 1.0, 0.0]));
+    let side = near_filter(&aimed(scene(vec![], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0], 64, 1), 0.5, [0.0, 1.0, 0.0]));
+    assert!((front[0] - 1.0).abs() < 1e-6 && rear[0].abs() < 1e-6 && (side[0] - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn figure_eight_inverts_its_rear_lobe() {
+    let rear = near_filter(&aimed(scene(vec![], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0], 64, 1), 0.0, [0.0, 1.0, 0.0]));
+    assert!((rear[0] + 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn cardioid_facing_away_from_a_floor_hears_less_of_its_reflection() {
+    let length = 4096;
+    let base = || scene(vec![floor(20.0)], [0.0, 0.0, 0.5], [0.0, 0.0, 1.0], length, 1);
+    let up = near_spectrum(&aimed(base(), 0.5, [0.0, 0.0, 1.0]));
+    let omni = near_spectrum(&base());
+    let depth = |h: &[Complex64]| at(h, length, C / 1.0).norm() - at(h, length, C / 2.0).norm();
+    assert!(depth(&omni) > 1.6, "omni comb {}", depth(&omni));
+    assert!(depth(&up) < 0.3, "cardioid comb {}", depth(&up));
+    let sideways = near_spectrum(&aimed(base(), 0.5, [1.0, 0.0, 0.0]));
+    assert!(depth(&sideways) > 0.6 && depth(&sideways) < 1.4, "sideways comb {}", depth(&sideways));
+}
+
+#[test]
+fn figure_eight_across_a_pipe_hears_nothing_inside_it() {
+    let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05 });
+    let h = near_spectrum(&aimed(s, 0.0, [1.0, 0.0, 0.0]));
+    assert!(h.iter().all(|x| x.norm() < 1e-9));
 }

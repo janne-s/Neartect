@@ -16,8 +16,8 @@ use wasm_bindgen::prelude::*;
 pub const PATTERN_VALUES: usize = 6;
 // Settings: rate, speed of sound, length, order, microphone xyz, arrival xyz,
 // point source flag and xyz, gain, delay seconds, pipe radius (0 = none),
-// pipe mouths xyz.
-pub const SETTINGS_LENGTH: usize = 23;
+// pipe mouths xyz, pickup pattern (1 omni … 0 figure of eight), facing xyz.
+pub const SETTINGS_LENGTH: usize = 27;
 const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES;
 
 pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
@@ -63,6 +63,8 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
             mouth_a: [settings[17], settings[18], settings[19]],
             mouth_b: [settings[20], settings[21], settings[22]],
         }),
+        pattern: settings[23],
+        facing: normalize([settings[24], settings[25], settings[26]]),
     })
 }
 

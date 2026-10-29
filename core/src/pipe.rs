@@ -41,12 +41,14 @@ pub fn received(ka: f64, cos_inward: f64) -> f64 {
     1.0 + blend * cos_inward.max(0.0)
 }
 
-// Pressure at `along` metres from the driven mouth per unit blocked pressure
-// there, with the far mouth open; normalised impedances (ρc/S = 1).
-pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64) -> Complex64 {
+// Pressure and ρc times the particle velocity away from the driven mouth, at
+// `along` metres from it, per unit blocked pressure there, with the far mouth
+// open; normalised impedances (ρc/S = 1). A first-order microphone in the pipe
+// hears a·p − (1 − a)·(facing · direction of travel)·ρc v.
+pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64) -> (Complex64, Complex64) {
     let j = Complex64::new(0.0, 1.0);
     if frequency_hz <= 0.0 {
-        return Complex64::new(1.0 - along / length, 0.0);
+        return (Complex64::new(1.0 - along / length, 0.0), Complex64::new(0.0, 0.0));
     }
     let k = 2.0 * std::f64::consts::PI * frequency_hz / speed_of_sound;
     let loss = WALL_LOSS_PER_ROOT_HZ * frequency_hz.sqrt() / radius;
@@ -56,5 +58,7 @@ pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64
     let input = (load + j * t) / (Complex64::new(1.0, 0.0) + j * load * t);
     let flow = Complex64::new(1.0, 0.0) / (load + input);
     let mouth = flow * input;
-    mouth * (wave * along).cos() - j * flow * (wave * along).sin()
+    let pressure = mouth * (wave * along).cos() - j * flow * (wave * along).sin();
+    let velocity = flow * (wave * along).cos() - j * mouth * (wave * along).sin();
+    (pressure, velocity)
 }

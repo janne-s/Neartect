@@ -1,7 +1,7 @@
 import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
-import { expandObject, pipeAround, pointPosition } from './objects.js';
-import { arrivalVector, speedOfSound } from './space.js';
+import { aimVector, expandObject, pipeAround, pointPosition } from './objects.js';
+import { arrivalVector, PATTERNS, speedOfSound } from './space.js';
 
 const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1, opening: 2 });
 const DISTANCE_REFERENCE_METRES = 1;
@@ -31,7 +31,8 @@ export function alignment(space) {
 }
 
 export function packSpace(space, microphoneIndex = 0, aligned = alignment(space)) {
-  const microphone = pointPosition(space, space.microphones[microphoneIndex]);
+  const chosen = space.microphones[microphoneIndex];
+  const microphone = pointPosition(space, chosen);
   const pipe = pipeAround(space, microphone);
   const point = space.source.kind === 'point';
   const rate = space.render.sampleRateHz;
@@ -48,7 +49,9 @@ export function packSpace(space, microphoneIndex = 0, aligned = alignment(space)
     ...(point ? pointPosition(space, space.source) : [0, 0, 0]),
     gain,
     delaySeconds,
-    ...(pipe ? [pipe.radius, ...pipe.mouthA, ...pipe.mouthB] : [0, 0, 0, 0, 0, 0, 0])
+    ...(pipe ? [pipe.radius, ...pipe.mouthA, ...pipe.mouthB] : [0, 0, 0, 0, 0, 0, 0]),
+    PATTERNS[chosen.pattern],
+    ...aimVector(space, chosen)
   ]);
   const surfaces = space.objects.filter(object => object !== pipe?.object).flatMap(expandObject);
   const records = surfaces.flatMap(surface => {

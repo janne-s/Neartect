@@ -194,7 +194,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if delay >= (length - 2) as f64 {
         return;
     }
-    let area = size * size * incident.amplitude;
+    let area = size * size * incident.amplitude * scene.pickup(scale(direction, -1.0));
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
     let cos_incidence = dot(context.lit_normal, incident.towards_source).max(0.0);

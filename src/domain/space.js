@@ -6,6 +6,7 @@ export const SPACE_VERSION = 1;
 export const OPENING_SHAPES = Object.freeze(['round', 'rectangle']);
 export const SOURCE_KINDS = Object.freeze(['far', 'point']);
 export const MOST_MICROPHONES = 8;
+export const PATTERNS = Object.freeze({ omni: 1, wide: 0.75, cardioid: 0.5, supercardioid: 0.37, hypercardioid: 0.25, figure8: 0 });
 
 export const RANGES = Object.freeze({
   positionMetres: [-50, 50],
@@ -94,7 +95,12 @@ function readMicrophone(value, index) {
   return {
     id: typeof m.id === 'string' && m.id ? m.id.slice(0, 40) : freshId(),
     name: typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 60) : `Mic ${index + 1}`,
-    ...readPoint(m, [0, 0, 1])
+    ...readPoint(m, [0, 0, 1]),
+    pattern: Object.hasOwn(PATTERNS, m.pattern) ? m.pattern : 'omni',
+    aim: {
+      azimuthDegrees: angle(m.aim?.azimuthDegrees, 0),
+      elevationDegrees: number(m.aim?.elevationDegrees, RANGES.elevationDegrees, 0)
+    }
   };
 }
 

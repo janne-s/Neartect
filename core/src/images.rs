@@ -57,6 +57,7 @@ fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
         image = scene.surfaces[i].polygon.mirror_point(image);
     }
     let path_length = norm(sub(image, scene.microphone));
+    let from = crate::geom::normalize(sub(image, scene.microphone));
     let mut point = scene.microphone;
     let mut hits: Vec<(V3, f64, f64)> = Vec::with_capacity(sequence.len());
     let mut travelled = 0.0;
@@ -90,7 +91,7 @@ fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
     let c = scene.speed_of_sound;
     Some(Path {
         delay_seconds: (path_length - direct) / c,
-        gain: direct / path_length,
+        gain: direct / path_length * scene.pickup(from),
         reflections: rindel(scene, sequence, &hits, Some(source)),
     })
 }
@@ -100,6 +101,7 @@ fn trace_plane(scene: &Scene, sequence: &[usize]) -> Option<Path> {
     for &i in sequence.iter().rev() {
         direction = scene.surfaces[i].polygon.mirror_direction(direction);
     }
+    let from = direction;
     let mut point = scene.microphone;
     let mut hits: Vec<(V3, f64, f64)> = Vec::with_capacity(sequence.len());
     let mut travelled = 0.0;
@@ -128,7 +130,7 @@ fn trace_plane(scene: &Scene, sequence: &[usize]) -> Option<Path> {
     }
     let c = scene.speed_of_sound;
     let delay_seconds = (dot(scene.arrival, sub(scene.microphone, point)) + travelled) / c;
-    Some(Path { delay_seconds, gain: 1.0, reflections: rindel(scene, sequence, &hits, None) })
+    Some(Path { delay_seconds, gain: scene.pickup(from), reflections: rindel(scene, sequence, &hits, None) })
 }
 
 fn rindel(scene: &Scene, sequence: &[usize], hits: &[(V3, f64, f64)], source: Option<V3>) -> Vec<Reflection> {

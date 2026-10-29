@@ -1,6 +1,6 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector } from '../domain/space.js';
-import { expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
+import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
 import { nearestSurface } from '../domain/placement.js';
 
 const FIELD_OF_VIEW = 0.9;
@@ -21,6 +21,7 @@ const OFFSET_NAMES = Object.freeze(['↔', '⟂', '↕']);
 const DIMMED = 0.3;
 const SURFACE_SNAP_PIXELS = 10;
 const WHEEL_LINE_PIXELS = 16;
+const AIM_PIXELS = 26;
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -425,8 +426,34 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
         context.stroke();
         context.lineWidth = 1;
       }
+      if (item.type === 'microphone' && item.point.pattern && item.point.pattern !== 'omni') {
+        const facing = aimVector(space, item.point);
+        const reach = pixelsToMetres(AIM_PIXELS, item.point.position);
+        const ends = line(context, item.point.position, add(item.point.position, scale(facing, reach)));
+        if (ends) arrowHead(context, ends[0], ends[1]);
+        if (item.point.pattern === 'figure8') {
+          context.setLineDash([2, 3]);
+          line(context, item.point.position, sub(item.point.position, scale(facing, reach * 0.8)));
+          context.setLineDash([]);
+        }
+      }
       if (active || space.microphones.length === 1 && item.type === 'microphone') gapLabel(context, colors, item.point, p);
       context.globalAlpha = 1;
+    }
+    if (selectedPoint?.type === 'microphone' && selectedPoint.point.pattern !== 'omni') {
+      const centre = selectedPoint.point.position;
+      const ring = { id: 'ring-aim', type: 'aim', key: selectedPoint.key, points: ringPoints(centre, [1, 0, 0], [0, 1, 0], pixelsToMetres(RING_PIXELS * 0.75, centre)) };
+      if (!ring.points.some(p => !p)) {
+        context.strokeStyle = isHot(ring) ? colors.accent : colors.muted;
+        context.lineWidth = isHot(ring) ? 2 : 1;
+        context.setLineDash([1, 3]);
+        context.beginPath();
+        ring.points.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
+        context.stroke();
+        context.setLineDash([]);
+        context.lineWidth = 1;
+        handles.push(ring);
+      }
     }
     if (selectedPoint) {
       const reference = referenceObject(space, selectedPoint.point);
@@ -550,6 +577,10 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   }
 
   function startDrag(handle, point) {
+    if (handle.type === 'aim') {
+      const microphone = findPoint(space, handle.key);
+      return { handle, snapshot: null, centre: [...microphone.position], start: { point }, bound: true, aim: true };
+    }
     if (handle.target === 'group' || handle.group) {
       const centre = groupCentre();
       const start = { point };
@@ -625,6 +656,21 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   function dragTo(point, free) {
     const { handle, snapshot, centre, start } = drag;
     const step = gridSpacing() / SNAP_PER_GRID;
+    if (drag.aim) {
+      const p = planePoint(centre, [0, 0, 1], point);
+      if (!p) return;
+      const azimuth = wrap(snap(degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])), ANGLE_SNAP_DEGREES, free));
+      readout = { x: point[0], y: point[1], text: `↻ ${Math.round(azimuth)}°` };
+      onEdit(next => {
+        const microphone = findPoint(next, handle.key);
+        const current = aimVector(next, microphone);
+        const flat = Math.hypot(current[0], current[1]) < 0.01;
+        const level = flat ? 1 : Math.hypot(current[0], current[1]);
+        const a = azimuth * Math.PI / 180;
+        aimAt(next, microphone, [level * Math.sin(a), level * Math.cos(a), flat ? 0 : current[2]]);
+      });
+      return;
+    }
     if (drag.group) {
       if (handle.type === 'move') {
         const delta = snap(alongAxis(start, point), step, free);
