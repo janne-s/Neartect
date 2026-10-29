@@ -69,7 +69,9 @@ export function packSpace(space, listener, aligned, longest) {
     listener.ear ? 1 : PATTERNS[listener.pattern],
     ...(listener.ear ? listener.ear.axis : listener.facing),
     listener.ear ? 1 : 0,
-    listener.ear ? listener.ear.radius : 0
+    listener.ear ? listener.ear.radius : 0,
+    space.render.quality.reliefDetail,
+    space.render.quality.elementLimit
   ]);
   const surfaces = space.objects.filter(object => object !== pipe?.object).flatMap(expandObject);
   const records = surfaces.flatMap(surface => {

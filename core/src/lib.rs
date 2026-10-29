@@ -21,8 +21,12 @@ pub const RELIEF_VALUES: usize = 13;
 // Settings: rate, speed of sound, length, order, microphone xyz, arrival xyz,
 // point source flag and xyz, gain, delay seconds, pipe radius (0 = none),
 // pipe mouths xyz, pickup pattern (1 omni … 0 figure of eight), facing xyz
-// (an ear's outward axis), listener kind (0 microphone, 1 ear), head radius.
-pub const SETTINGS_LENGTH: usize = 29;
+// (an ear's outward axis), listener kind (0 microphone, 1 ear), head radius,
+// relief detail, element limit.
+pub const SETTINGS_LENGTH: usize = 31;
+const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
+const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
+const FEWEST_ELEMENTS: f64 = 1000.0;
 const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES + RELIEF_VALUES;
 
 pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
@@ -75,6 +79,10 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
             scene::Listener::Ear { axis: normalize([settings[24], settings[25], settings[26]]), radius: settings[28] }
         } else {
             scene::Listener::Microphone { pattern: settings[23], facing: normalize([settings[24], settings[25], settings[26]]) }
+        },
+        quality: scene::Quality {
+            relief_detail: settings[29].clamp(MOST_COARSE_RELIEF_DETAIL, MOST_FINE_RELIEF_DETAIL),
+            element_limit: settings[30].max(FEWEST_ELEMENTS),
         },
     })
 }

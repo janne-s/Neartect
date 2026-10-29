@@ -1,7 +1,7 @@
 import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
-import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, readSpace, SpaceError } from './domain/space.js';
+import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, firstListener, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
@@ -21,7 +21,7 @@ const GAP_RANGE_METRES = [SMALLEST_GAP_METRES, 5];
 const HORIZONTAL_RANGE_METRES = [-5, 5];
 const HEIGHT_RANGE_METRES = [0, 5];
 const SLIDER_STEPS = 1000;
-const MOST_GLIDE_SECONDS = 2;
+const MOST_GLIDE_SECONDS = 10;
 const SHEET_TITLES = Object.freeze({ emitters: 'Objects', receivers: 'Microphones and source', output: 'Air and output' });
 
 const $ = id => document.getElementById(id);
@@ -57,8 +57,8 @@ const state = {
 const preview = createPreview();
 const view = createNearView($('near-view'), {
   onSelect: selection => select(selection),
-  onEdit: apply => { apply(state.space); changed({ save: false }); },
-  onCommit: () => changed({ panel: true }),
+  onEdit: apply => { apply(state.space); dragging = true; changed({ save: false }); },
+  onCommit: () => { dragging = false; changed({ panel: true }); },
   onAreaEnd: () => setAreaSelect(false),
   snapSurfaces: () => preferences.snapSurfaces,
   showGrid: () => preferences.showGrid
@@ -103,6 +103,10 @@ async function computeFilter(space) {
   return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan), milliseconds: performance.now() - started };
 }
 
+// While relief moves or something is dragged, the preview drops to the
+// moving detail; the export and the settled preview use the full detail.
+let dragging = false;
+
 // Relief with a speed moves while the preview plays: each new filter takes
 // the relief where it is now and glides in over the time since the last one.
 function moving(space) {
@@ -112,14 +116,18 @@ function moving(space) {
 function liveSpace() {
   const space = clone(state.space);
   if (state.audioRate) space.render.sampleRateHz = state.audioRate;
-  if (preview.playing && moving(space)) {
+  const gliding = preview.playing && moving(space);
+  if (gliding) {
     const t = preview.time;
     space.objects.forEach(o => { o.relief.offsetMetres += o.relief.speedMetresPerSecond * t; });
   }
+  if (gliding || dragging) {
+    const quality = space.render.quality;
+    quality.reliefDetail = Math.max(RANGES.reliefDetail[0], quality.reliefDetail * quality.movingDetail);
+    quality.elementLimit = Math.max(RANGES.elementLimit[0], Math.round(quality.elementLimit * quality.movingDetail));
+  }
   return space;
 }
-
-let lastGlide = 0;
 
 async function refreshFilter() {
   if (busy) { dirty = true; return; }
@@ -138,10 +146,8 @@ async function refreshFilter() {
     const result = await computeFilter(space);
     state.filter = result;
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
-    const now = performance.now();
     const gliding = preview.playing && moving(space);
-    preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, (now - lastGlide) / 1000) : undefined);
-    lastGlide = now;
+    preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, result.milliseconds / 1000) : undefined);
     drawPlots();
     if (gliding) {
       dirty = true;
@@ -524,6 +530,9 @@ function refreshPanel() {
   });
   fields.numberField(output, { key: 'lengthMilliseconds', value: state.space.render.lengthMilliseconds, onCommit: v => { state.space.render.lengthMilliseconds = v; changed(); } });
   fields.numberField(output, { key: 'order', value: state.space.render.order, reliability: 'A', onCommit: v => { state.space.render.order = v; changed(); } });
+  ['reliefDetail', 'elementLimit', 'movingDetail'].forEach(key => fields.numberField(output, {
+    key, value: state.space.render.quality[key], onCommit: v => { state.space.render.quality[key] = v; changed(); }
+  }));
 }
 
 function pointControls(macros, current, gapFallback) {

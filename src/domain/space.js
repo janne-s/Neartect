@@ -28,8 +28,13 @@ export const RANGES = Object.freeze({
   reliefPeriodMetres: [0.01, 5],
   roughMetres: [0, 0.05],
   grainMetres: [0.01, 1],
-  speedMetresPerSecond: [-5, 5]
+  speedMetresPerSecond: [-5, 5],
+  reliefDetail: [1, 24],
+  elementLimit: [1000, 5000000],
+  movingDetail: [0.1, 1]
 });
+
+export const DEFAULT_QUALITY = Object.freeze({ reliefDetail: 6, elementLimit: 400000, movingDetail: 0.5 });
 
 export class SpaceError extends Error {}
 
@@ -202,6 +207,7 @@ export function readSpace(value, referenceIndex = null) {
   const microphones = Array.isArray(value.microphones) ? listed : [isRecord(value.microphone) ? value.microphone : {}];
   const arrival = isRecord(value.arrival) ? value.arrival : {};
   const render = isRecord(value.render) ? value.render : {};
+  const quality = isRecord(render.quality) ? render.quality : {};
   const space = {
     kind: SPACE_KIND,
     version: SPACE_VERSION,
@@ -216,7 +222,12 @@ export function readSpace(value, referenceIndex = null) {
     render: {
       sampleRateHz: Math.round(number(render.sampleRateHz, RANGES.sampleRateHz, 48000)),
       lengthMilliseconds: number(render.lengthMilliseconds, RANGES.lengthMilliseconds, 80),
-      order: Math.round(number(render.order, RANGES.order, 3))
+      order: Math.round(number(render.order, RANGES.order, 3)),
+      quality: {
+        reliefDetail: number(quality.reliefDetail, RANGES.reliefDetail, DEFAULT_QUALITY.reliefDetail),
+        elementLimit: Math.round(number(quality.elementLimit, RANGES.elementLimit, DEFAULT_QUALITY.elementLimit)),
+        movingDetail: number(quality.movingDetail, RANGES.movingDetail, DEFAULT_QUALITY.movingDetail)
+      }
     },
     objects: (value.objects ?? []).map(readObject)
   };

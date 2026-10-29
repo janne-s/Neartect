@@ -35,6 +35,22 @@ pub struct Scene {
     pub gain: f64,
     pub delay_seconds: f64,
     pub listener: Listener,
+    pub quality: Quality,
+}
+
+// Relief detail is elements per shortest relief length (period or grain);
+// the element limit caps the elements the relief asks for, shared by area over
+// all surfaces with relief. Neither changes a flat surface.
+#[derive(Clone, Copy, Debug)]
+pub struct Quality {
+    pub relief_detail: f64,
+    pub element_limit: f64,
+}
+
+impl Default for Quality {
+    fn default() -> Quality {
+        Quality { relief_detail: 6.0, element_limit: 400_000.0 }
+    }
 }
 
 // What hears the field. A first-order microphone takes a + (1 − a) cos θ of
@@ -163,6 +179,10 @@ impl Scene {
             None => crate::geom::dot(polygon.normal, self.arrival),
             Some(source) => polygon.signed_distance(source),
         }
+    }
+
+    pub fn relief_area(&self) -> f64 {
+        self.surfaces.iter().filter(|s| !s.relief.is_flat() && s.strength > 0.0).map(|s| s.polygon.area).sum()
     }
 
     pub fn polygons(&self) -> Vec<&Polygon> {

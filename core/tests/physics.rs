@@ -26,7 +26,7 @@ fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
-    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0, listener: Listener::omni() }
+    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0, listener: Listener::omni(), quality: Default::default() }
 }
 
 fn at(spectrum: &[Complex64], length: usize, hz: f64) -> Complex64 {
@@ -522,4 +522,21 @@ fn corrugated_floor_sends_a_grating_lobe() {
     };
     assert!(differs > 0.2, "corrugation changes the treble by only {differs}");
     assert!(spread(&h).is_finite());
+}
+
+#[test]
+fn element_limit_coarsens_relief_and_leaves_flat_surfaces_alone() {
+    let length = 2048;
+    let microphone = [0.0, 0.0, 0.5];
+    let coarse = neartect_core::scene::Quality { relief_detail: 6.0, element_limit: 1000.0 };
+    let flat = scene(vec![floor(3.0)], microphone, [0.0, 0.0, 1.0], length, 1);
+    let mut flat_coarse = flat.clone();
+    flat_coarse.quality = coarse;
+    assert_eq!(near_filter(&flat), near_filter(&flat_coarse));
+    let rough = scene(vec![relieved(floor(3.0), [0.0, 0.0, 1.0, 0.0, 0.0, 0.01, 0.05, 1.0])], microphone, [0.0, 0.0, 1.0], length, 1);
+    let mut rough_coarse = rough.clone();
+    rough_coarse.quality = coarse;
+    let (fine, limited) = (near_filter(&rough), near_filter(&rough_coarse));
+    assert_ne!(fine, limited);
+    assert!(limited.iter().all(|x| x.is_finite()));
 }

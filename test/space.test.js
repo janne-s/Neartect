@@ -92,3 +92,10 @@ test('a situation keeps the microphones and their spacing', async () => {
   assert.equal(next.source.kind, 'point');
   assert.ok(Math.abs(next.source.position[1] - a[1] - 2) < 1e-9);
 });
+
+test('render quality takes defaults and clamps into range', () => {
+  const plain = readSpace({ kind: 'neartect.space' });
+  assert.deepEqual(plain.render.quality, { reliefDetail: 6, elementLimit: 400000, movingDetail: 0.5 });
+  const odd = readSpace({ kind: 'neartect.space', render: { quality: { reliefDetail: 100, elementLimit: 3, movingDetail: 'x' } } });
+  assert.deepEqual(odd.render.quality, { reliefDetail: 24, elementLimit: 1000, movingDetail: 0.5 });
+});

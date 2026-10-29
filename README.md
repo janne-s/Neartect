@@ -76,6 +76,9 @@ WebAssembly and heard live through a crossfading convolver.
   unless 1/r is off.
 - **Listening** — pink noise, clicks, a sweep, or your own file, with a
   free-field comparison.
+- **Quality** — relief detail and an element limit for surfaces with relief,
+  and a lower detail while relief moves or something is dragged; the
+  computation time shows in the corner of the view.
 - **Plots** — the near filter and its response relative to the free field.
 - **Grid** — a fixed metre grid on the ground, with tenths when close; the
   grid button hides it.

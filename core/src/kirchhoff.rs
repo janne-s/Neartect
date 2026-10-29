@@ -22,7 +22,6 @@ const MOST_SUBPOINTS: usize = 16;
 const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
-const RELIEF_ELEMENTS_PER_PERIOD: f64 = 6.0;
 
 // One group of four histograms per listener set (rigid far and near, soft far
 // and near), each element weighted by the set's weight for its arrival.
@@ -55,6 +54,7 @@ struct Context<'a> {
     index: usize,
     domain: Polygon,
     lit_normal: V3,
+    relief_element: f64,
     rate: f64,
     histograms: Histograms,
 }
@@ -78,11 +78,18 @@ pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms>
     let lit_normal = if facing > 0.0 { surface.polygon.normal } else { scale(surface.polygon.normal, -1.0) };
     let rate = scene.sample_rate * OVERSAMPLING as f64;
     let extension = (scene.speed_of_sound * length as f64 / rate).min(LONGEST_EXTENSION_METRES);
+    let relief = &surface.relief;
+    let relief_element = if relief.is_flat() {
+        0.0
+    } else {
+        (relief.finest() / scene.quality.relief_detail).max((scene.relief_area() / scene.quality.element_limit).sqrt())
+    };
     let mut context = Context {
         scene,
         index,
         domain: domain(scene, index, extension),
         lit_normal,
+        relief_element,
         rate,
         histograms: Histograms::new(scene.sets(), length),
     };
@@ -173,7 +180,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let reach = distance * incident.source_distance / (distance + incident.source_distance);
     let reach = if reach.is_finite() { reach } else { distance };
     let target = if uniform { element_size(reach) } else { edge_element_size(reach) };
-    let target = target.min(surface.relief.finest() / RELIEF_ELEMENTS_PER_PERIOD).max(SHORTEST_ELEMENT_METRES);
+    let target = if context.relief_element > 0.0 { target.min(context.relief_element) } else { target }.max(SHORTEST_ELEMENT_METRES);
     if size <= target || level >= DEEPEST_LEVEL {
         if is_solid(centre) {
             element(context, centre, size);
