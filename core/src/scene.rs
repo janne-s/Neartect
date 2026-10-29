@@ -67,6 +67,7 @@ impl Default for Quality {
 #[derive(Clone, Copy, Debug)]
 pub enum Listener {
     Microphone { pattern: f64, facing: V3 },
+    Pair { patterns: [f64; 2], facings: [V3; 2] },
     Ear { axis: V3, radius: f64 },
     MeasuredEar { front: V3, outward: V3, up: V3 },
 }
@@ -76,6 +77,16 @@ pub const MOST_SETS: usize = crate::hrtf::SETS;
 const PROXIMITY_FLOOR_HZ: f64 = 10.0;
 const SHADOW_DEEPEST: f64 = 0.1;
 const SHADOW_DEEPEST_RADIANS: f64 = 150.0 * std::f64::consts::PI / 180.0;
+
+const PAIR: usize = 2;
+
+// A first-order capsule's plain pickup and its proximity part for an arrival
+// `from` at `distance` metres.
+fn first_order(pattern: f64, facing: V3, from: V3, distance: f64) -> [f64; 2] {
+    let gradient = (1.0 - pattern) * crate::geom::dot(facing, from);
+    let near = if distance.is_finite() { gradient / distance.max(1e-3) } else { 0.0 };
+    [pattern + gradient, near]
+}
 
 impl Listener {
     pub fn omni() -> Listener {
@@ -103,7 +114,35 @@ impl Scene {
         match self.listener {
             Listener::Microphone { pattern, .. } if pattern >= 1.0 => 1,
             Listener::MeasuredEar { .. } => MOST_SETS,
+            Listener::Pair { .. } => 2 * PAIR,
             _ => 2,
+        }
+    }
+
+    // A pair of first-order capsules at one point shares one traversal of
+    // the geometry; each capsule has its own two sets and its own spectrum.
+    pub fn capsules(&self) -> usize {
+        if matches!(self.listener, Listener::Pair { .. }) {
+            PAIR
+        } else {
+            1
+        }
+    }
+
+    pub fn capsule_of(&self, set: usize) -> usize {
+        if matches!(self.listener, Listener::Pair { .. }) {
+            set / 2
+        } else {
+            0
+        }
+    }
+
+    // The sets that hear a first-order gradient, with its pattern and facing.
+    pub fn gradients(&self) -> Vec<(usize, f64, V3)> {
+        match self.listener {
+            Listener::Microphone { pattern, facing } if pattern < 1.0 => vec![(1, pattern, facing)],
+            Listener::Pair { patterns, facings } => (0..PAIR).filter(|&i| patterns[i] < 1.0).map(|i| (2 * i + 1, patterns[i], facings[i])).collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -111,10 +150,13 @@ impl Scene {
         let mut weights = [0.0; MOST_SETS];
         match self.listener {
             Listener::Microphone { pattern, facing } => {
-                let gradient = (1.0 - pattern) * crate::geom::dot(facing, from);
-                let near = if distance.is_finite() { gradient / distance.max(1e-3) } else { 0.0 };
-                weights[0] = pattern + gradient;
-                weights[1] = near;
+                [weights[0], weights[1]] = first_order(pattern, facing, from, distance);
+                (0.0, weights)
+            }
+            Listener::Pair { patterns, facings } => {
+                for i in 0..PAIR {
+                    [weights[2 * i], weights[2 * i + 1]] = first_order(patterns[i], facings[i], from, distance);
+                }
                 (0.0, weights)
             }
             Listener::MeasuredEar { front, outward, up } => {
@@ -137,8 +179,8 @@ impl Scene {
     pub fn set_factor(&self, set: usize, omega: f64) -> Complex64 {
         let j = Complex64::new(0.0, 1.0);
         match self.listener {
-            Listener::Microphone { .. } => {
-                if set == 0 {
+            Listener::Microphone { .. } | Listener::Pair { .. } => {
+                if set.is_multiple_of(2) {
                     Complex64::new(1.0, 0.0)
                 } else {
                     Complex64::new(self.speed_of_sound, 0.0) / (j * omega + 2.0 * std::f64::consts::PI * PROXIMITY_FLOOR_HZ)

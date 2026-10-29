@@ -33,26 +33,33 @@ pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
     near_spectrum_part(scene, Part::WHOLE)
 }
 
-// A part's share of the spectrum: its Kirchhoff cells, and in part 0 also the
-// direct sound, the specular paths, and the inside of a pipe whole.
 pub fn near_spectrum_part(scene: &Scene, part: Part) -> Vec<Complex64> {
+    near_spectra_part(scene, part).swap_remove(0)
+}
+
+// A part's share of each capsule's spectrum: its Kirchhoff cells, and in
+// part 0 also the direct sound, the specular paths, and the inside of a pipe
+// whole.
+pub fn near_spectra_part(scene: &Scene, part: Part) -> Vec<Vec<Complex64>> {
     let scene = &scene.off_surfaces();
-    let mut spectrum = match scene.pipe {
-        Some(_) if part.index > 0 => return vec![Complex64::new(0.0, 0.0); half_length(scene)],
+    let mut spectra = match scene.pipe {
+        Some(_) if part.index > 0 => return vec![vec![Complex64::new(0.0, 0.0); half_length(scene)]; scene.capsules()],
         Some(pipe) => inside_pipe(scene, pipe),
         None => outside_spectrum(scene, 0.0, part),
     };
     if scene.gain != 1.0 || scene.delay_seconds != 0.0 {
         let n = spectrum_size(scene.length);
-        for (k, value) in spectrum.iter_mut().enumerate() {
-            let omega = angular_frequency(k, n, scene.sample_rate);
-            *value *= Complex64::from_polar(scene.gain, -omega * scene.delay_seconds);
+        for spectrum in &mut spectra {
+            for (k, value) in spectrum.iter_mut().enumerate() {
+                let omega = angular_frequency(k, n, scene.sample_rate);
+                *value *= Complex64::from_polar(scene.gain, -omega * scene.delay_seconds);
+            }
         }
     }
-    spectrum
+    spectra
 }
 
-fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
+fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Vec<Complex64>> {
     let n = spectrum_size(scene.length);
     let fs = scene.sample_rate;
     let c = scene.speed_of_sound;
@@ -73,38 +80,42 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         outside.microphone = mouth;
         outside.listener = crate::scene::Listener::omni();
         let incident = scene.incident(mouth);
-        let spectrum = outside_spectrum(&outside, (length + pipe.radius) / c, Part::WHOLE);
+        let spectrum = outside_spectrum(&outside, (length + pipe.radius) / c, Part::WHOLE).swap_remove(0);
         let travel = scale(incident.towards_source, -1.0);
         (spectrum, incident.amplitude, incident.extra_metres / c, dot(travel, axis), sideways(travel))
     };
-    let (pattern, gradient, facing_along) = match scene.listener {
-        crate::scene::Listener::Microphone { pattern, facing } => (pattern, 1.0 - pattern, dot(facing, axis)),
-        crate::scene::Listener::Ear { .. } | crate::scene::Listener::MeasuredEar { .. } => (1.0, 0.0, 0.0),
+    let capsules: Vec<(f64, f64, f64)> = match scene.listener {
+        crate::scene::Listener::Microphone { pattern, facing } => vec![(pattern, 1.0 - pattern, dot(facing, axis))],
+        crate::scene::Listener::Pair { patterns, facings } => patterns.iter().zip(facings).map(|(&p, f)| (p, 1.0 - p, dot(f, axis))).collect(),
+        crate::scene::Listener::Ear { .. } | crate::scene::Listener::MeasuredEar { .. } => vec![(1.0, 0.0, 0.0)],
     };
+    let mut spectra = vec![Vec::with_capacity(n / 2 + 1); capsules.len()];
     let (from_a, gain_a, delay_a, inward_a, (sin_a, azimuth_a)) = at_mouth(pipe.mouth_a);
     let (from_b, gain_b, delay_b, inward_b, (sin_b, azimuth_b)) = at_mouth(pipe.mouth_b);
     let (modes_a, modes_b) = (CrossModes::new(radius_fraction, azimuth_a), CrossModes::new(radius_fraction, azimuth_b));
-    (0..=n / 2)
-        .map(|k| {
-            let f = k as f64 * fs / n as f64;
-            let omega = angular_frequency(k, n, fs);
-            let ka = 2.0 * PI * f / c * pipe.radius;
-            let (p_a, u_a) = transfer(f, c, pipe.radius, length, along);
-            let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along);
-            let (cross_p_a, cross_u_a) = modes_a.at(f, c, pipe.radius, length, along, sin_a);
-            let (cross_p_b, cross_u_b) = modes_b.at(f, c, pipe.radius, length, length - along, sin_b);
-            let plane_a = received(ka, inward_a) * plane_share(ka, sin_a);
-            let plane_b = received(ka, -inward_b) * plane_share(ka, sin_b);
-            let (p_a, u_a) = (p_a * plane_a + cross_p_a, u_a * plane_a + cross_u_a);
-            let (p_b, u_b) = (p_b * plane_b + cross_p_b, u_b * plane_b + cross_u_b);
+    for k in 0..=n / 2 {
+        let f = k as f64 * fs / n as f64;
+        let omega = angular_frequency(k, n, fs);
+        let ka = 2.0 * PI * f / c * pipe.radius;
+        let (p_a, u_a) = transfer(f, c, pipe.radius, length, along);
+        let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along);
+        let (cross_p_a, cross_u_a) = modes_a.at(f, c, pipe.radius, length, along, sin_a);
+        let (cross_p_b, cross_u_b) = modes_b.at(f, c, pipe.radius, length, length - along, sin_b);
+        let plane_a = received(ka, inward_a) * plane_share(ka, sin_a);
+        let plane_b = received(ka, -inward_b) * plane_share(ka, sin_b);
+        let (p_a, u_a) = (p_a * plane_a + cross_p_a, u_a * plane_a + cross_u_a);
+        let (p_b, u_b) = (p_b * plane_b + cross_p_b, u_b * plane_b + cross_u_b);
+        let (into_a, into_b) = (from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a), from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b));
+        for (spectrum, &(pattern, gradient, facing_along)) in spectra.iter_mut().zip(&capsules) {
             let heard_a = p_a * pattern - u_a * (gradient * facing_along);
             let heard_b = p_b * pattern + u_b * (gradient * facing_along);
-            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * heard_a + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * heard_b
-        })
-        .collect()
+            spectrum.push(into_a * heard_a + into_b * heard_b);
+        }
+    }
+    spectra
 }
 
-fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex64> {
+fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Complex64>> {
     let n = spectrum_size(scene.length);
     let n_fine = n * OVERSAMPLING;
     let horizon = (((scene.length as f64 + HORIZON_MARGIN_SAMPLES + lead_seconds * scene.sample_rate) as usize) * OVERSAMPLING).min(n_fine);
@@ -115,13 +126,14 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex
     let direct_distance = scene.direct_distance();
     let direct_from = scene.direct_from();
     let factors: Vec<Vec<Complex64>> = (0..scene.sets()).map(|set| (0..=half).map(|k| scene.set_factor(set, angular_frequency(k, n, fs))).collect()).collect();
-    let heard = |(delay, weights): &(f64, [f64; crate::scene::MOST_SETS]), k: usize| -> Complex64 {
-        let sum: Complex64 = factors.iter().zip(weights).map(|(f, w)| f[k] * w).sum();
+    let heard = |(delay, weights): &(f64, [f64; crate::scene::MOST_SETS]), capsule: usize, k: usize| -> Complex64 {
+        let sum: Complex64 = factors.iter().zip(weights).enumerate().filter(|&(set, _)| scene.capsule_of(set) == capsule).map(|(_, (f, w))| f[k] * w).sum();
         sum * Complex64::from_polar(1.0, -angular_frequency(k, n, fs) * delay)
     };
     let direct_split = scene.split(direct_from, direct_distance);
     let whole = part.index == 0;
-    let mut total: Vec<Complex64> = (0..=half).map(|k| if whole { heard(&direct_split, k) } else { Complex64::new(0.0, 0.0) }).collect();
+    let mut total: Vec<Vec<Complex64>> =
+        (0..scene.capsules()).map(|capsule| (0..=half).map(|k| if whole { heard(&direct_split, capsule, k) } else { Complex64::new(0.0, 0.0) }).collect()).collect();
     let reflection: Vec<Vec<Complex64>> = scene.surfaces.iter().map(|s| minimum_phase(&s.reflection, n, fs, &mut fft)).collect();
     let j = Complex64::new(0.0, 1.0);
 
@@ -149,6 +161,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex
     for (_, index, also, h) in &groups {
         let surface = &scene.surfaces[*index];
         for (set, factor) in factors.iter().enumerate().take(h.sets()) {
+            let total = &mut total[scene.capsule_of(set)];
             let mut packed: Vec<Complex64> = h.list(set, RIGID_FAR).zip(h.list(set, SOFT_FAR)).map(|(a, b)| Complex64::new(a, b)).collect();
             let mut near: Vec<Complex64> = h.list(set, RIGID_NEAR).zip(h.list(set, SOFT_NEAR)).map(|(a, b)| Complex64::new(a, b)).collect();
             packed.resize(n_fine, Complex64::new(0.0, 0.0));
@@ -183,14 +196,16 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Complex
         let path_split = scene.split(path.from, path.distance);
         for k in 0..=half {
             let omega = angular_frequency(k, n, fs);
-            let mut gain = heard(&path_split, k) * (strength * path.gain) * Complex64::from_polar(1.0, -omega * path.delay_seconds);
+            let mut gain = Complex64::from_polar(strength * path.gain, -omega * path.delay_seconds);
             for r in &path.reflections {
                 let cutoff = 2.0 * PI * r.cutoff_hz;
                 let grating = scene.surfaces[r.surface].pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
                 let rough = (-2.0 * (omega / c * r.rough_metres).powi(2)).exp();
                 gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff) * (grating * rough);
             }
-            total[k] += gain;
+            for (capsule, spectrum) in total.iter_mut().enumerate() {
+                spectrum[k] += heard(&path_split, capsule, k) * gain;
+            }
         }
     }
     total

@@ -774,3 +774,28 @@ fn parts_sum_to_the_whole_spectrum() {
         assert!(worst < 1e-12 * peak, "{count} parts: {worst}");
     }
 }
+
+#[test]
+fn a_coincident_pair_hears_what_its_capsules_hear_alone() {
+    use neartect_core::filter::near_spectra_part;
+    use neartect_core::kirchhoff::Part;
+    let length = 2048;
+    let wall = relieved(surface(rectangle([0.0, -0.4, 1.0], [1.5, 0.0, 0.0], [0.0, 0.0, 1.0]), RIGID), [2.0, 0.03, 0.15, 0.0, 0.0, 0.0, 0.05, 0.0]);
+    let base = from_point(vec![floor(2.0), wall], [0.1, 0.0, 0.6], [0.4, 0.9, 0.8], length, 3);
+    let patterns = [0.5, 0.0];
+    let facings = [normalize([0.7, 0.7, 0.0]), normalize([-0.7, 0.7, 0.0])];
+    let mut piped = base.clone();
+    piped.microphone = [0.0, 0.3, 0.6];
+    piped.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.6], mouth_b: [0.0, 1.0, 0.6], radius: 0.05 });
+    for base in [base, piped] {
+        let mut pair = base.clone();
+        pair.listener = Listener::Pair { patterns, facings };
+        let together = near_spectra_part(&pair, Part::WHOLE);
+        for capsule in 0..2 {
+            let alone = near_spectrum(&aimed(base.clone(), patterns[capsule], facings[capsule]));
+            let worst = together[capsule].iter().zip(&alone).map(|(a, b)| (a - b).norm()).fold(0.0, f64::max);
+            let peak = alone.iter().map(|x| x.norm()).fold(0.0, f64::max);
+            assert!(worst < 1e-12 * peak, "capsule {capsule}: {worst}");
+        }
+    }
+}

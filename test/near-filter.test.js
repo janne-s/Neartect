@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nearFilter, packSpace, listeners, alignment, SETTING_NAMES } from '../src/domain/near-filter.js';
+import { alignment, channelJobs, listeners, nearFilter, packSpace, SETTING_NAMES } from '../src/domain/near-filter.js';
 import { loadCore } from '../src/domain/core.js';
-import { defaultSpace, readSpace } from '../src/domain/space.js';
+import { defaultRig, defaultSpace, readSpace } from '../src/domain/space.js';
 
 function magnitudeAt(samples, sampleRate, hz) {
   let re = 0;
@@ -205,4 +205,13 @@ test('the settings record names every field the core reads, in its order', async
   const { settings } = packSpace(space, list[0], alignment(space, list.map(l => l.position))[0], 0);
   assert.equal(settings.length, SETTING_NAMES.length);
   assert.ok(settings.every(Number.isFinite));
+});
+
+test('coincident layouts share one job and spaced ones do not', () => {
+  const jobs = kind => channelJobs(readSpace({ ...defaultSpace(), microphones: [], rigs: [defaultRig(kind, { position: [0, 0, 1] })] })).map(job => job.channels);
+  assert.deepEqual(jobs('xy'), [2]);
+  assert.deepEqual(jobs('blumlein'), [2]);
+  assert.deepEqual(jobs('ms'), [2]);
+  assert.deepEqual(jobs('ortf'), [1, 1]);
+  assert.deepEqual(jobs('binaural'), [1, 1]);
 });

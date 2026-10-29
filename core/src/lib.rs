@@ -23,9 +23,10 @@ pub const RELIEF_VALUES: usize = 13;
 // The settings record, by name. A pipe radius of 0 means no pipe; the
 // pattern runs from 1 (omni) to 0 (figure of eight); `facing` is an ear's
 // outward axis; the listener kind is 0 for a microphone, 1 for an ear on the
-// spherical head, and 2 for an ear on the measured head, which also takes
-// the head's front and up.
-pub const SETTINGS: [&str; 37] = [
+// spherical head, 2 for an ear on the measured head, which also takes the
+// head's front and up, and 3 for a pair of capsules at one point, the second
+// with its own pattern and facing.
+pub const SETTINGS: [&str; 41] = [
     "sampleRateHz",
     "speedOfSoundMetresPerSecond",
     "lengthSamples",
@@ -63,6 +64,10 @@ pub const SETTINGS: [&str; 37] = [
     "headUpX",
     "headUpY",
     "headUpZ",
+    "secondPattern",
+    "secondFacingX",
+    "secondFacingY",
+    "secondFacingZ",
 ];
 const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
 const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
@@ -114,6 +119,7 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         delay_seconds: get("delaySeconds"),
         pipe: (get("pipeRadiusMetres") > 0.0).then(|| pipe::PipeInside { radius: get("pipeRadiusMetres"), mouth_a: vector("pipeMouthA"), mouth_b: vector("pipeMouthB") }),
         listener: match get("listenerKind").round() as i64 {
+            3 => scene::Listener::Pair { patterns: [get("pattern"), get("secondPattern")], facings: [normalize(vector("facing")), normalize(vector("secondFacing"))] },
             2 => scene::Listener::MeasuredEar { front: normalize(vector("headFront")), outward: normalize(vector("facing")), up: normalize(vector("headUp")) },
             1 => scene::Listener::Ear { axis: normalize(vector("facing")), radius: get("headRadiusMetres") },
             _ => scene::Listener::Microphone { pattern: get("pattern"), facing: normalize(vector("facing")) },
@@ -146,33 +152,36 @@ fn surface_relief(polygon: &Polygon, v: &[f64]) -> relief::Relief {
     relief::Relief::new(v[0], v[1], v[2], [dot(along, polygon.u), dot(along, polygon.v)], [dot(from_anchor, along), dot(from_anchor, across)], v[9], v[10], v[11], v[12])
 }
 
-// One part's share of the near spectrum, as interleaved real and imaginary
-// parts of the bins from 0 to half the FFT length.
+// One part's share of each capsule's near spectrum, one after the other, as
+// interleaved real and imaginary parts of the bins from 0 to half the FFT
+// length.
 #[wasm_bindgen(js_name = nearSpectrumPart)]
 pub fn near_spectrum_part(settings: &[f64], surfaces: &[f64], part: usize, parts: usize) -> Result<Vec<f64>, JsError> {
     let scene = read_scene(settings, surfaces).map_err(|e| JsError::new(&e))?;
     if part >= parts {
         return Err(JsError::new("part out of range"));
     }
-    let spectrum = filter::near_spectrum_part(&scene, kirchhoff::Part { index: part, count: parts });
-    Ok(spectrum.iter().flat_map(|x| [x.re, x.im]).collect())
+    let spectra = filter::near_spectra_part(&scene, kirchhoff::Part { index: part, count: parts });
+    Ok(spectra.iter().flatten().flat_map(|x| [x.re, x.im]).collect())
 }
 
-// The filter from all parts' spectra, summed in their order.
+// The filter of each capsule, one after the other, from all parts' spectra
+// summed in their order.
 #[wasm_bindgen(js_name = nearFilterFromParts)]
 pub fn near_filter_from_parts(settings: &[f64], spectra: &[f64]) -> Result<Vec<f32>, JsError> {
     let scene = read_scene(settings, &[]).map_err(|e| JsError::new(&e))?;
-    let size = 2 * filter::half_length(&scene);
+    let half = filter::half_length(&scene);
+    let size = 2 * half * scene.capsules();
     if spectra.is_empty() || !spectra.len().is_multiple_of(size) {
         return Err(JsError::new("spectra do not match the filter length"));
     }
-    let mut sum = vec![rustfft::num_complex::Complex64::new(0.0, 0.0); size / 2];
+    let mut sum = vec![rustfft::num_complex::Complex64::new(0.0, 0.0); half * scene.capsules()];
     for part in spectra.chunks(size) {
         for (value, pair) in sum.iter_mut().zip(part.chunks(2)) {
             *value += rustfft::num_complex::Complex64::new(pair[0], pair[1]);
         }
     }
-    Ok(filter::filter_from_spectrum(&scene, &sum))
+    Ok(sum.chunks(half).flat_map(|spectrum| filter::filter_from_spectrum(&scene, spectrum)).collect())
 }
 
 #[wasm_bindgen(js_name = settingNames)]

@@ -123,6 +123,7 @@ struct Context<'a> {
     elements: usize,
     part: Part,
     traversal: usize,
+    gradients: Vec<(usize, f64, V3)>,
 }
 
 fn element_size(distance: f64) -> f64 {
@@ -225,6 +226,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<u
         elements: 0,
         part,
         traversal,
+        gradients: scene.gradients(),
     };
     let (lo, hi) = context.domain.bounds();
     let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]);
@@ -405,14 +407,12 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     // dipole field exactly: the radial part takes 2/(jkR) where a spherical
     // wave takes 1/(jkR), and the field across the radius adds
     // (n·f − (n·u)(u·f)) (1 + 1/(jkR)) / R².
-    if let crate::scene::Listener::Microphone { pattern, facing } = scene.listener {
-        if pattern < 1.0 {
-            let toward_facing = -dot(direction, facing);
-            let across = (dot(tilted, facing) + cos_scatter * toward_facing) * area / (2.0 * PI * distance * distance);
-            let radial = toward_facing * rigid_near;
-            values[1][RIGID_FAR] = (1.0 - pattern) * (radial + across);
-            values[1][RIGID_NEAR] = (1.0 - pattern) * (2.0 * radial + across) / distance;
-        }
+    for &(set, pattern, facing) in &context.gradients {
+        let toward_facing = -dot(direction, facing);
+        let across = (dot(tilted, facing) + cos_scatter * toward_facing) * area / (2.0 * PI * distance * distance);
+        let radial = toward_facing * rigid_near;
+        values[set][RIGID_FAR] = (1.0 - pattern) * (radial + across);
+        values[set][RIGID_NEAR] = (1.0 - pattern) * (2.0 * radial + across) / distance;
     }
     let towards = incident.towards_source;
     let gradient = scale([-towards[0] - direction[0], -towards[1] - direction[1], -towards[2] - direction[2]], size * context.rate / c);

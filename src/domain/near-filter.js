@@ -19,7 +19,8 @@ export const SETTING_NAMES = Object.freeze([
   'pattern', 'facingX', 'facingY', 'facingZ',
   'listenerKind', 'headRadiusMetres',
   'reliefDetail', 'elementLimit',
-  'headFrontX', 'headFrontY', 'headFrontZ', 'headUpX', 'headUpY', 'headUpZ'
+  'headFrontX', 'headFrontY', 'headFrontZ', 'headUpX', 'headUpY', 'headUpZ',
+  'secondPattern', 'secondFacingX', 'secondFacingY', 'secondFacingZ'
 ]);
 
 const vector = (name, v) => ({ [`${name}X`]: v[0], [`${name}Y`]: v[1], [`${name}Z`]: v[2] });
@@ -64,7 +65,7 @@ export function alignment(space, positions) {
   return lead.map(l => ({ delaySeconds: (first - l) / c, gain: 1 }));
 }
 
-export function packSpace(space, listener, aligned, longest) {
+export function packSpace(space, listener, aligned, longest, second = null) {
   const microphone = listener.position;
   const pipe = pipeAround(space, microphone);
   const point = space.source.kind === 'point';
@@ -85,12 +86,14 @@ export function packSpace(space, listener, aligned, longest) {
     ...vector('pipeMouthB', pipe ? pipe.mouthB : [0, 0, 0]),
     pattern: listener.ear ? 1 : PATTERNS[listener.pattern],
     ...vector('facing', listener.ear ? listener.ear.axis : listener.facing),
-    listenerKind: listener.ear ? (listener.ear.head === 'measured' ? 2 : 1) : 0,
+    listenerKind: second ? 3 : listener.ear ? (listener.ear.head === 'measured' ? 2 : 1) : 0,
     headRadiusMetres: listener.ear ? listener.ear.radius : 0,
     reliefDetail: space.render.quality.reliefDetail,
     elementLimit: space.render.quality.elementLimit,
     ...vector('headFront', listener.ear?.front ?? [0, 1, 0]),
-    ...vector('headUp', listener.ear?.up ?? [0, 0, 1])
+    ...vector('headUp', listener.ear?.up ?? [0, 0, 1]),
+    secondPattern: second ? PATTERNS[second.pattern] : 1,
+    ...vector('secondFacing', second ? second.facing : [0, 1, 0])
   };
   const settings = Float64Array.from(SETTING_NAMES, name => values[name]);
   const surfaces = space.objects.filter(object => object !== pipe?.object).flatMap(expandObject);
@@ -118,16 +121,25 @@ const MEASURED_HEAD_PARTS = 4;
 
 const hasRelief = object => object.strength > 0 && ((object.relief.shape !== 'flat' && object.relief.heightMetres > 0) || object.relief.roughMetres > 0);
 
+// Two microphones at one point, as in XY, Blumlein, and mid-side, share one
+// job: the core traces the geometry once and returns both channels.
+const coincident = (a, b) => b && !a.ear && !b.ear && a.position.every((v, i) => v === b.position[i]);
+
 export function channelJobs(space) {
   const list = listeners(space);
   const aligned = alignment(space, list.map(l => l.position));
   const longest = Math.max(...aligned.map(a => a.delaySeconds));
-  return list.map((listener, index) => {
-    const packed = packSpace(space, listener, aligned[index], longest);
+  const jobs = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const listener = list[index];
+    const second = coincident(listener, list[index + 1]) ? list[index + 1] : null;
+    const packed = packSpace(space, listener, aligned[index], longest, second);
     const split = !pipeAround(space, listener.position) && space.objects.some(hasRelief);
     const parts = !split ? 1 : listener.ear?.head === 'measured' ? MEASURED_HEAD_PARTS : RELIEF_PARTS;
-    return { ...packed, parts };
-  });
+    jobs.push({ ...packed, parts, channels: second ? 2 : 1 });
+    if (second) index += 1;
+  }
+  return jobs;
 }
 
 export function runJob(core, job) {
@@ -140,12 +152,15 @@ export function runJob(core, job) {
 // parts' spectra) and may run them anywhere; the parts are summed in order.
 export async function computeFilter(space, run) {
   const list = listeners(space);
-  const channels = await Promise.all(channelJobs(space).map(async ({ settings, surfaces, parts }) => {
+  const jobs = await Promise.all(channelJobs(space).map(async ({ settings, surfaces, parts, channels: count }) => {
     const spectra = await Promise.all(Array.from({ length: parts }, (_, part) => run({ settings, surfaces, part, parts })));
     const joined = new Float64Array(spectra.reduce((sum, s) => sum + s.length, 0));
     spectra.reduce((at, s) => { joined.set(s, at); return at + s.length; }, 0);
-    return run({ settings, spectra: joined });
+    const filters = await run({ settings, spectra: joined });
+    const length = filters.length / count;
+    return Array.from({ length: count }, (_, channel) => filters.slice(channel * length, (channel + 1) * length));
   }));
+  const channels = jobs.flat();
   return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan) };
 }
 
