@@ -1,0 +1,26 @@
+import { MATERIALS } from './materials.js';
+
+const ORDER = ['A', 'B', 'C'];
+const worst = classes => classes.reduce((a, b) => (ORDER.indexOf(b) > ORDER.indexOf(a) ? b : a), 'A');
+
+// The reliability class of each component a space uses, written into every
+// saved document and recomputed on save; the reader drops it.
+export function reliabilityOf(space) {
+  const objects = space.objects.filter(o => o.strength > 0);
+  const components = { specularReflection: 'A' };
+  if (objects.length) {
+    components.materials = worst(objects.map(o => MATERIALS[o.material]?.reliability ?? 'B'));
+    components.finiteSize = 'B';
+  }
+  if (objects.some(o => o.relief && (o.relief.shape !== 'flat' || o.relief.roughMetres > 0))) components.relief = 'B';
+  if (objects.some(o => o.kind === 'grating')) components.gratingLowFrequency = 'C';
+  if (objects.some(o => o.kind === 'pipe')) components.pipeInterior = 'B';
+  if (space.objects.some(o => o.strength !== 1)) components.strength = 'C';
+  if (space.microphones.some(m => m.pattern !== 'omni') || space.rigs.length) components.pickup = 'A';
+  if (space.rigs.some(r => r.kind === 'binaural')) components.head = 'B';
+  return { lowest: worst(Object.values(components)), components };
+}
+
+export function withReliability(space) {
+  return { ...space, reliability: reliabilityOf(space) };
+}

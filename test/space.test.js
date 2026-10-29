@@ -104,3 +104,14 @@ test('a head reads its model, measured by default, and other layouts carry none'
   const space = readSpace({ kind: 'neartect.space', rigs: [{ kind: 'binaural' }, { kind: 'binaural', head: 'sphere' }, { kind: 'binaural', head: 'wax' }, { kind: 'xy', head: 'sphere' }] });
   assert.deepEqual(space.rigs.map(r => r.head), ['measured', 'sphere', 'measured', undefined]);
 });
+
+test('a saved space states its classes, with strength other than 1 as C, and reads back without them', async () => {
+  const { withReliability } = await import('../src/domain/reliability.js');
+  const space = readSpace({ kind: 'neartect.space', objects: [{ kind: 'plane', material: 'rigid' }] });
+  assert.equal(withReliability(space).reliability.lowest, 'B');
+  space.objects[0].strength = 1.5;
+  const saved = withReliability(space);
+  assert.equal(saved.reliability.components.strength, 'C');
+  assert.equal(saved.reliability.lowest, 'C');
+  assert.equal(readSpace(JSON.parse(JSON.stringify(saved))).reliability, undefined);
+});

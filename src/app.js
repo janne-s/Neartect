@@ -14,6 +14,7 @@ import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
 import { listeners } from './domain/near-filter.js';
+import { withReliability } from './domain/reliability.js';
 
 const STORAGE_KEY = 'neartect.space';
 const PREFERENCES_KEY = 'neartect.preferences';
@@ -986,7 +987,7 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-$('save').addEventListener('click', () => download('neartect-space.json', new Blob([`${JSON.stringify(state.space, null, 2)}\n`], { type: 'application/json' })));
+$('save').addEventListener('click', () => download('neartect-space.json', new Blob([`${JSON.stringify(withReliability(state.space), null, 2)}\n`], { type: 'application/json' })));
 $('open').addEventListener('click', () => $('open-file').click());
 $('open-file').addEventListener('change', async () => {
   const file = $('open-file').files[0];
