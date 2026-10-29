@@ -118,6 +118,21 @@ fn small_panel_loses_its_bass_reflection() {
 }
 
 #[test]
+fn image_design_frequency_follows_a_small_panels_kirchhoff_slope() {
+    let length = 8192;
+    for (half, height, degrees) in [(0.15, 0.5, 0.0), (0.5, 1.0, 0.0), (0.15, 0.5, 45.0)] {
+        let angle = f64::to_radians(degrees);
+        let panel = surface(rectangle([0.0, 0.0, 0.0], [half, 0.0, 0.0], [0.0, half, 0.0]), RIGID);
+        let h = near_spectrum(&scene(vec![panel], [0.0, 0.0, height], [angle.sin(), 0.0, angle.cos()], length, 1));
+        let to_microphone = height / angle.cos();
+        let design = neartect_core::images::design_frequency(C, 2.0 * to_microphone, (2.0 * half).powi(2), angle.cos());
+        let hz = design / 4.0;
+        let reflected = (at(&h, length, hz) - Complex64::new(1.0, 0.0)).norm();
+        assert!((reflected / 0.25 - 1.0).abs() < 0.1, "{half} {height} {degrees}: {reflected}");
+    }
+}
+
+#[test]
 fn diffuse_incidence_at_a_wall_is_3_db_above_the_room_average() {
     let length = 2048;
     let mut energy = 0.0;

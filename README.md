@@ -90,8 +90,9 @@ continuation of joined edges at other than right angles, and the strength
 control class C. The pipe interior is class B below its first cross mode. Not modelled: the
 microphone capsule's own size, a smooth change at a pipe mouth (the model
 switches from outside to inside there), cross modes in wide pipes, room modes
-of closed small spaces, edge diffraction into the shadow beyond the Kirchhoff
-approximation, angle-dependent absorption, and surface vibration.
+of closed small spaces, edge diffraction beyond the Kirchhoff
+approximation (into the shadow, and the bass of a panel small against the
+wavelength with the microphone close to it, which the model overstates), angle-dependent absorption, and surface vibration.
 
 ## Development
 

@@ -1,8 +1,10 @@
 // Specular paths of order two and above for a plane-wave arrival or a point
 // source (its images; Allen and Berkley 1979), with validity and visibility
-// checks (Borish 1984). Each reflection takes a
-// finite-size high-pass at Rindel's design frequency, class B pending the
-// original text.
+// checks (Borish 1984). Each reflection takes a first-order high-pass at the
+// finite-size design frequency f = c a* / (2 S cos θ), a* = 2 a1 a2 / (a1 + a2)
+// (Rindel 1986, in the area form of Archives of Acoustics 39(4), 2014): its
+// asymptote is the Kirchhoff sum of a panel small against the wavelength
+// (class A there); the transition is class B.
 
 use crate::geom::{add, dot, norm, scale, sub, V3};
 use crate::scene::Scene;
@@ -141,6 +143,10 @@ fn trace_plane(scene: &Scene, sequence: &[usize]) -> Option<Path> {
     Some(Path { delay_seconds, gain: 1.0, from, distance: f64::INFINITY, reflections: rindel(scene, sequence, &hits, None) })
 }
 
+pub fn design_frequency(speed_of_sound: f64, characteristic_metres: f64, area: f64, cos_incidence: f64) -> f64 {
+    speed_of_sound * characteristic_metres / (2.0 * area * cos_incidence.max(1e-3))
+}
+
 fn rindel(scene: &Scene, sequence: &[usize], hits: &[(V3, f64, f64)], source: Option<V3>) -> Vec<Reflection> {
     let c = scene.speed_of_sound;
     sequence
@@ -159,7 +165,7 @@ fn rindel(scene: &Scene, sequence: &[usize], hits: &[(V3, f64, f64)], source: Op
                 2.0 * to_source * to_microphone / (to_source + to_microphone)
             };
             let area = scene.surfaces[i].pattern.solid_area(scene.surfaces[i].polygon.area);
-            let cutoff_hz = c * characteristic / (2.0 * area * cos_incidence.max(1e-3).powi(2));
+            let cutoff_hz = design_frequency(c, characteristic, area, cos_incidence);
             let rough_metres = scene.surfaces[i].relief.rms() * cos_incidence;
             Reflection { surface: i, cutoff_hz, rough_metres }
         })
