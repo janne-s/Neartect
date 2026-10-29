@@ -5,6 +5,9 @@ use crate::spectrum::BAND_COUNT;
 use rustfft::num_complex::Complex64;
 
 const NEAREST_SOURCE_METRES: f64 = 1e-3;
+// A point microphone closer to a surface than this hears from this gap on the
+// sound's side: on the surface itself the gradient's near field is singular.
+pub const SMALLEST_GAP_METRES: f64 = 1e-4;
 
 #[derive(Clone)]
 pub struct Surface {
@@ -203,6 +206,20 @@ impl Scene {
 
     pub fn relief_area(&self) -> f64 {
         self.surfaces.iter().filter(|s| !s.relief.is_flat() && s.strength > 0.0).map(|s| s.polygon.area).sum()
+    }
+
+    pub fn off_surfaces(&self) -> Scene {
+        let mut scene = self.clone();
+        for surface in &self.surfaces {
+            let polygon = &surface.polygon;
+            let gap = polygon.signed_distance(scene.microphone);
+            if gap.abs() >= SMALLEST_GAP_METRES || !polygon.contains(polygon.to_plane(scene.microphone)) {
+                continue;
+            }
+            let side = if gap != 0.0 { gap.signum() } else if self.source_side(polygon) < 0.0 { -1.0 } else { 1.0 };
+            scene.microphone = crate::geom::add(scene.microphone, crate::geom::scale(polygon.normal, side * SMALLEST_GAP_METRES - gap));
+        }
+        scene
     }
 
     pub fn polygons(&self) -> Vec<&Polygon> {

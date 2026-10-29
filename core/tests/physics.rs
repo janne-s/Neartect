@@ -691,3 +691,15 @@ fn wide_pipe_has_cross_modes_off_axis_above_the_first_cutoff_only() {
     assert!(difference(1.2 * cutoff, 3.0 * cutoff) > 0.2, "above {}", difference(1.2 * cutoff, 3.0 * cutoff));
     assert!(on_axis.iter().chain(&off_axis).all(|x| x.re.is_finite() && x.im.is_finite()));
 }
+
+#[test]
+fn cardioid_on_or_a_hair_from_a_wall_stays_bounded() {
+    let length = 2048;
+    for gap in [0.0, 1e-5, 1e-4, 1e-3] {
+        let s = aimed(scene(vec![floor(2.0)], [0.0, 0.0, gap], [0.3, 0.0, 1.0], length, 2), 0.5, [1.0, 0.0, 0.0]);
+        let h = near_filter(&s);
+        let peak = h.iter().fold(0.0_f32, |m, x| m.max(x.abs()));
+        let late = h[length / 2..].iter().fold(0.0_f32, |m, x| m.max(x.abs()));
+        assert!(peak < 3.0 && late < 0.01, "gap {gap}: peak {peak} late {late}");
+    }
+}

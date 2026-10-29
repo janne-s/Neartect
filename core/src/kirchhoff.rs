@@ -11,13 +11,13 @@ use crate::scene::Scene;
 use std::f64::consts::PI;
 
 pub const OVERSAMPLING: usize = 2;
-const SHORTEST_ELEMENT_METRES: f64 = 0.25e-3;
+const SHORTEST_ELEMENT_METRES: f64 = 2e-6;
 const LONGEST_ELEMENT_METRES: f64 = 0.5;
 const ELEMENT_PER_DISTANCE: f64 = 1.0 / 12.0;
 const CURVATURE_LENGTH_METRES: f64 = 0.016;
 const SHORTEST_EDGE_ELEMENT_METRES: f64 = 2e-3;
 const EDGE_ELEMENT_PER_DISTANCE: f64 = 1.0 / 50.0;
-const NEAREST_DISTANCE_METRES: f64 = 0.5e-3;
+const NEAREST_DISTANCE_METRES: f64 = 2e-5;
 const MOST_SUBPOINTS: usize = 16;
 const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;

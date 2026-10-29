@@ -16,6 +16,7 @@ pub fn spectrum_size(length: usize) -> usize {
 }
 
 pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
+    let scene = &scene.off_surfaces();
     let mut spectrum = match scene.pipe {
         Some(pipe) => inside_pipe(scene, pipe),
         None => outside_spectrum(scene),
