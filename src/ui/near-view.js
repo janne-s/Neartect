@@ -1,6 +1,6 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector } from '../domain/space.js';
-import { expandObject, objectBounds, objectFrame, referenceObject, toWorld } from '../domain/objects.js';
+import { expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
 import { nearestSurface } from '../domain/placement.js';
 
 const FIELD_OF_VIEW = 0.9;
@@ -55,7 +55,7 @@ function insidePolygon([x, y], corners) {
   return inside;
 }
 
-export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurfaces = () => false }) {
+export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false }) {
   const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
@@ -65,6 +65,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   let size = { width: 1, height: 1 };
   let drag = null;
   let readout = null;
+  let areaArmed = false;
 
   function basis() {
     const forward = [Math.cos(camera.pitch) * Math.sin(camera.yaw), Math.cos(camera.pitch) * Math.cos(camera.yaw), -Math.sin(camera.pitch)];
@@ -125,7 +126,46 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     return list;
   }
 
-  const isSelected = item => selection?.type === item.type && (item.type === 'source' || selection.id === item.id);
+  const grouped = () => (selection?.type === 'group' ? selection : null);
+  const inGroup = key => Boolean(grouped()?.points.includes(key));
+  const objectInGroup = id => Boolean(grouped()?.objects.includes(id));
+  const isSelected = item => (selection?.type === item.type && (item.type === 'source' || selection.id === item.id)) || inGroup(item.key);
+  const itemKey = item => (item.type === 'source' ? 'source' : item.type === 'microphone' ? `microphone:${item.id}` : null);
+
+  // A group moves and turns as one; points bound to an object in the group
+  // follow it, other points keep their own binding at their new place.
+  function groupCentre() {
+    const group = grouped();
+    const places = [
+      ...space.objects.filter(o => group.objects.includes(o.id)).map(objectCentre),
+      ...points().filter(item => group.points.includes(item.key)).map(item => item.point.position)
+    ];
+    if (!places.length) return null;
+    return [0, 1, 2].map(i => places.reduce((sum, p) => sum + p[i], 0) / places.length);
+  }
+
+  function groupSnapshot() {
+    const group = grouped();
+    return {
+      objects: space.objects.filter(o => group.objects.includes(o.id)).map(o => ({ id: o.id, position: [...o.position], yawDegrees: o.yawDegrees })),
+      points: points().filter(item => group.points.includes(item.key)).map(item => ({ key: item.key, position: [...pointPosition(space, item.point)] }))
+    };
+  }
+
+  function moveGroup(next, snapshot, map, yawDelta) {
+    const ids = new Set(snapshot.objects.map(o => o.id));
+    for (const o of snapshot.objects) {
+      const object = next.objects.find(x => x.id === o.id);
+      if (!object) continue;
+      object.position = map(o.position);
+      object.yawDegrees = wrap(o.yawDegrees + yawDelta);
+    }
+    for (const p of snapshot.points) {
+      const point = findPoint(next, p.key);
+      if (!point || ids.has(point.reference)) continue;
+      placePointAt(next, point, map(p.position));
+    }
+  }
   const findPoint = (next, key) => (key === 'source' ? next.source : next.microphones.find(m => `microphone:${m.id}` === key));
 
   function listeningCentre() {
@@ -145,8 +185,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     faces.sort((a, b) => b.depth - a.depth);
     const active = activeObjectId();
     for (const { object, face, corners } of faces) {
-      const highlighted = object.id === active || (hover?.type === 'object' && hover.id === object.id);
-      const dim = focusing() && object.id !== active ? DIMMED : 1;
+      const member = object.id === active || objectInGroup(object.id);
+      const highlighted = member || (hover?.type === 'object' && hover.id === object.id);
+      const dim = focusing() && !member ? DIMMED : 1;
       context.globalAlpha = (object.strength > 0 ? 1 : 0.4) * dim;
       context.beginPath();
       corners.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
@@ -161,7 +202,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
         context.fill('evenodd');
       }
       context.strokeStyle = highlighted ? colors.accent : edge;
-      context.lineWidth = object.id === active ? 2 : 1;
+      context.lineWidth = member ? 2 : 1;
       context.stroke();
       context.lineWidth = 1;
       if (face.pattern.kind === 'grid') drawBars(context, face, highlighted ? colors.accent : edge);
@@ -354,7 +395,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
       context.globalAlpha = 1;
     }
 
-    const selectedPoint = points().find(isSelected);
+    const selectedPoint = grouped() ? null : points().find(isSelected);
     for (const item of points()) {
       const p = project(item.point.position);
       if (!p) continue;
@@ -404,6 +445,36 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
       rotationHandles(context, colors, object, centre);
       sizeHandles(context, colors, object);
       moveHandles(context, colors, centre, 'object');
+    }
+
+    if (grouped()) {
+      const centre = groupCentre();
+      if (centre) {
+        const radius = pixelsToMetres(RING_PIXELS, centre);
+        const ring = { id: 'ring-group', type: 'ring', which: 'yaw', group: true, points: ringPoints(centre, [1, 0, 0], [0, 1, 0], radius) };
+        if (!ring.points.some(p => !p)) {
+          context.strokeStyle = isHot(ring) ? colors.accent : colors.muted;
+          context.lineWidth = isHot(ring) ? 2 : 1;
+          context.beginPath();
+          ring.points.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
+          context.stroke();
+          context.lineWidth = 1;
+          handles.push(ring);
+        }
+        moveHandles(context, colors, centre, 'group');
+      }
+      const count = grouped().objects.length + grouped().points.length;
+      context.fillStyle = colors.accent;
+      context.font = '11px system-ui, sans-serif';
+      context.fillText(`▣ ${count}`, 70, size.height - 10);
+    }
+
+    if (drag?.marquee) {
+      const [a, b] = [drag.from, drag.to];
+      context.strokeStyle = colors.accent;
+      context.setLineDash([4, 3]);
+      context.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
+      context.setLineDash([]);
     }
 
     if (readout) {
@@ -479,6 +550,18 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   }
 
   function startDrag(handle, point) {
+    if (handle.target === 'group' || handle.group) {
+      const centre = groupCentre();
+      const start = { point };
+      if (handle.type === 'move') {
+        start.axis = handle.vector;
+        start.screen = screenAxis(centre, handle.vector);
+      } else {
+        const p = planePoint(centre, [0, 0, 1], point);
+        start.angle = p ? degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) : 0;
+      }
+      return { handle, snapshot: groupSnapshot(), centre, start, group: true };
+    }
     const object = space.objects.find(o => o.id === activeObjectId());
     const bound = handle.target !== 'object' && handle.type === 'move' ? findPoint(space, handle.target) : null;
     const snapshot = JSON.parse(JSON.stringify(bound ?? (handle.type === 'arrival' ? { arrival: space.arrival } : object)));
@@ -542,6 +625,26 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   function dragTo(point, free) {
     const { handle, snapshot, centre, start } = drag;
     const step = gridSpacing() / SNAP_PER_GRID;
+    if (drag.group) {
+      if (handle.type === 'move') {
+        const delta = snap(alongAxis(start, point), step, free);
+        readout = { x: point[0], y: point[1], text: `${AXIS_NAMES[handle.axis]} ${delta >= 0 ? '+' : '−'}${formatGap(Math.abs(delta))}` };
+        onEdit(next => moveGroup(next, snapshot, p => add(p, scale(handle.vector, delta)), 0));
+      } else {
+        const p = planePoint(centre, [0, 0, 1], point);
+        if (!p) return;
+        const turn = snap(degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) - start.angle, ANGLE_SNAP_DEGREES, free);
+        const r = turn * Math.PI / 180;
+        const [cos, sin] = [Math.cos(r), Math.sin(r)];
+        readout = { x: point[0], y: point[1], text: `↻ ${Math.round(turn)}°` };
+        onEdit(next => moveGroup(next, snapshot, q => {
+          const dx = q[0] - centre[0];
+          const dy = q[1] - centre[1];
+          return [centre[0] + dx * cos + dy * sin, centre[1] - dx * sin + dy * cos, q[2]];
+        }, turn));
+      }
+      return;
+    }
     if (handle.type === 'move' && drag.bound && snapshot.reference) {
       const value = snap(snapshot.offset[handle.axis] + alongAxis(start, point), step, free);
       readout = { x: point[0], y: point[1], text: `${OFFSET_NAMES[handle.axis]} ${formatGap(value)}` };
@@ -602,6 +705,44 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     return add(microphone, scale(arrivalVector(space.arrival), pixelsToMetres(ARROW_PIXELS * 1.6, microphone)));
   }
 
+  function asGroup(current) {
+    if (!current) return { type: 'group', objects: [], points: [] };
+    if (current.type === 'group') return { type: 'group', objects: [...current.objects], points: [...current.points] };
+    if (current.type === 'object') return { type: 'group', objects: [current.id], points: [] };
+    return { type: 'group', objects: [], points: [itemKey(current)] };
+  }
+
+  function simplified(group) {
+    const count = group.objects.length + group.points.length;
+    if (count === 0) return null;
+    if (count > 1) return group;
+    if (group.objects.length) return { type: 'object', id: group.objects[0] };
+    const key = group.points[0];
+    return key === 'source' ? { type: 'source' } : { type: 'microphone', id: key.slice('microphone:'.length) };
+  }
+
+  function toggled(item) {
+    if (!item) return selection;
+    const group = asGroup(selection);
+    const toggle = (list, value) => (list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
+    if (item.type === 'object') group.objects = toggle(group.objects, item.id);
+    else group.points = toggle(group.points, itemKey(item));
+    return simplified(group);
+  }
+
+  function areaSelection(a, b, adding) {
+    const [x0, x1] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
+    const [y0, y1] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
+    const inside = position => {
+      const p = project(position);
+      return Boolean(p) && p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1;
+    };
+    const group = adding ? asGroup(selection) : asGroup(null);
+    space.objects.forEach(o => { if (inside(objectCentre(o)) && !group.objects.includes(o.id)) group.objects.push(o.id); });
+    points().forEach(item => { if (inside(item.point.position) && !group.points.includes(item.key)) group.points.push(item.key); });
+    return simplified(group);
+  }
+
   const pointer = event => {
     const rect = canvas.getBoundingClientRect();
     return [event.clientX - rect.left, event.clientY - rect.top];
@@ -643,7 +784,11 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     if (handle) {
       drag = startDrag(handle, point);
       if (handle.type === 'arrival') drag.start.tail = arrivalTail();
-      if (handle.type !== 'arrival' && !drag.bound && selection?.id !== drag.objectId) onSelect({ type: 'object', id: drag.objectId });
+      if (handle.type !== 'arrival' && !drag.bound && !drag.group && selection?.id !== drag.objectId) onSelect({ type: 'object', id: drag.objectId });
+      return;
+    }
+    if (areaArmed && event.button === 0) {
+      drag = { marquee: true, from: point, to: point, moved: false };
       return;
     }
     drag = { orbit: true, pan: event.button !== 0 || event.shiftKey, x: event.clientX, y: event.clientY, yaw: camera.yaw, pitch: camera.pitch, target: [...camera.target], moved: false };
@@ -669,13 +814,19 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
       const key = value => JSON.stringify(value && { h: value.handle?.id, t: value.type, i: value.id });
       if (key(next) !== key(hover)) {
         hover = handle ? { ...(hover ?? {}), handle } : item;
-        canvas.style.cursor = handle ? 'pointer' : '';
+        canvas.style.cursor = handle ? 'pointer' : areaArmed ? 'crosshair' : '';
         draw();
       }
       return;
     }
     if (drag.handle) {
       dragTo(point, event.shiftKey);
+      return;
+    }
+    if (drag.marquee) {
+      drag.to = point;
+      drag.moved = true;
+      draw();
       return;
     }
     const dx = event.clientX - drag.x;
@@ -720,6 +871,11 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     if (drag?.handle) {
       readout = null;
       onCommit();
+    } else if (drag?.marquee) {
+      if (drag.moved) onSelect(areaSelection(drag.from, drag.to, event.shiftKey));
+      onAreaEnd();
+    } else if (drag && !drag.moved && event.shiftKey) {
+      onSelect(toggled(itemAt(pointer(event))));
     } else if (drag && !drag.moved) {
       onSelect(itemAt(pointer(event)));
     }
@@ -775,6 +931,10 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     centre(point) {
       camera.target = [...point];
       draw();
+    },
+    setAreaSelect(on) {
+      areaArmed = on;
+      canvas.style.cursor = on ? 'crosshair' : '';
     }
   };
 }

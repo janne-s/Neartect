@@ -162,6 +162,12 @@ export function referTo(space, point, id) {
   point.position = position;
 }
 
+export function placePointAt(space, point, position) {
+  const object = referenceObject(space, point);
+  if (object) point.offset = toLocal(object, position).map((v, i) => v - anchor(object)[i]);
+  point.position = position;
+}
+
 export function boundPoints(space) {
   return [...space.microphones, space.source];
 }

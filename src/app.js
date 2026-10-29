@@ -56,6 +56,7 @@ const view = createNearView($('near-view'), {
   onSelect: selection => select(selection),
   onEdit: apply => { apply(state.space); changed({ save: false }); },
   onCommit: () => changed({ panel: true }),
+  onAreaEnd: () => setAreaSelect(false),
   snapSurfaces: () => preferences.snapSurfaces
 });
 
@@ -144,6 +145,7 @@ function undo() {
   state.space = readSpace(JSON.parse(committed));
   if (state.selection?.type === 'object' && !state.space.objects.some(o => o.id === state.selection.id)) state.selection = null;
   if (state.selection?.type === 'microphone' && !state.space.microphones.some(m => m.id === state.selection.id)) state.selection = null;
+  if (state.selection?.type === 'group') state.selection = null;
   $('undo').disabled = !history.length;
   writeStored(STORAGE_KEY, state.space);
   view.update(state.space, state.selection);
@@ -242,7 +244,7 @@ const SIZE_LABELS = Object.freeze({
 function objectCard(container, object) {
   const selected = state.selection?.type === 'object' && state.selection.id === object.id;
   const card = element('div', 'card');
-  card.setAttribute('aria-selected', String(selected));
+  card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.objects?.includes(object.id))));
   const header = element('div', 'card-header');
   header.tabIndex = 0;
   header.setAttribute('role', 'button');
@@ -397,7 +399,7 @@ function pointControls(container, current, gapFallback) {
 function microphoneCard(container, microphone, index) {
   const selected = state.selection?.type === 'microphone' && state.selection.id === microphone.id;
   const card = element('div', 'card');
-  card.setAttribute('aria-selected', String(selected));
+  card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(`microphone:${microphone.id}`))));
   const header = element('div', 'card-header');
   header.tabIndex = 0;
   header.setAttribute('role', 'button');
@@ -430,6 +432,21 @@ function microphoneCard(container, microphone, index) {
   }
   container.append(card);
 }
+
+function removeGroup(group) {
+  group.objects.forEach(id => releaseObject(state.space, id));
+  state.space.objects = state.space.objects.filter(o => !group.objects.includes(o.id));
+  const keep = state.space.microphones.filter(m => !group.points.includes(`microphone:${m.id}`));
+  if (keep.length) state.space.microphones = keep;
+  state.selection = null;
+  changed({ panel: true });
+}
+
+function setAreaSelect(on) {
+  $('select-area').setAttribute('aria-pressed', String(on));
+  view.setAreaSelect(on);
+}
+$('select-area').addEventListener('click', () => setAreaSelect($('select-area').getAttribute('aria-pressed') !== 'true'));
 
 function removeMicrophone(id) {
   if (state.space.microphones.length <= 1) return;
@@ -581,11 +598,16 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     removeObject(state.selection.id);
   }
+  if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.type === 'group') {
+    event.preventDefault();
+    removeGroup(state.selection);
+  }
   if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.type === 'microphone') {
     event.preventDefault();
     removeMicrophone(state.selection.id);
   }
-  if (event.key === 'Escape' && state.selection) select(null);
+  if (event.key === 'Escape' && $('select-area').getAttribute('aria-pressed') === 'true') setAreaSelect(false);
+  else if (event.key === 'Escape' && state.selection) select(null);
 });
 
 async function signalSamples(sampleRate) {

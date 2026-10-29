@@ -81,3 +81,14 @@ test('removing an object releases the points bound to it', async () => {
   assert.equal(space.microphones[0].reference, null);
   assert.deepEqual(space.microphones[0].position, before);
 });
+
+test('a situation keeps the microphones and their spacing', async () => {
+  const { situationSpace } = await import('../src/domain/situations.js');
+  const space = readSpace({ kind: 'neartect.space', microphones: [{ position: [0, 0, 1] }, { position: [0.3, 0, 1] }, { position: [0.6, 0, 1] }], source: { kind: 'point', position: [0, 2, 1] } });
+  const next = situationSpace('corner', space);
+  assert.equal(next.microphones.length, 3);
+  const [a, b] = next.microphones.map(m => m.position);
+  assert.ok(Math.abs(b[0] - a[0] - 0.3) < 1e-9);
+  assert.equal(next.source.kind, 'point');
+  assert.ok(Math.abs(next.source.position[1] - a[1] - 2) < 1e-9);
+});

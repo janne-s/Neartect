@@ -40,7 +40,15 @@ export const SITUATIONS = Object.freeze({
   }
 });
 
+// A situation replaces the objects but keeps the microphones and the source:
+// the first microphone goes to the situation's place, the others and a point
+// source keep where they were relative to it, and all microphones are bound
+// to the situation's main object.
 export function situationSpace(id, current) {
   const { objects, microphone, arrival } = SITUATIONS[id];
-  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphones: [{ position: microphone }], arrival }, objects.length - 1);
+  const first = current.microphones[0].position;
+  const shift = microphone.map((v, i) => v - first[i]);
+  const moved = point => ({ ...point, reference: null, offset: [0, 0, 0], position: point.position.map((v, i) => v + shift[i]) });
+  const source = current.source.kind === 'point' ? moved(current.source) : { ...current.source, reference: null };
+  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphones: current.microphones.map(moved), source, arrival }, objects.length - 1);
 }

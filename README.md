@@ -31,6 +31,12 @@ WebAssembly and heard live through a crossfading convolver.
   to the grid and to 5°, and Shift moves freely; the magnet snaps an object's sides to other objects.
   Everything else dims while you work. Exact values sit in Details,
   and Undo steps back.
+- **Selecting several** — arm the area tool and drag a rectangle, or
+  Shift-click to add or remove one. The selection moves along east, north,
+  and up and turns on its ring as one; microphones bound to a selected object
+  follow it. Delete removes the selection.
+- **Situations** keep your microphones and point source, moving them with the
+  first microphone.
 - **Gratings** — bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
 - **Microphones** — up to eight, each bound to an object of your choice and
