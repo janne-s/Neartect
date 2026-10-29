@@ -659,3 +659,35 @@ fn second_order_through_a_barely_relieved_wall_matches_the_images() {
     let error = (a..=b).map(|k| (images[k] - summed[k]).norm()).sum::<f64>() / (b - a + 1) as f64;
     assert!(error < 0.06, "mean error {error}");
 }
+
+fn wide_pipe(microphone: V3, arrival: V3) -> Vec<Complex64> {
+    let mut s = scene(vec![], microphone, arrival, 8192, 1);
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 2.0, 0.0], radius: 0.3 });
+    near_spectrum(&s)
+}
+
+#[test]
+fn bessel_overlaps_vanish_for_a_square_on_wave_and_are_whole_at_the_mode() {
+    let (p, _) = neartect_core::pipe::CrossModes::new(0.5, 1.0).at(2000.0, C, 0.3, 2.0, 0.5, 0.0);
+    assert!(p.norm() < 1e-4, "{p}");
+    assert!((neartect_core::pipe::plane_share(5.0, 0.0) - 1.0).abs() < 1e-12);
+    assert!(neartect_core::pipe::plane_share(5.0, 0.8) < 0.5);
+}
+
+#[test]
+fn wide_pipe_has_cross_modes_off_axis_above_the_first_cutoff_only() {
+    let oblique = [0.6, -0.8, 0.0];
+    let on_axis = wide_pipe([0.0, 1.0, 0.0], oblique);
+    let off_axis = wide_pipe([0.2, 1.0, 0.0], oblique);
+    // Each filter is relative to the free field at its own microphone, so the
+    // two differ by a delay; their levels are compared.
+    let cutoff = 1.8412 * C / (2.0 * std::f64::consts::PI * 0.3);
+    let difference = |lo: f64, hi: f64| {
+        let n = spectrum_size(8192);
+        let (a, b) = ((lo * n as f64 / FS) as usize, (hi * n as f64 / FS) as usize);
+        (a..=b).map(|k| (on_axis[k].norm() - off_axis[k].norm()).abs()).sum::<f64>() / (b - a + 1) as f64
+    };
+    assert!(difference(50.0, 0.8 * cutoff) < 0.02, "below {}", difference(50.0, 0.8 * cutoff));
+    assert!(difference(1.2 * cutoff, 3.0 * cutoff) > 0.2, "above {}", difference(1.2 * cutoff, 3.0 * cutoff));
+    assert!(on_axis.iter().chain(&off_axis).all(|x| x.re.is_finite() && x.im.is_finite()));
+}

@@ -1,7 +1,7 @@
 use crate::images::specular_paths;
 use crate::kirchhoff::{scatter_via, via_pairs, Histograms, OVERSAMPLING};
 use crate::geom::{dot, scale, sub, V3};
-use crate::pipe::{received, transfer, PipeInside};
+use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
 use crate::spectrum::{angular_frequency, minimum_phase, Fft};
 use rustfft::num_complex::Complex64;
@@ -37,6 +37,14 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
     let length = pipe.length();
     let along = pipe.along(scene.microphone);
     let axis = crate::geom::normalize(sub(pipe.mouth_b, pipe.mouth_a));
+    let offset = sub(sub(scene.microphone, pipe.mouth_a), scale(axis, dot(sub(scene.microphone, pipe.mouth_a), axis)));
+    let radius_fraction = (crate::geom::norm(offset) / pipe.radius).min(1.0);
+    let sideways = |travel: V3| {
+        let across = sub(travel, scale(axis, dot(travel, axis)));
+        let (a, o) = (crate::geom::norm(across), crate::geom::norm(offset));
+        let cos_azimuth = if a > 1e-9 && o > 1e-9 { dot(across, offset) / (a * o) } else { 1.0 };
+        (a.min(1.0), cos_azimuth)
+    };
     let at_mouth = |mouth: V3| {
         let mut outside = scene.clone();
         outside.pipe = None;
@@ -44,14 +52,16 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         outside.listener = crate::scene::Listener::omni();
         let incident = scene.incident(mouth);
         let spectrum = outside_spectrum(&outside);
-        (spectrum, incident.amplitude, incident.extra_metres / c, dot(scale(incident.towards_source, -1.0), axis))
+        let travel = scale(incident.towards_source, -1.0);
+        (spectrum, incident.amplitude, incident.extra_metres / c, dot(travel, axis), sideways(travel))
     };
     let (pattern, gradient, facing_along) = match scene.listener {
         crate::scene::Listener::Microphone { pattern, facing } => (pattern, 1.0 - pattern, dot(facing, axis)),
         crate::scene::Listener::Ear { .. } | crate::scene::Listener::MeasuredEar { .. } => (1.0, 0.0, 0.0),
     };
-    let (from_a, gain_a, delay_a, inward_a) = at_mouth(pipe.mouth_a);
-    let (from_b, gain_b, delay_b, inward_b) = at_mouth(pipe.mouth_b);
+    let (from_a, gain_a, delay_a, inward_a, (sin_a, azimuth_a)) = at_mouth(pipe.mouth_a);
+    let (from_b, gain_b, delay_b, inward_b, (sin_b, azimuth_b)) = at_mouth(pipe.mouth_b);
+    let (modes_a, modes_b) = (CrossModes::new(radius_fraction, azimuth_a), CrossModes::new(radius_fraction, azimuth_b));
     (0..=n / 2)
         .map(|k| {
             let f = k as f64 * fs / n as f64;
@@ -59,10 +69,16 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
             let ka = 2.0 * PI * f / c * pipe.radius;
             let (p_a, u_a) = transfer(f, c, pipe.radius, length, along);
             let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along);
+            let (cross_p_a, cross_u_a) = modes_a.at(f, c, pipe.radius, length, along, sin_a);
+            let (cross_p_b, cross_u_b) = modes_b.at(f, c, pipe.radius, length, length - along, sin_b);
+            let plane_a = received(ka, inward_a) * plane_share(ka, sin_a);
+            let plane_b = received(ka, -inward_b) * plane_share(ka, sin_b);
+            let (p_a, u_a) = (p_a * plane_a + cross_p_a, u_a * plane_a + cross_u_a);
+            let (p_b, u_b) = (p_b * plane_b + cross_p_b, u_b * plane_b + cross_u_b);
             let heard_a = p_a * pattern - u_a * (gradient * facing_along);
             let heard_b = p_b * pattern + u_b * (gradient * facing_along);
-            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * received(ka, inward_a) * heard_a
-                + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * received(ka, -inward_b) * heard_b
+            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * heard_a
+                + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * heard_b
         })
         .collect()
 }

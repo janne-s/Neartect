@@ -69,8 +69,9 @@ WebAssembly and heard live through a crossfading convolver.
   can switch to another layout in place, keeping its spot, binding, and aim;
   its aim turns on a level ring and tilts on an upright one.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
-  resonances at the end-corrected length, the open ends' radiation, and the
-  walls' losses.
+  resonances at the end-corrected length, the open ends' radiation, the
+  walls' losses, and in wide pipes the cross modes, which depend on where
+  across the pipe the microphone sits.
 - **Source** — far away, as a plane wave from a direction (drag the arrow's
   tail), or a point in the scene that can be bound to an object like a
   microphone. A point source's level falls with distance (1 m reference)
@@ -93,9 +94,10 @@ finite-size correction class B, the grating's low-frequency blend, the
 continuation of joined edges at other than right angles, and the strength
 control class C. Both heads are class B: the measured one as minimum-phase
 responses with delays interpolated between directions, the sphere as Brown
-and Duda's model. The pipe interior is class B below its first cross mode. Not modelled: the
+and Duda's model. The pipe interior is class B, with its cross modes' coupling at the mouth
+class C. Not modelled: the
 microphone capsule's own size, a smooth change at a pipe mouth (the model
-switches from outside to inside there), cross modes in wide pipes, room modes
+switches from outside to inside there), room modes
 of closed small spaces, edge diffraction beyond the Kirchhoff
 approximation (into the shadow, and the bass of a panel small against the
 wavelength with the microphone close to it, which the model overstates), angle-dependent absorption, and surface vibration.
