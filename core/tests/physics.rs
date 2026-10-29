@@ -703,3 +703,25 @@ fn cardioid_on_or_a_hair_from_a_wall_stays_bounded() {
         assert!(peak < 3.0 && late < 0.01, "gap {gap}: peak {peak} late {late}");
     }
 }
+
+#[test]
+fn relief_takes_no_more_elements_than_the_limit() {
+    use neartect_core::kirchhoff::{relief_floor, scatter_into, traversals, Histograms};
+    let length = 4096;
+    let water = relieved(floor(4.0), [1.0, 0.05, 0.8, 0.0, 0.0, 0.004, 0.1, 0.0]);
+    let wall = surface(rectangle([0.0, -1.0, 1.0], [2.0, 0.0, 0.0], [0.0, 0.0, 1.0]), RIGID);
+    for limit in [20_000.0, 100_000.0] {
+        let mut s = scene(vec![water.clone(), wall.clone()], [0.0, 0.0, 0.5], [0.0, 0.3, 1.0], length, 2);
+        s.quality.element_limit = limit;
+        let bins = 2 * spectrum_size(length);
+        let list = traversals(&s);
+        let floor = relief_floor(&s, &list, bins);
+        let elements: usize = list
+            .iter()
+            .filter(|&&(i, _)| i == 0)
+            .filter_map(|&(i, via)| scatter_into(&s, i, via, 1.0, floor, &mut Histograms::new(s.sets(), bins)))
+            .sum();
+        assert!(elements as f64 <= limit * 1.05, "limit {limit}: {elements} elements");
+        assert!(elements as f64 >= limit * 0.25, "limit {limit}: {elements} elements");
+    }
+}

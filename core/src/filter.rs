@@ -1,5 +1,5 @@
 use crate::images::specular_paths;
-use crate::kirchhoff::{scatter_into, via_pairs, Histograms, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
+use crate::kirchhoff::{relief_floor, scatter_into, traversals, Histograms, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
 use crate::geom::{dot, scale, sub, V3};
 use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
@@ -115,9 +115,9 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
     let j = Complex64::new(0.0, 1.0);
 
     let mut groups: Vec<(Vec<u64>, usize, Option<usize>, Histograms)> = Vec::new();
-    let single = scene.surfaces.iter().enumerate().filter(|(_, s)| s.strength > 0.0).map(|(i, _)| (i, None));
-    let second = via_pairs(scene).into_iter().map(|(i, j)| (i, Some(j)));
-    for (index, also) in single.chain(second) {
+    let traversals = traversals(scene);
+    let floor = relief_floor(scene, &traversals, horizon);
+    for &(index, also) in &traversals {
         let surface = &scene.surfaces[index];
         let mut key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
         if let Some(j) = also {
@@ -130,7 +130,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
             groups.push((key, index, also, Histograms::new(scene.sets(), horizon)));
             groups.len() - 1
         });
-        if !scatter_into(scene, index, also, s, &mut groups[at].3) && existing.is_none() {
+        if scatter_into(scene, index, also, s, floor, &mut groups[at].3).is_none() && existing.is_none() {
             groups.pop();
         }
     }

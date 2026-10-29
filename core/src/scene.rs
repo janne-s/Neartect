@@ -204,10 +204,6 @@ impl Scene {
         }
     }
 
-    pub fn relief_area(&self) -> f64 {
-        self.surfaces.iter().filter(|s| !s.relief.is_flat() && s.strength > 0.0).map(|s| s.polygon.area).sum()
-    }
-
     pub fn off_surfaces(&self) -> Scene {
         let mut scene = self.clone();
         for surface in &self.surfaces {

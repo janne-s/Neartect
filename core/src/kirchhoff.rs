@@ -103,6 +103,7 @@ struct Context<'a> {
     scale: f64,
     histograms: &'a mut Histograms,
     kernel: Vec<f64>,
+    elements: usize,
 }
 
 fn element_size(distance: f64) -> f64 {
@@ -142,9 +143,36 @@ impl Context<'_> {
     }
 }
 
-// Adds surface `index`'s scattering, times `strength`, to `histograms`; false
-// when the surface is seen edge-on from the source and adds nothing.
-pub fn scatter_into(scene: &Scene, index: usize, via: Option<usize>, strength: f64, histograms: &mut Histograms) -> bool {
+// Each surface's own scattering, then the second-order pairs that `via_pairs`
+// gives to the Kirchhoff sum.
+pub fn traversals(scene: &Scene) -> Vec<(usize, Option<usize>)> {
+    let single = scene.surfaces.iter().enumerate().filter(|(_, s)| s.strength > 0.0).map(|(i, _)| (i, None));
+    single.chain(via_pairs(scene).into_iter().map(|(i, j)| (i, Some(j)))).collect()
+}
+
+fn extension(scene: &Scene, bins: usize) -> f64 {
+    (scene.speed_of_sound * bins as f64 / (scene.sample_rate * OVERSAMPLING as f64)).min(LONGEST_EXTENSION_METRES)
+}
+
+// The smallest relief element that keeps all traversals of surfaces with
+// relief, extensions past joined edges included, within the element limit.
+// Where it binds, the quadtree's root is sized so that leaves take exactly
+// this size; halving the bounding square instead gave up to four times the
+// limit.
+pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<usize>)], bins: usize) -> f64 {
+    let reach = extension(scene, bins);
+    let area: f64 = traversals
+        .iter()
+        .filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat())
+        .map(|&(i, via)| domain(scene, i, reach, via).area)
+        .sum();
+    (area / scene.quality.element_limit).sqrt()
+}
+
+// Adds surface `index`'s scattering, times `strength`, to `histograms` and
+// returns the number of elements it took; none when the surface is seen
+// edge-on from the source.
+pub fn scatter_into(scene: &Scene, index: usize, via: Option<usize>, strength: f64, relief_floor: f64, histograms: &mut Histograms) -> Option<usize> {
     let surface = &scene.surfaces[index];
     let facing = match via {
         Some(j) => {
@@ -157,33 +185,36 @@ pub fn scatter_into(scene: &Scene, index: usize, via: Option<usize>, strength: f
         None => scene.source_side(&surface.polygon),
     };
     if facing.abs() < 1e-9 {
-        return false;
+        return None;
     }
     let lit_normal = if facing > 0.0 { surface.polygon.normal } else { scale(surface.polygon.normal, -1.0) };
     let rate = scene.sample_rate * OVERSAMPLING as f64;
-    let extension = (scene.speed_of_sound * histograms.len() as f64 / rate).min(LONGEST_EXTENSION_METRES);
+    let reach = extension(scene, histograms.len());
     let relief = &surface.relief;
     let relief_element = if relief.is_flat() {
         0.0
     } else {
-        (relief.finest() / scene.quality.relief_detail).max((scene.relief_area() / scene.quality.element_limit).sqrt())
+        (relief.finest() / scene.quality.relief_detail).max(relief_floor)
     };
     let mut context = Context {
         scene,
         index,
         via,
-        domain: domain(scene, index, extension, via),
+        domain: domain(scene, index, reach, via),
         lit_normal,
         relief_element,
         rate,
         scale: strength,
         histograms,
         kernel: Vec::new(),
+        elements: 0,
     };
     let (lo, hi) = context.domain.bounds();
-    let size = (hi[0] - lo[0]).max(hi[1] - lo[1]);
+    let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]);
+    let limited = relief_element > 0.0 && relief_element == relief_floor;
+    let size = if limited { relief_element * 2.0_f64.powi((extent / relief_element).log2().ceil().max(0.0) as i32) } else { extent };
     visit(&mut context, [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0], size, 0);
-    true
+    Some(context.elements)
 }
 
 // An edge shared with another surface at a right angle, where the other
@@ -282,6 +313,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
 }
 
 fn element(context: &mut Context, centre: [f64; 2], size: f64) {
+    context.elements += 1;
     let scene = context.scene;
     let real = &scene.surfaces[context.index].polygon;
     let polygon = &context.domain;
