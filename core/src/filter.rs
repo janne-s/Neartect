@@ -7,6 +7,12 @@ use crate::spectrum::{angular_frequency, minimum_phase, Fft};
 use rustfft::num_complex::Complex64;
 use std::f64::consts::PI;
 
+// Scattering that arrives after the filter's end reaches only discarded
+// samples, except through the few samples the interpolation compensation and
+// the head's spectra reach backwards, and through a pipe mouth that hears the
+// sound before the microphone does (`lead_seconds`).
+const HORIZON_MARGIN_SAMPLES: f64 = 256.0;
+
 fn sinc(x: f64) -> f64 {
     if x.abs() < 1e-12 { 1.0 } else { (PI * x).sin() / (PI * x) }
 }
@@ -19,7 +25,7 @@ pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
     let scene = &scene.off_surfaces();
     let mut spectrum = match scene.pipe {
         Some(pipe) => inside_pipe(scene, pipe),
-        None => outside_spectrum(scene),
+        None => outside_spectrum(scene, 0.0),
     };
     if scene.gain != 1.0 || scene.delay_seconds != 0.0 {
         let n = spectrum_size(scene.length);
@@ -52,7 +58,7 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         outside.microphone = mouth;
         outside.listener = crate::scene::Listener::omni();
         let incident = scene.incident(mouth);
-        let spectrum = outside_spectrum(&outside);
+        let spectrum = outside_spectrum(&outside, (length + pipe.radius) / c);
         let travel = scale(incident.towards_source, -1.0);
         (spectrum, incident.amplitude, incident.extra_metres / c, dot(travel, axis), sideways(travel))
     };
@@ -84,9 +90,10 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         .collect()
 }
 
-fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
+fn outside_spectrum(scene: &Scene, lead_seconds: f64) -> Vec<Complex64> {
     let n = spectrum_size(scene.length);
     let n_fine = n * OVERSAMPLING;
+    let horizon = (((scene.length as f64 + HORIZON_MARGIN_SAMPLES + lead_seconds * scene.sample_rate) as usize) * OVERSAMPLING).min(n_fine);
     let half = n / 2;
     let fs = scene.sample_rate;
     let c = scene.speed_of_sound;
@@ -120,7 +127,7 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
         let s = surface.strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
         let existing = groups.iter().position(|(k, _, _, _)| *k == key);
         let at = existing.unwrap_or_else(|| {
-            groups.push((key, index, also, Histograms::new(scene.sets(), n_fine)));
+            groups.push((key, index, also, Histograms::new(scene.sets(), horizon)));
             groups.len() - 1
         });
         if !scatter_into(scene, index, also, s, &mut groups[at].3) && existing.is_none() {
@@ -133,6 +140,8 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
         for set in 0..h.sets() {
             let mut packed: Vec<Complex64> = h.list(set, RIGID_FAR).zip(h.list(set, SOFT_FAR)).map(|(a, b)| Complex64::new(a, b)).collect();
             let mut near: Vec<Complex64> = h.list(set, RIGID_NEAR).zip(h.list(set, SOFT_NEAR)).map(|(a, b)| Complex64::new(a, b)).collect();
+            packed.resize(n_fine, Complex64::new(0.0, 0.0));
+            near.resize(n_fine, Complex64::new(0.0, 0.0));
             fft.forward(&mut packed);
             fft.forward(&mut near);
             for k in 0..=half {
