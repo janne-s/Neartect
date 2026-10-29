@@ -43,13 +43,15 @@ const cases = [
   ['corner ku100 1 s 192 kHz', () => long(1000, 192000)]
 ].filter(([name]) => !options.only || options.only.split(',').some(part => name.includes(part)));
 
+const fixedIds = space => readSpace({ ...space, objects: space.objects.map((object, index) => ({ ...object, id: `object-${index}` })) });
+
 await loadCore();
 const wasm = await init();
 const reference = options.compare ? JSON.parse(fs.readFileSync(options.compare, 'utf8')) : null;
 const saved = {};
 
 for (const [name, make] of cases) {
-  const space = make();
+  const space = fixedIds(make());
   const count = listeners(space).length;
   const started = performance.now();
   const channels = [];
