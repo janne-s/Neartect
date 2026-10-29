@@ -13,7 +13,8 @@ import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
-import { computeFilter, listeners } from './domain/near-filter.js';
+import { computeFilter, jobBytes, listeners } from './domain/near-filter.js';
+import { createRenderMarker, unfinishedRenderText } from './shared/ui/render-marker.js';
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
 
@@ -71,16 +72,38 @@ const view = createNearView($('near-view'), {
 // started, unless the build before it was dropped too, so that a continuous
 // drag still shows every other result.
 const WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
-const pool = createPool(new URL('./filter-worker.js', import.meta.url), WORKERS);
+const pool = createPool(new URL('./filter-worker.js', import.meta.url), WORKERS, jobBytes);
+
+// A tab the browser stops, as when it runs out of memory, runs no code, so a
+// mark written before each build and removed after it outlives the tab; the
+// next start finds it and does not build the same filter again by itself.
+const filterMarker = createRenderMarker(localStorage, 'neartect.filterUnfinished');
+const unfinishedFilter = filterMarker.take();
+window.addEventListener('pagehide', () => filterMarker.suspend());
+document.addEventListener('visibilitychange', () => { if (document.hidden) filterMarker.note({ hidden: true }); });
+window.addEventListener('pageshow', event => { if (event.persisted && marked) filterMarker.restore(); });
+
+const filterLoad = (space, purpose) => {
+  const count = listeners(space).length;
+  return `${purpose}: ${space.render.lengthMilliseconds} ms at ${space.render.sampleRateHz / 1000} kHz, ${count} ${count === 1 ? 'channel' : 'channels'}`;
+};
 let busy = false;
 let dirty = true;
 let building = null;
 let mayCancel = true;
 
-async function timedFilter(space, build = Symbol('build')) {
+let marked = 0;
+async function timedFilter(space, purpose, build = Symbol('build')) {
   const started = performance.now();
-  const result = await computeFilter(space, pool.runner(build));
-  return { ...result, milliseconds: performance.now() - started };
+  marked += 1;
+  filterMarker.phase(filterLoad(space, purpose));
+  try {
+    const result = await computeFilter(space, pool.runner(build));
+    return { ...result, milliseconds: performance.now() - started };
+  } finally {
+    marked -= 1;
+    if (!marked) filterMarker.phase(null);
+  }
 }
 
 // While relief moves or something is dragged, the preview drops to the
@@ -128,7 +151,7 @@ async function refreshFilter() {
   }
   building = Symbol('build');
   try {
-    const result = await timedFilter(space, building);
+    const result = await timedFilter(space, 'Preview', building);
     mayCancel = true;
     state.filter = result;
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
@@ -211,7 +234,7 @@ function undo() {
   refreshFilter();
 }
 
-function changed({ save = true, panel = false } = {}) {
+function changed({ save = true, panel = false, compute = true } = {}) {
   placePoints(state.space);
   if (save) {
     writeStored(STORAGE_KEY, state.space);
@@ -219,7 +242,7 @@ function changed({ save = true, panel = false } = {}) {
   }
   view.update(state.space, state.selection);
   if (panel) refreshPanel(); else syncLive();
-  refreshFilter();
+  if (compute) refreshFilter();
 }
 
 function select(selection) {
@@ -998,7 +1021,7 @@ $('export').addEventListener('click', () => {
 });
 $('export-filter').addEventListener('click', async () => {
   if (!listeners(state.space).length) return;
-  const result = await timedFilter(clone(state.space));
+  const result = await timedFilter(clone(state.space), 'Filter export');
   const channels = $('export-mix').checked ? stereo(result.channels, result.pans) : result.channels;
   if ($('export-normalise').checked) {
     const peak = Math.max(1e-9, ...channels.map(c => c.reduce((m, x) => Math.max(m, Math.abs(x)), 0)));
@@ -1012,7 +1035,7 @@ $('export-processed').addEventListener('click', async () => {
     const { samples, sampleRate } = await signalSamples(state.space.render.sampleRateHz);
     const space = clone(state.space);
     space.render.sampleRateHz = sampleRate;
-    const filter = await timedFilter(space);
+    const filter = await timedFilter(space, 'Sound export');
     const frames = samples.length + filter.channels[0].length - 1;
     const offline = new OfflineAudioContext(filter.channels.length, frames, sampleRate);
     const input = offline.createBuffer(1, samples.length, sampleRate);
@@ -1091,4 +1114,5 @@ $('results-toggle').addEventListener('click', () => {
 });
 
 view.centre(spaceCentre(state.space));
-changed({ save: false, panel: true });
+changed({ save: false, panel: true, compute: !unfinishedFilter });
+if (unfinishedFilter) setStatus(unfinishedRenderText(unfinishedFilter), true);

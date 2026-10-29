@@ -10,5 +10,5 @@ export function loadCore() {
       : Promise.resolve(WASM_URL);
     ready = source.then(module_or_path => init({ module_or_path }));
   }
-  return ready.then(() => ({ coreVersion, nearFilterFromParts, nearSpectrumPart, settingNames, surfaceHeaderLength }));
+  return ready.then(wasm => ({ coreVersion, nearFilterFromParts, nearSpectrumPart, settingNames, surfaceHeaderLength, memoryBytes: () => wasm.memory.buffer.byteLength }));
 }

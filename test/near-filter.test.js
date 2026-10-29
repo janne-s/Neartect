@@ -215,3 +215,25 @@ test('coincident layouts share one job and spaced ones do not', () => {
   assert.deepEqual(jobs('ortf'), [1, 1]);
   assert.deepEqual(jobs('binaural'), [1, 1]);
 });
+
+test('a job takes no more WebAssembly memory than its estimate', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const measure = (rig, milliseconds, rate) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import init from '../src/core/neartect_core.js';
+    import { loadCore } from '../src/domain/core.js';
+    import { channelJobs, jobBytes, runJob } from '../src/domain/near-filter.js';
+    import { situationSpace } from '../src/domain/situations.js';
+    import { defaultRig, defaultSpace, readSpace } from '../src/domain/space.js';
+    const core = await loadCore();
+    const wasm = await init();
+    const base = situationSpace('corner', defaultSpace());
+    const space = readSpace({ ...base, render: { ...base.render, lengthMilliseconds: ${milliseconds}, sampleRateHz: ${rate} }, microphones: [], rigs: [defaultRig('${rig}', { position: base.microphones[0].position, head: 'measured' })] });
+    const job = channelJobs(space)[0];
+    runJob(core, { ...job, part: 0 });
+    console.log(JSON.stringify({ estimate: jobBytes(job), used: wasm.memory.buffer.byteLength }));
+  `], { cwd: new URL('.', import.meta.url) }));
+  for (const [rig, milliseconds, rate] of [['binaural', 1000, 48000], ['xy', 1000, 192000]]) {
+    const { estimate, used } = measure(rig, milliseconds, rate);
+    assert.ok(used <= estimate && estimate < 2 * used, `${rig} ${milliseconds} ms ${rate} Hz: estimate ${estimate}, used ${used}`);
+  }
+});

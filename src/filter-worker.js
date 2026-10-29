@@ -1,11 +1,15 @@
 import { loadCore } from './domain/core.js';
 import { runJob } from './domain/near-filter.js';
 
+// A trap leaves the core's memory in an unknown state, so the pool replaces
+// this worker; in the core a trap is almost always a failed allocation.
 self.addEventListener('message', async ({ data: { id, job } }) => {
+  const core = await loadCore();
   try {
-    const result = runJob(await loadCore(), job);
-    self.postMessage({ id, result }, [result.buffer]);
+    const result = runJob(core, job);
+    self.postMessage({ id, result, memoryBytes: core.memoryBytes() }, [result.buffer]);
   } catch (error) {
-    self.postMessage({ id, error: error.message });
+    const trapped = error instanceof WebAssembly.RuntimeError;
+    self.postMessage({ id, error: trapped ? 'This device ran out of memory computing the filter' : error.message, memoryBytes: Infinity, trapped });
   }
 });
