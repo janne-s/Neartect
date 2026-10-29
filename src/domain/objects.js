@@ -140,24 +140,38 @@ export function anchor(object) {
   return [0, 0, 0];
 }
 
-export function referenceObject(space) {
-  const id = space.microphone.reference;
+// Microphones and a point source are bound points: an offset from an
+// object's anchor, or a plain position when bound to the world.
+export function referenceObject(space, point) {
+  const id = point.reference;
   return id ? space.objects.find(o => o.id === id) ?? null : null;
 }
 
-export function microphonePosition(space) {
-  const object = referenceObject(space);
-  if (!object) return space.microphone.position;
+export function pointPosition(space, point) {
+  const object = referenceObject(space, point);
+  if (!object) return point.position;
   const base = anchor(object);
-  return toWorld(object, space.microphone.offset.map((v, i) => v + base[i]));
+  return toWorld(object, point.offset.map((v, i) => v + base[i]));
 }
 
-export function referTo(space, id) {
-  const position = microphonePosition(space);
+export function referTo(space, point, id) {
+  const position = pointPosition(space, point);
   const object = id ? space.objects.find(o => o.id === id) : null;
-  space.microphone.reference = object ? object.id : null;
-  space.microphone.offset = object ? toLocal(object, position).map((v, i) => v - anchor(object)[i]) : [0, 0, 0];
-  space.microphone.position = position;
+  point.reference = object ? object.id : null;
+  point.offset = object ? toLocal(object, position).map((v, i) => v - anchor(object)[i]) : [0, 0, 0];
+  point.position = position;
+}
+
+export function boundPoints(space) {
+  return [...space.microphones, space.source];
+}
+
+export function placePoints(space) {
+  boundPoints(space).forEach(point => { point.position = pointPosition(space, point); });
+}
+
+export function releaseObject(space, id) {
+  boundPoints(space).forEach(point => { if (point.reference === id) referTo(space, point, null); });
 }
 
 export function pipeAround(space, point) {

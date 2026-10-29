@@ -116,8 +116,22 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   }
 
   const activeObjectId = () => (selection?.type === 'object' ? selection.id : !selection && hover?.type === 'object' ? hover.id : null);
-  const microphoneActive = () => selection?.type === 'microphone';
-  const focusing = () => Boolean(drag?.handle) || selection?.type === 'object' || selection?.type === 'microphone';
+  const focusing = () => Boolean(drag?.handle) || Boolean(selection?.type);
+
+  // Microphones and a point source share one kind of marker and handles.
+  function points() {
+    const list = space.microphones.map((point, index) => ({ key: `microphone:${point.id}`, type: 'microphone', id: point.id, index, point }));
+    if (space.source.kind === 'point') list.push({ key: 'source', type: 'source', point: space.source });
+    return list;
+  }
+
+  const isSelected = item => selection?.type === item.type && (item.type === 'source' || selection.id === item.id);
+  const findPoint = (next, key) => (key === 'source' ? next.source : next.microphones.find(m => `microphone:${m.id}` === key));
+
+  function listeningCentre() {
+    const chosen = space.microphones.find(m => selection?.type === 'microphone' && m.id === selection.id) ?? space.microphones[0];
+    return chosen.position;
+  }
 
   function drawFaces(context, colors, fill, edge) {
     faces = [];
@@ -290,6 +304,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     const style = getComputedStyle(document.documentElement);
     const fill = style.getPropertyValue('--surface').trim();
     const edge = style.getPropertyValue('--surface-edge').trim();
+    const sourceColor = style.getPropertyValue('--source').trim();
 
     const spacing = gridSpacing();
     const half = GRID_LINES_EACH_SIDE * spacing;
@@ -306,72 +321,79 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
 
     drawFaces(context, colors, fill, edge);
 
-    const microphone = space.microphone.position;
-    const reach = pixelsToMetres(ARROW_PIXELS * 1.6, microphone);
-    const arrival = arrivalVector(space.arrival);
-    const tail = add(microphone, scale(arrival, reach));
-    const from = project(tail);
-    const to = project(add(microphone, scale(arrival, reach * 0.18)));
-    if (from && to) {
-      const handle = { id: 'arrival', type: 'arrival', point: from };
-      const color = isHot(handle) ? colors.accent : colors.direct;
-      context.strokeStyle = color;
-      context.fillStyle = color;
-      context.lineWidth = 2;
-      context.beginPath();
-      context.moveTo(from[0], from[1]);
-      context.lineTo(to[0], to[1]);
-      context.stroke();
-      context.lineWidth = 1;
-      arrowHead(context, from, to);
-      context.beginPath();
-      context.arc(from[0], from[1], 5, 0, 2 * Math.PI);
-      context.fill();
-      handles.push(handle);
+    if (space.source.kind === 'far') {
+      const centre = listeningCentre();
+      const reach = pixelsToMetres(ARROW_PIXELS * 1.6, centre);
+      const arrival = arrivalVector(space.arrival);
+      const from = project(add(centre, scale(arrival, reach)));
+      const to = project(add(centre, scale(arrival, reach * 0.18)));
+      if (from && to) {
+        const handle = { id: 'arrival', type: 'arrival', point: from };
+        const color = isHot(handle) ? colors.accent : colors.direct;
+        context.strokeStyle = color;
+        context.fillStyle = color;
+        context.lineWidth = 2;
+        context.beginPath();
+        context.moveTo(from[0], from[1]);
+        context.lineTo(to[0], to[1]);
+        context.stroke();
+        context.lineWidth = 1;
+        arrowHead(context, from, to);
+        context.beginPath();
+        context.arc(from[0], from[1], 5, 0, 2 * Math.PI);
+        context.fill();
+        handles.push(handle);
+      }
+    } else {
+      const source = space.source.position;
+      context.strokeStyle = sourceColor;
+      context.globalAlpha = 0.5;
+      context.setLineDash([2, 4]);
+      space.microphones.forEach(m => line(context, source, m.position));
+      context.setLineDash([]);
+      context.globalAlpha = 1;
     }
 
-    const m = project(microphone);
-    if (m) {
-      const active = microphoneActive();
-      const reference = referenceObject(space);
+    const selectedPoint = points().find(isSelected);
+    for (const item of points()) {
+      const p = project(item.point.position);
+      if (!p) continue;
+      const active = isSelected(item);
+      const color = item.type === 'source' ? sourceColor : colors.mics[item.index % colors.mics.length] || colors.receiver;
       context.globalAlpha = focusing() && !active ? 0.5 : 1;
-      context.fillStyle = colors.receiver;
+      context.fillStyle = color;
+      context.strokeStyle = color;
       context.beginPath();
-      context.arc(m[0], m[1], 5, 0, 2 * Math.PI);
+      context.arc(p[0], p[1], item.type === 'source' ? 6 : 5, 0, 2 * Math.PI);
       context.fill();
+      if (item.type === 'source') {
+        for (const radius of [10, 14]) {
+          context.beginPath();
+          context.arc(p[0], p[1], radius, -0.6, 0.6);
+          context.stroke();
+          context.beginPath();
+          context.arc(p[0], p[1], radius, Math.PI - 0.6, Math.PI + 0.6);
+          context.stroke();
+        }
+      }
       if (active) {
         context.strokeStyle = colors.accent;
         context.lineWidth = 2;
+        context.beginPath();
+        context.arc(p[0], p[1], item.type === 'source' ? 7 : 6, 0, 2 * Math.PI);
         context.stroke();
         context.lineWidth = 1;
       }
-      if (reference) {
-        const { front } = objectFrame(reference);
-        const gap = space.microphone.offset[1];
-        const foot = sub(microphone, scale(front, gap));
-        context.setLineDash([3, 3]);
-        context.strokeStyle = colors.muted;
-        line(context, microphone, foot);
-        context.setLineDash([]);
-        context.fillStyle = colors.muted;
-        context.font = '11px system-ui, sans-serif';
-        context.fillText(`⟂ ${formatGap(gap)}`, m[0] + 9, m[1] + 14);
-      } else {
-        const nearest = nearestSurface(space);
-        if (nearest) {
-          context.fillStyle = colors.muted;
-          context.font = '11px system-ui, sans-serif';
-          context.fillText(formatGap(Math.abs(nearest.distance)), m[0] + 9, m[1] + 14);
-        }
-      }
+      if (active || space.microphones.length === 1 && item.type === 'microphone') gapLabel(context, colors, item.point, p);
       context.globalAlpha = 1;
-      if (active) {
-        if (reference) {
-          const { across, front, up } = objectFrame(reference);
-          moveHandles(context, colors, microphone, 'microphone', [across, front, up], OFFSET_NAMES);
-        } else {
-          moveHandles(context, colors, microphone, 'microphone');
-        }
+    }
+    if (selectedPoint) {
+      const reference = referenceObject(space, selectedPoint.point);
+      if (reference) {
+        const { across, front, up } = objectFrame(reference);
+        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, [across, front, up], OFFSET_NAMES);
+      } else {
+        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key);
       }
     }
 
@@ -394,16 +416,40 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     }
   }
 
-  function microphoneAt(point) {
-    const m = space && project(space.microphone.position);
-    return Boolean(m) && Math.hypot(point[0] - m[0], point[1] - m[1]) < HANDLE_PIXELS * 1.5;
+  function gapLabel(context, colors, point, p) {
+    const reference = referenceObject(space, point);
+    context.fillStyle = colors.muted;
+    context.font = '11px system-ui, sans-serif';
+    if (reference) {
+      const { front } = objectFrame(reference);
+      const gap = point.offset[1];
+      context.setLineDash([3, 3]);
+      context.strokeStyle = colors.muted;
+      line(context, point.position, sub(point.position, scale(front, gap)));
+      context.setLineDash([]);
+      context.fillText(`⟂ ${formatGap(gap)}`, p[0] + 9, p[1] + 14);
+    } else {
+      const nearest = nearestSurface(space, point.position);
+      if (nearest) context.fillText(formatGap(Math.abs(nearest.distance)), p[0] + 9, p[1] + 14);
+    }
+  }
+
+  function pointAt(screen) {
+    if (!space) return null;
+    const list = points();
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const p = project(list[i].point.position);
+      if (p && Math.hypot(screen[0] - p[0], screen[1] - p[1]) < HANDLE_PIXELS * 1.5) return list[i];
+    }
+    return null;
   }
 
   function handleAt(point) {
-    const onMicrophone = selection?.type !== 'microphone' && microphoneAt(point);
+    const onPoint = pointAt(point);
+    const unselectedPoint = onPoint && !isSelected(onPoint);
     for (let i = handles.length - 1; i >= 0; i -= 1) {
       const h = handles[i];
-      if (onMicrophone && h.type !== 'arrival') continue;
+      if (unselectedPoint && h.type !== 'arrival') continue;
       if (h.segment && distanceToSegment(point, h.segment[0], h.segment[1]) < HANDLE_PIXELS) return h;
       if (h.point && Math.hypot(point[0] - h.point[0], point[1] - h.point[1]) < HANDLE_PIXELS) return h;
       if (h.points) {
@@ -416,7 +462,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   }
 
   function itemAt(point) {
-    if (microphoneAt(point)) return { type: 'microphone' };
+    const onPoint = pointAt(point);
+    if (onPoint) return onPoint.type === 'source' ? { type: 'source' } : { type: 'microphone', id: onPoint.id };
     for (let i = faces.length - 1; i >= 0; i -= 1) {
       if (insidePolygon(point, faces[i].corners)) return { type: 'object', id: faces[i].object.id };
     }
@@ -433,8 +480,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
 
   function startDrag(handle, point) {
     const object = space.objects.find(o => o.id === activeObjectId());
-    const snapshot = JSON.parse(JSON.stringify(handle.target === 'microphone' || handle.type === 'arrival' ? { microphone: space.microphone, arrival: space.arrival } : object));
-    const centre = handle.target === 'microphone' ? space.microphone.position : object ? objectCentre(object) : null;
+    const bound = handle.target !== 'object' && handle.type === 'move' ? findPoint(space, handle.target) : null;
+    const snapshot = JSON.parse(JSON.stringify(bound ?? (handle.type === 'arrival' ? { arrival: space.arrival } : object)));
+    const centre = bound ? bound.position : handle.type === 'arrival' ? listeningCentre() : object ? objectCentre(object) : null;
     const start = { point };
     if (handle.type === 'move' || handle.type === 'size') {
       start.axis = handle.vector;
@@ -445,7 +493,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
       const p = planePoint(centre, handle.which === 'yaw' ? [0, 0, 1] : handle.across, point);
       start.angle = p ? ringAngle(handle, object, centre, p) : 0;
     }
-    return { handle, snapshot, centre, start, objectId: object?.id };
+    return { handle, snapshot, centre, start, objectId: object?.id, bound: Boolean(bound) };
   }
 
   function screenAxis(centre, axis) {
@@ -494,17 +542,16 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   function dragTo(point, free) {
     const { handle, snapshot, centre, start } = drag;
     const step = gridSpacing() / SNAP_PER_GRID;
-    if (handle.type === 'move' && handle.target === 'microphone' && snapshot.microphone.reference) {
-      const value = snap(snapshot.microphone.offset[handle.axis] + alongAxis(start, point), step, free);
+    if (handle.type === 'move' && drag.bound && snapshot.reference) {
+      const value = snap(snapshot.offset[handle.axis] + alongAxis(start, point), step, free);
       readout = { x: point[0], y: point[1], text: `${OFFSET_NAMES[handle.axis]} ${formatGap(value)}` };
-      onEdit(next => { next.microphone.offset[handle.axis] = value; });
+      onEdit(next => { findPoint(next, handle.target).offset[handle.axis] = value; });
     } else if (handle.type === 'move') {
-      const base = handle.target === 'microphone' ? snapshot.microphone.position : snapshot.position;
-      let value = snap(base[handle.axis] + alongAxis(start, point), step, free);
-      if (handle.target === 'object' && snapSurfaces() && !free) value = surfaceSnap(drag.objectId, handle.axis, value, space.objects.find(o => o.id === drag.objectId).position[handle.axis]);
+      let value = snap(snapshot.position[handle.axis] + alongAxis(start, point), step, free);
+      if (!drag.bound && snapSurfaces() && !free) value = surfaceSnap(drag.objectId, handle.axis, value, space.objects.find(o => o.id === drag.objectId).position[handle.axis]);
       readout = { x: point[0], y: point[1], text: `${AXIS_NAMES[handle.axis]} ${formatGap(value)}` };
       onEdit(next => {
-        const target = handle.target === 'microphone' ? next.microphone.position : next.objects.find(o => o.id === drag.objectId).position;
+        const target = drag.bound ? findPoint(next, handle.target).position : next.objects.find(o => o.id === drag.objectId).position;
         target[handle.axis] = value;
       });
     } else if (handle.type === 'size') {
@@ -535,7 +582,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
         onEdit(next => { next.objects.find(o => o.id === drag.objectId).tiltDegrees = value; });
       }
     } else if (handle.type === 'arrival') {
-      const microphone = space.microphone.position;
+      const microphone = listeningCentre();
       const r = ray(...point);
       const radius = Math.hypot(...sub(drag.start.tail ?? arrivalTail(), microphone));
       const oc = sub(r.origin, microphone);
@@ -551,7 +598,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   }
 
   function arrivalTail() {
-    const microphone = space.microphone.position;
+    const microphone = listeningCentre();
     return add(microphone, scale(arrivalVector(space.arrival), pixelsToMetres(ARROW_PIXELS * 1.6, microphone)));
   }
 
@@ -596,8 +643,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     if (handle) {
       drag = startDrag(handle, point);
       if (handle.type === 'arrival') drag.start.tail = arrivalTail();
-      if (handle.target === 'microphone' && selection?.type !== 'microphone') onSelect({ type: 'microphone' });
-      else if (handle.type !== 'arrival' && handle.target !== 'microphone' && selection?.id !== drag.objectId) onSelect({ type: 'object', id: drag.objectId });
+      if (handle.type !== 'arrival' && !drag.bound && selection?.id !== drag.objectId) onSelect({ type: 'object', id: drag.objectId });
       return;
     }
     drag = { orbit: true, pan: event.button !== 0 || event.shiftKey, x: event.clientX, y: event.clientY, yaw: camera.yaw, pitch: camera.pitch, target: [...camera.target], moved: false };
@@ -709,7 +755,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   canvas.addEventListener('dblclick', event => {
     const item = itemAt(pointer(event));
     if (item?.type === 'object') camera.target = objectCentre(space.objects.find(o => o.id === item.id));
-    if (item?.type === 'microphone') camera.target = [...space.microphone.position];
+    if (item?.type === 'microphone') camera.target = [...space.microphones.find(m => m.id === item.id).position];
+    if (item?.type === 'source') camera.target = [...space.source.position];
     draw();
   });
   new ResizeObserver(() => draw()).observe(canvas);
@@ -722,7 +769,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     },
     reset() {
       Object.assign(camera, { yaw: -0.6, pitch: 0.45, distance: 6 });
-      if (space) camera.target = [...space.microphone.position];
+      if (space) camera.target = [...listeningCentre()];
       draw();
     },
     centre(point) {

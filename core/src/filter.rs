@@ -16,10 +16,18 @@ pub fn spectrum_size(length: usize) -> usize {
 }
 
 pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
-    match scene.pipe {
+    let mut spectrum = match scene.pipe {
         Some(pipe) => inside_pipe(scene, pipe),
         None => outside_spectrum(scene),
+    };
+    if scene.gain != 1.0 || scene.delay_seconds != 0.0 {
+        let n = spectrum_size(scene.length);
+        for (k, value) in spectrum.iter_mut().enumerate() {
+            let omega = angular_frequency(k, n, scene.sample_rate);
+            *value *= Complex64::from_polar(scene.gain, -omega * scene.delay_seconds);
+        }
     }
+    spectrum
 }
 
 fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
@@ -33,17 +41,19 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
         let mut outside = scene.clone();
         outside.pipe = None;
         outside.microphone = mouth;
-        outside_spectrum(&outside)
+        let incident = scene.incident(mouth);
+        let spectrum = outside_spectrum(&outside);
+        (spectrum, incident.amplitude, incident.extra_metres / c, dot(scale(incident.towards_source, -1.0), axis))
     };
-    let from_a = at_mouth(pipe.mouth_a);
-    let from_b = at_mouth(pipe.mouth_b);
-    let inward_a = dot(scale(scene.arrival, -1.0), axis);
+    let (from_a, gain_a, delay_a, inward_a) = at_mouth(pipe.mouth_a);
+    let (from_b, gain_b, delay_b, inward_b) = at_mouth(pipe.mouth_b);
     (0..=n / 2)
         .map(|k| {
             let f = k as f64 * fs / n as f64;
+            let omega = angular_frequency(k, n, fs);
             let ka = 2.0 * PI * f / c * pipe.radius;
-            from_a[k] * received(ka, inward_a) * transfer(f, c, pipe.radius, length, along)
-                + from_b[k] * received(ka, -inward_a) * transfer(f, c, pipe.radius, length, length - along)
+            from_a[k] * Complex64::from_polar(gain_a, -omega * delay_a) * received(ka, inward_a) * transfer(f, c, pipe.radius, length, along)
+                + from_b[k] * Complex64::from_polar(gain_b, -omega * delay_b) * received(ka, -inward_b) * transfer(f, c, pipe.radius, length, length - along)
         })
         .collect()
 }
@@ -77,6 +87,7 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
                     sum.rigid_far[i] += s * h.rigid_far[i];
                     sum.rigid_near[i] += s * h.rigid_near[i];
                     sum.soft[i] += s * h.soft[i];
+                    sum.soft_near[i] += s * h.soft_near[i];
                 }
             }
             None => {
@@ -84,6 +95,7 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
                     rigid_far: h.rigid_far.iter().map(|x| x * s).collect(),
                     rigid_near: h.rigid_near.iter().map(|x| x * s).collect(),
                     soft: h.soft.iter().map(|x| x * s).collect(),
+                    soft_near: h.soft_near.iter().map(|x| x * s).collect(),
                 };
                 groups.push((key, index, scaled));
             }
@@ -93,7 +105,7 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
     for (_, index, h) in &groups {
         let surface = &scene.surfaces[*index];
         let mut packed: Vec<Complex64> = h.rigid_far.iter().zip(&h.soft).map(|(&a, &b)| Complex64::new(a, b)).collect();
-        let mut near: Vec<Complex64> = h.rigid_near.iter().map(|&a| Complex64::new(a, 0.0)).collect();
+        let mut near: Vec<Complex64> = h.rigid_near.iter().zip(&h.soft_near).map(|(&a, &b)| Complex64::new(a, b)).collect();
         fft.forward(&mut packed);
         fft.forward(&mut near);
         for k in 0..=half {
@@ -102,8 +114,11 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
             let soft = (packed[k] - mirror) * Complex64::new(0.0, -0.5);
             let omega_over_c = angular_frequency(k, n, fs) / c;
             let compensation = 1.0 / sinc(k as f64 / n_fine as f64).powi(2);
-            let rigid = j * omega_over_c * rigid_far + near[k];
-            let pressure_release = -(j * omega_over_c) * soft;
+            let near_mirror = near[(n_fine - k) % n_fine].conj();
+            let rigid_near = (near[k] + near_mirror) * 0.5;
+            let soft_near = (near[k] - near_mirror) * Complex64::new(0.0, -0.5);
+            let rigid = j * omega_over_c * rigid_far + rigid_near;
+            let pressure_release = -(j * omega_over_c * soft + soft_near);
             let r = reflection[*index][k];
             let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
             let grating = surface.pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
@@ -115,7 +130,7 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
         let strength: f64 = path.reflections.iter().map(|r| scene.surfaces[r.surface].strength).product();
         for k in 0..=half {
             let omega = angular_frequency(k, n, fs);
-            let mut gain = Complex64::new(strength, 0.0) * Complex64::from_polar(1.0, -omega * path.delay_seconds);
+            let mut gain = Complex64::new(strength * path.gain, 0.0) * Complex64::from_polar(1.0, -omega * path.delay_seconds);
             for r in &path.reflections {
                 let cutoff = 2.0 * PI * r.cutoff_hz;
                 let grating = scene.surfaces[r.surface].pattern.low_frequency_factor(k as f64 * fs / n as f64, c);

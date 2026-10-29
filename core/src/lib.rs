@@ -14,11 +14,15 @@ use spectrum::BAND_COUNT;
 use wasm_bindgen::prelude::*;
 
 pub const PATTERN_VALUES: usize = 6;
+// Settings: rate, speed of sound, length, order, microphone xyz, arrival xyz,
+// point source flag and xyz, gain, delay seconds, pipe radius (0 = none),
+// pipe mouths xyz.
+pub const SETTINGS_LENGTH: usize = 23;
 const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES;
 
 pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
-    if settings.len() < 10 {
-        return Err("settings need 10 numbers".into());
+    if settings.len() < SETTINGS_LENGTH {
+        return Err(format!("settings need {SETTINGS_LENGTH} numbers"));
     }
     let mut list = Vec::new();
     let mut at = 0;
@@ -51,10 +55,13 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         max_order: settings[3] as usize,
         microphone: [settings[4], settings[5], settings[6]],
         arrival: normalize([settings[7], settings[8], settings[9]]),
-        pipe: (settings.len() >= 17 && settings[10] > 0.0).then(|| pipe::PipeInside {
-            radius: settings[10],
-            mouth_a: [settings[11], settings[12], settings[13]],
-            mouth_b: [settings[14], settings[15], settings[16]],
+        source: (settings[10] > 0.0).then(|| [settings[11], settings[12], settings[13]]),
+        gain: settings[14],
+        delay_seconds: settings[15],
+        pipe: (settings[16] > 0.0).then(|| pipe::PipeInside {
+            radius: settings[16],
+            mouth_a: [settings[17], settings[18], settings[19]],
+            mouth_b: [settings[20], settings[21], settings[22]],
         }),
     })
 }

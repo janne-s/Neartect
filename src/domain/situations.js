@@ -42,5 +42,5 @@ export const SITUATIONS = Object.freeze({
 
 export function situationSpace(id, current) {
   const { objects, microphone, arrival } = SITUATIONS[id];
-  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphone: { position: microphone }, arrival }, objects.length - 1);
+  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphones: [{ position: microphone }], arrival }, objects.length - 1);
 }

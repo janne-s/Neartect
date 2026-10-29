@@ -2,6 +2,9 @@
 // approximation, in the time domain: Rayleigh II for the rigid part and
 // Rayleigh I for the pressure-release part, exact for an infinite plane
 // (class B for finite surfaces; Cox 2015 JASA EL for the surface-element form).
+// A point source adds the spherical wave's near term to the normal velocity,
+// cos θ1 (jk + 1/r1), and spreads as r0/r1 (Sakurai 2017 for the same far and
+// near terms in a rigid panel's time-domain response).
 
 use crate::geom::{dot, norm, scale, sub, Polygon, V3};
 use crate::scene::Scene;
@@ -24,6 +27,7 @@ pub struct Histograms {
     pub rigid_far: Vec<f64>,
     pub rigid_near: Vec<f64>,
     pub soft: Vec<f64>,
+    pub soft_near: Vec<f64>,
 }
 
 struct Context<'a> {
@@ -31,7 +35,6 @@ struct Context<'a> {
     index: usize,
     domain: Polygon,
     lit_normal: V3,
-    cos_incidence: f64,
     rate: f64,
     histograms: Histograms,
 }
@@ -48,7 +51,7 @@ fn edge_element_size(distance: f64) -> f64 {
 
 pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms> {
     let surface = &scene.surfaces[index];
-    let facing = dot(surface.polygon.normal, scene.arrival);
+    let facing = scene.source_side(&surface.polygon);
     if facing.abs() < 1e-9 {
         return None;
     }
@@ -60,9 +63,13 @@ pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms>
         index,
         domain: domain(scene, index, extension),
         lit_normal,
-        cos_incidence: facing.abs(),
         rate,
-        histograms: Histograms { rigid_far: vec![0.0; length], rigid_near: vec![0.0; length], soft: vec![0.0; length] },
+        histograms: Histograms {
+            rigid_far: vec![0.0; length],
+            rigid_near: vec![0.0; length],
+            soft: vec![0.0; length],
+            soft_near: vec![0.0; length],
+        },
     };
     let (lo, hi) = context.domain.bounds();
     let size = (hi[0] - lo[0]).max(hi[1] - lo[1]);
@@ -138,7 +145,8 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let to_microphone = sub(context.scene.microphone, x);
     let distance = norm(to_microphone);
     let c = context.scene.speed_of_sound;
-    let earliest = (dot(context.scene.arrival, to_microphone) + distance - size * std::f64::consts::SQRT_2) / c;
+    let incident = context.scene.incident(x);
+    let earliest = (incident.extra_metres + distance - size * std::f64::consts::SQRT_2) / c;
     if earliest * context.rate > context.histograms.soft.len() as f64 {
         return;
     }
@@ -147,7 +155,9 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
         return;
     }
     let uniform = solid == samples.len() && !vertex_inside && !pattern_edge;
-    let target = if uniform { element_size(distance) } else { edge_element_size(distance) };
+    let reach = distance * incident.source_distance / (distance + incident.source_distance);
+    let reach = if reach.is_finite() { reach } else { distance };
+    let target = if uniform { element_size(reach) } else { edge_element_size(reach) };
     if size <= target || level >= DEEPEST_LEVEL {
         if is_solid(centre) {
             element(context, centre, size);
@@ -167,7 +177,8 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let x = polygon.to_space(centre);
     let skip = [context.index];
     let virtual_element = !real.contains(centre);
-    if !virtual_element && scene.occluded(&skip, x, scene.arrival, f64::INFINITY) {
+    let incident = scene.incident(x);
+    if !virtual_element && scene.occluded(&skip, x, incident.towards_source, incident.source_distance) {
         return;
     }
     let to_microphone = sub(scene.microphone, x);
@@ -178,19 +189,22 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         return;
     }
     let c = scene.speed_of_sound;
-    let delay = (dot(scene.arrival, to_microphone) + distance) / c * context.rate;
+    let delay = (incident.extra_metres + distance) / c * context.rate;
     let length = context.histograms.soft.len();
     if delay >= (length - 2) as f64 {
         return;
     }
-    let area = size * size;
+    let area = size * size * incident.amplitude;
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
-    let soft = context.cos_incidence * area / (2.0 * PI * distance);
+    let cos_incidence = dot(context.lit_normal, incident.towards_source).max(0.0);
+    let soft = cos_incidence * area / (2.0 * PI * distance);
+    let soft_near = soft / incident.source_distance;
+    let towards = incident.towards_source;
     let gradient = scale([
-        -scene.arrival[0] - direction[0],
-        -scene.arrival[1] - direction[1],
-        -scene.arrival[2] - direction[2],
+        -towards[0] - direction[0],
+        -towards[1] - direction[1],
+        -towards[2] - direction[2],
     ], size * context.rate / c);
     let spread_u = dot(gradient, polygon.u);
     let spread_v = dot(gradient, polygon.v);
@@ -202,21 +216,20 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         for j in 0..count_v {
             let offset_v = ((j as f64 + 0.5) / count_v as f64 - 0.5) * spread_v;
             let t = (delay + offset_u + offset_v).max(0.0);
-            deposit(&mut context.histograms, t, rigid_far * share, rigid_near * share, soft * share);
+            deposit(&mut context.histograms, t, [rigid_far * share, rigid_near * share, soft * share, soft_near * share]);
         }
     }
 }
 
-fn deposit(histograms: &mut Histograms, t: f64, rigid_far: f64, rigid_near: f64, soft: f64) {
+fn deposit(histograms: &mut Histograms, t: f64, values: [f64; 4]) {
     let i = t.floor() as usize;
     if i + 1 >= histograms.soft.len() {
         return;
     }
     let f = t - i as f64;
-    histograms.rigid_far[i] += rigid_far * (1.0 - f);
-    histograms.rigid_far[i + 1] += rigid_far * f;
-    histograms.rigid_near[i] += rigid_near * (1.0 - f);
-    histograms.rigid_near[i + 1] += rigid_near * f;
-    histograms.soft[i] += soft * (1.0 - f);
-    histograms.soft[i + 1] += soft * f;
+    let lists = [&mut histograms.rigid_far, &mut histograms.rigid_near, &mut histograms.soft, &mut histograms.soft_near];
+    for (list, value) in lists.into_iter().zip(values) {
+        list[i] += value * (1.0 - f);
+        list[i + 1] += value * f;
+    }
 }

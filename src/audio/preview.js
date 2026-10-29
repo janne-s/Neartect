@@ -1,6 +1,24 @@
 const CROSSFADE_SECONDS = 0.04;
 const OUTPUT_GAIN = 0.35;
 
+// One microphone plays in the middle; several are spread from left to right
+// in their order at equal power, so a pair is a plain left and right.
+export function stereo(channels) {
+  if (channels.length === 1) return [channels[0]];
+  const length = channels[0].length;
+  const left = new Float32Array(length);
+  const right = new Float32Array(length);
+  channels.forEach((channel, index) => {
+    const angle = index / (channels.length - 1) * Math.PI / 2;
+    const [l, r] = [Math.cos(angle), Math.sin(angle)];
+    for (let i = 0; i < length; i += 1) {
+      left[i] += l * channel[i];
+      right[i] += r * channel[i];
+    }
+  });
+  return [left, right];
+}
+
 export function createPreview() {
   let context = null;
   let source = null;
@@ -44,8 +62,9 @@ export function createPreview() {
   function setFilter(filter) {
     pending = filter;
     if (!context) return;
-    const buffer = context.createBuffer(1, filter.samples.length, filter.sampleRateHz);
-    buffer.copyToChannel(filter.samples, 0);
+    const sides = stereo(filter.channels);
+    const buffer = context.createBuffer(sides.length, sides[0].length, filter.sampleRateHz);
+    sides.forEach((side, index) => buffer.copyToChannel(side, index));
     active = 1 - active;
     branches[active].convolver.buffer = buffer;
     levels(context.currentTime);

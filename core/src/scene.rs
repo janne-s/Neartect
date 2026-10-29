@@ -3,6 +3,8 @@ use crate::pattern::Pattern;
 use crate::pipe::PipeInside;
 use crate::spectrum::BAND_COUNT;
 
+const NEAREST_SOURCE_METRES: f64 = 1e-3;
+
 #[derive(Clone)]
 pub struct Surface {
     pub polygon: Polygon,
@@ -27,9 +29,52 @@ pub struct Scene {
     pub length: usize,
     pub max_order: usize,
     pub pipe: Option<PipeInside>,
+    pub source: Option<V3>,
+    pub gain: f64,
+    pub delay_seconds: f64,
+}
+
+// The incident wave at a point, relative to the direct sound at the
+// microphone: amplitude, extra path in metres, and the unit vector towards
+// the source. A far source is a plane wave from `arrival`; a point source
+// spreads spherically.
+pub struct Incident {
+    pub amplitude: f64,
+    pub extra_metres: f64,
+    pub towards_source: V3,
+    pub source_distance: f64,
 }
 
 impl Scene {
+    pub fn incident(&self, x: V3) -> Incident {
+        match self.source {
+            None => Incident {
+                amplitude: 1.0,
+                extra_metres: crate::geom::dot(self.arrival, crate::geom::sub(self.microphone, x)),
+                towards_source: self.arrival,
+                source_distance: f64::INFINITY,
+            },
+            Some(source) => {
+                let to_source = crate::geom::sub(source, x);
+                let r1 = crate::geom::norm(to_source).max(NEAREST_SOURCE_METRES);
+                let r0 = crate::geom::norm(crate::geom::sub(source, self.microphone)).max(NEAREST_SOURCE_METRES);
+                Incident {
+                    amplitude: r0 / r1,
+                    extra_metres: r1 - r0,
+                    towards_source: crate::geom::scale(to_source, 1.0 / r1),
+                    source_distance: r1,
+                }
+            }
+        }
+    }
+
+    pub fn source_side(&self, polygon: &Polygon) -> f64 {
+        match self.source {
+            None => crate::geom::dot(polygon.normal, self.arrival),
+            Some(source) => polygon.signed_distance(source),
+        }
+    }
+
     pub fn polygons(&self) -> Vec<&Polygon> {
         self.surfaces.iter().map(|s| &s.polygon).collect()
     }

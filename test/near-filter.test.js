@@ -90,3 +90,44 @@ test('a microphone inside a pipe hears the pipe resonate', async () => {
   for (let k = 1; k < frequencies.length; k += 1) if (frequencies[k] > 100 && frequencies[k] < 250 && decibels[k] > decibels[peak]) peak = k;
   assert.ok(Math.abs(frequencies[peak] / (343.2 / (2 * (1 + 2 * 0.6133 * 0.05))) - 1) < 0.05, `peak ${frequencies[peak]}`);
 });
+
+test('two microphones keep the time and level difference from a point source', async () => {
+  const space = readSpace({
+    kind: 'neartect.space',
+    render: { lengthMilliseconds: 20, sampleRateHz: 48000 },
+    source: { kind: 'point', position: [0, 0, 1], distance: false },
+    microphones: [{ position: [1, 0, 1] }, { position: [2, 0, 1] }]
+  });
+  const { channels, sampleRateHz } = await nearFilter(space);
+  assert.equal(channels.length, 2);
+  const peak = channel => channel.reduce((best, x, i) => (Math.abs(x) > Math.abs(channel[best]) ? i : best), 0);
+  assert.equal(peak(channels[0]), 0);
+  const c = 331.3 * Math.sqrt(1 + 20 / 273.15);
+  assert.ok(Math.abs(peak(channels[1]) - sampleRateHz / c) <= 1, `delay ${peak(channels[1])}`);
+  assert.ok(Math.abs(Math.max(...channels[1].map(Math.abs)) - 0.5) < 0.05);
+});
+
+test('a point source with distance on is levelled to one metre', async () => {
+  const space = readSpace({ kind: 'neartect.space', render: { lengthMilliseconds: 20 }, source: { kind: 'point', position: [0, 0, 1] }, microphones: [{ position: [0, 2, 1] }] });
+  const { samples } = await nearFilter(space);
+  assert.ok(Math.abs(samples[0] - 0.5) < 1e-6);
+});
+
+test('a point source over a large floor matches its image source', async () => {
+  const space = readSpace({
+    kind: 'neartect.space',
+    render: { lengthMilliseconds: 80, order: 1 },
+    objects: [{ kind: 'plane', position: [0, 0, 0], size: [40, 0, 40], tiltDegrees: 90, material: 'rigid' }],
+    source: { kind: 'point', position: [0, 0, 1], distance: false },
+    microphones: [{ position: [1, 0, 0.5] }]
+  });
+  const { samples, sampleRateHz } = await nearFilter(space);
+  const direct = Math.hypot(1, 0.5);
+  const image = Math.hypot(1, 1.5);
+  const c = 331.3 * Math.sqrt(1 + 20 / 273.15);
+  for (const hz of [60, 250, 500]) {
+    const phase = 2 * Math.PI * hz * (image - direct) / c;
+    const exact = Math.hypot(1 + direct / image * Math.cos(phase), direct / image * Math.sin(phase));
+    assert.ok(Math.abs(magnitudeAt(samples, sampleRateHz, hz) - exact) < 0.03, `${hz} Hz`);
+  }
+});

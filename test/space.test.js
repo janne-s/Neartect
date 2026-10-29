@@ -45,21 +45,39 @@ test('a corner\'s faces share their edges exactly', () => {
 
 test('the gap slider puts the microphone at the stated distance from the nearest face', () => {
   const space = defaultSpace();
-  const nearest = nearestSurface(space);
-  space.microphone.position = withGap(space, nearest, 0.004);
-  assert.ok(Math.abs(Math.abs(nearestSurface(space).distance) - 0.004) < 1e-9);
+  const microphone = space.microphones[0];
+  microphone.position = withGap(microphone.position, nearestSurface(space, microphone.position), 0.004);
+  assert.ok(Math.abs(Math.abs(nearestSurface(space, microphone.position).distance) - 0.004) < 1e-9);
 });
 
 test('the microphone follows its reference object and keeps a signed gap', async () => {
-  const { microphonePosition, referTo } = await import('../src/domain/objects.js');
+  const { pointPosition, referTo } = await import('../src/domain/objects.js');
   const space = defaultSpace();
   const wall = space.objects[1];
-  assert.equal(space.microphone.reference, wall.id);
-  assert.ok(Math.abs(space.microphone.offset[1] - 0.3) < 1e-9);
+  const microphone = space.microphones[0];
+  assert.equal(microphone.reference, wall.id);
+  assert.ok(Math.abs(microphone.offset[1] - 0.3) < 1e-9);
   wall.position[1] += 1;
-  assert.ok(Math.abs(microphonePosition(space)[1] - (-0.7 + 1)) < 1e-9);
-  space.microphone.offset[1] = -0.05;
-  assert.ok(microphonePosition(space)[1] < wall.position[1]);
-  referTo(space, null);
-  assert.equal(space.microphone.reference, null);
+  assert.ok(Math.abs(pointPosition(space, microphone)[1] - (-0.7 + 1)) < 1e-9);
+  microphone.offset[1] = -0.05;
+  assert.ok(pointPosition(space, microphone)[1] < wall.position[1]);
+  referTo(space, microphone, null);
+  assert.equal(microphone.reference, null);
+});
+
+test('an old single microphone reads as a list of one, and the source defaults to far away', () => {
+  const space = readSpace({ kind: 'neartect.space', microphone: { position: [1, 2, 3] } });
+  assert.equal(space.microphones.length, 1);
+  assert.deepEqual(space.microphones[0].position, [1, 2, 3]);
+  assert.equal(space.source.kind, 'far');
+});
+
+test('removing an object releases the points bound to it', async () => {
+  const { releaseObject } = await import('../src/domain/objects.js');
+  const space = defaultSpace();
+  const wall = space.objects[1];
+  const before = [...space.microphones[0].position];
+  releaseObject(space, wall.id);
+  assert.equal(space.microphones[0].reference, null);
+  assert.deepEqual(space.microphones[0].position, before);
 });

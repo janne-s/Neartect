@@ -1,18 +1,19 @@
 # Neartect
 
-> Neartect designs a microphone's near environment — walls, floors, niches, pipes, and gratings from centimetres to metres — and computes the filter it imposes on sound arriving from a direction. Browser app, no backend; the filter comes from a Rust core compiled to WebAssembly.
+> Neartect designs a microphone's near environment — walls, floors, niches, pipes, and gratings from centimetres to metres — and computes the filter it imposes on sound from a far direction or a point source, for one or several microphones. Browser app, no backend; the filter comes from a Rust core compiled to WebAssembly.
 
 ## Space document
 
 A space is JSON with `kind: "neartect.space"`. Every field has a default; unknown fields are dropped and out-of-range values are clamped.
 
 - `air.temperatureCelsius` — sets the speed of sound.
-- `microphone.reference` — an object id the microphone is bound to, or null; `microphone.offset` — [across, gap, up] in metres in that object's frame from its anchor (a flat object's centre, a box's front face, a pipe's front mouth, a corner's corner, a recess's opening); a negative gap is behind or inside. `microphone.position` — [east, north, up] in metres (ENU), used when there is no reference.
+- `microphones[]` (1–8; a single `microphone` is also read) — `id`, `name`, `reference` (an object id the microphone is bound to, or null), `offset` — [across, gap, up] in metres in that object's frame from its anchor (a flat object's centre, a box's front face, a pipe's front mouth, a corner's corner, a recess's opening); a negative gap is behind or inside. `position` — [east, north, up] in metres (ENU), used when there is no reference.
+- `source.kind` — `far` (a plane wave from `arrival`) or `point`; a point source has `reference`, `offset`, and `position` like a microphone, and `distance` (true: level falls with distance from a 1 m reference).
 - `arrival.azimuthDegrees` (compass, toward the source), `arrival.elevationDegrees`.
 - `render.sampleRateHz`, `render.lengthMilliseconds`, `render.order` (1–6).
 - `objects[]` — `kind` (`plane`, `disc`, `wall`, `grating`, `box`, `corner`, `recess`, `pipe`), `name`, `position` [e, n, u], `yawDegrees` (compass direction the front faces), `tiltDegrees` (0 upright, 90 front facing up), `size` [across, front, up] in metres (flat kinds use 0 for front; a pipe is [diameter, length, diameter] with its axis along front; a corner grows from its position along +across, +front, +up; a recess opens at its position and goes back by its depth), `material`, `strength` (1 physical). A `grating` has `pattern: { periodMetres: [across, up], barMetres: [across, up], thicknessMetres }`, a period of 0 leaving that axis without bars. A `wall` has `opening: { shape: "round" | "rectangle", sizeMetres: [w, h], offsetMetres: [across, up] }`.
 
-The filter is normalised to the free field: with no surfaces it is a unit impulse at time zero.
+The filter is normalised to the free field: with no surfaces it is a unit impulse at time zero. With several microphones the earliest has no delay, and the others keep their time and level differences.
 
 ## Links
 

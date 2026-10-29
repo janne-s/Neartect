@@ -33,13 +33,18 @@ WebAssembly and heard live through a crossfading convolver.
   and Undo steps back.
 - **Gratings** — bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
-- **Microphone** — bound to an object of your choice and moving with it, or
-  free in the world. Across, gap, and up are signed (a negative gap is behind
-  the face or inside the object) on sliders from 1 mm to 5 m.
+- **Microphones** — up to eight, each bound to an object of your choice and
+  moving with it, or free in the world. Across, gap, and up are signed (a
+  negative gap is behind the face or inside the object) on sliders from 1 mm
+  to 5 m. Microphones keep their time and level differences; the preview
+  spreads them from left to right, and export writes one channel each.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
   resonances at the end-corrected length, the open ends' radiation, and the
   walls' losses.
-- **Arrival** — the direction the sound comes from; drag the arrow's tail.
+- **Source** — far away, as a plane wave from a direction (drag the arrow's
+  tail), or a point in the scene that can be bound to an object like a
+  microphone. A point source's level falls with distance (1 m reference)
+  unless 1/r is off.
 - **Listening** — pink noise, clicks, a sweep, or your own file, with a
   free-field comparison.
 - **Plots** — the near filter and its response relative to the free field.
@@ -48,7 +53,7 @@ WebAssembly and heard live through a crossfading convolver.
 
 ## Reliability
 
-Specular reflection from rigid surfaces is class A, absorption tables and the
+Specular reflection from rigid surfaces is class A for a plane wave and a point source alike, absorption tables and the
 finite-size correction class B, the grating's low-frequency blend, the
 continuation of joined edges at other than right angles, and the strength
 control class C. The pipe interior is class B below its first cross mode. Not modelled: the

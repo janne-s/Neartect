@@ -1,9 +1,11 @@
 import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
-import { microphonePosition, OBJECT_DEFAULTS, OBJECT_KINDS, referTo } from './objects.js';
+import { OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo } from './objects.js';
 
 export const SPACE_KIND = 'neartect.space';
 export const SPACE_VERSION = 1;
 export const OPENING_SHAPES = Object.freeze(['round', 'rectangle']);
+export const SOURCE_KINDS = Object.freeze(['far', 'point']);
+export const MOST_MICROPHONES = 8;
 
 export const RANGES = Object.freeze({
   positionMetres: [-50, 50],
@@ -78,6 +80,37 @@ function readObject(value, index = 0) {
   return object;
 }
 
+function readPoint(value, fallbackPosition) {
+  const p = isRecord(value) ? value : {};
+  return {
+    position: position(p.position, fallbackPosition),
+    reference: typeof p.reference === 'string' ? p.reference : null,
+    offset: position(p.offset, [0, 0, 0])
+  };
+}
+
+function readMicrophone(value, index) {
+  const m = isRecord(value) ? value : {};
+  return {
+    id: typeof m.id === 'string' && m.id ? m.id.slice(0, 40) : freshId(),
+    name: typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 60) : `Mic ${index + 1}`,
+    ...readPoint(m, [0, 0, 1])
+  };
+}
+
+export function defaultMicrophone(index, overrides = {}) {
+  return readMicrophone(overrides, index);
+}
+
+function readSource(value) {
+  const s = isRecord(value) ? value : {};
+  return {
+    kind: choice(s.kind, SOURCE_KINDS, 'far'),
+    ...readPoint(s, [0, 2, 1.5]),
+    distance: typeof s.distance === 'boolean' ? s.distance : true
+  };
+}
+
 function readOpening(value, size) {
   const o = isRecord(value) ? value : {};
   const sizeMetres = (Array.isArray(o.sizeMetres) && o.sizeMetres.length === 2 ? o.sizeMetres : [0.4, 0.4])
@@ -103,7 +136,7 @@ export function defaultSpace() {
       { kind: 'plane', name: 'Floor', position: [0, 1, 0], size: [4, 0, 4], tiltDegrees: 90, material: 'concrete' },
       { kind: 'plane', name: 'Wall', position: [0, -1, 1.25], size: [4, 0, 2.5], material: 'brick' }
     ],
-    microphone: { position: [0, -0.7, 1.2] },
+    microphones: [{ position: [0, -0.7, 1.2] }],
     arrival: { azimuthDegrees: 0, elevationDegrees: 10 }
   }, 1);
 }
@@ -112,18 +145,17 @@ export function readSpace(value, referenceIndex = null) {
   if (!isRecord(value) || value.kind !== SPACE_KIND) throw new SpaceError('This is not a Neartect space.');
   if (value.objects !== undefined && !Array.isArray(value.objects)) throw new SpaceError('The objects are not a list.');
   const air = isRecord(value.air) ? value.air : {};
-  const microphone = isRecord(value.microphone) ? value.microphone : {};
+  const microphones = Array.isArray(value.microphones) && value.microphones.length
+    ? value.microphones.slice(0, MOST_MICROPHONES)
+    : [isRecord(value.microphone) ? value.microphone : {}];
   const arrival = isRecord(value.arrival) ? value.arrival : {};
   const render = isRecord(value.render) ? value.render : {};
   const space = {
     kind: SPACE_KIND,
     version: SPACE_VERSION,
     air: { temperatureCelsius: number(air.temperatureCelsius, RANGES.temperatureCelsius, 20) },
-    microphone: {
-      position: position(microphone.position, [0, 0, 1]),
-      reference: typeof microphone.reference === 'string' ? microphone.reference : null,
-      offset: position(microphone.offset, [0, 0, 0])
-    },
+    microphones: microphones.map(readMicrophone),
+    source: readSource(value.source),
     arrival: {
       azimuthDegrees: angle(arrival.azimuthDegrees, 0),
       elevationDegrees: number(arrival.elevationDegrees, RANGES.elevationDegrees, 0)
@@ -135,15 +167,24 @@ export function readSpace(value, referenceIndex = null) {
     },
     objects: (value.objects ?? []).map(readObject)
   };
+  const ids = new Set();
+  space.microphones.forEach(m => {
+    if (ids.has(m.id)) m.id = freshId();
+    ids.add(m.id);
+  });
+  for (const point of [...space.microphones, space.source]) {
+    if (!space.objects.some(o => o.id === point.reference)) {
+      point.reference = null;
+      point.offset = [0, 0, 0];
+    }
+  }
   if (referenceIndex !== null && space.objects[referenceIndex]) {
-    space.microphone.reference = null;
-    referTo(space, space.objects[referenceIndex].id);
+    space.microphones.forEach(m => {
+      m.reference = null;
+      referTo(space, m, space.objects[referenceIndex].id);
+    });
   }
-  if (!space.objects.some(o => o.id === space.microphone.reference)) {
-    space.microphone.reference = null;
-    space.microphone.offset = [0, 0, 0];
-  }
-  space.microphone.position = microphonePosition(space);
+  placePoints(space);
   return space;
 }
 

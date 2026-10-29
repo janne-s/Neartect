@@ -33,8 +33,7 @@ function footInside(vertices, normal, point) {
   return inside;
 }
 
-export function nearestSurface(space) {
-  const point = space.microphone.position;
+export function nearestSurface(space, point) {
   let best = null;
   const owners = space.objects.flatMap((object, index) => expandObjectsOf(object).map(face => ({ face, index })));
   for (const { face, index } of owners) {
@@ -50,8 +49,7 @@ function expandObjectsOf(object) {
   return expandObjects({ objects: [object] });
 }
 
-export function withGap(space, nearest, gapMetres) {
-  const point = space.microphone.position;
+export function withGap(point, nearest, gapMetres) {
   const side = nearest.distance < 0 ? -1 : 1;
   const shift = side * Math.max(SMALLEST_GAP_METRES, gapMetres) - nearest.distance;
   return point.map((p, i) => p + nearest.normal[i] * shift);
@@ -59,6 +57,6 @@ export function withGap(space, nearest, gapMetres) {
 
 export function spaceCentre(space) {
   const points = expandObjects(space).flatMap(face => face.vertices);
-  if (!points.length) return [...space.microphone.position];
+  if (!points.length) return [...space.microphones[0].position];
   return [0, 1, 2].map(i => points.reduce((sum, p) => sum + p[i], 0) / points.length);
 }

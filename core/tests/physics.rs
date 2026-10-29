@@ -26,7 +26,7 @@ fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
-    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None }
+    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0 }
 }
 
 fn at(spectrum: &[Complex64], length: usize, hz: f64) -> Complex64 {
@@ -263,4 +263,74 @@ fn open_pipe_resonates_at_its_end_corrected_length() {
     let expected = C / (2.0 * (1.0 + 2.0 * 0.6133 * 0.05));
     assert!((peak_hz / expected - 1.0).abs() < 0.05, "peak {peak_hz} Hz, expected {expected}");
     assert!(h[peak].norm() > 3.0, "resonance only {}", h[peak].norm());
+}
+
+fn from_point(surfaces: Vec<Surface>, microphone: V3, source: V3, length: usize, max_order: usize) -> Scene {
+    let mut s = scene(surfaces, microphone, [0.0, 0.0, 1.0], length, max_order);
+    s.source = Some(source);
+    s
+}
+
+fn distance(a: V3, b: V3) -> f64 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
+#[test]
+fn point_source_in_free_field_is_a_unit_impulse() {
+    let h = near_filter(&from_point(vec![], [0.0, 0.0, 1.0], [2.0, 1.0, 1.5], 256, 3));
+    assert!((h[0] - 1.0).abs() < 1e-6);
+    assert!(h[1..].iter().all(|x| x.abs() < 1e-6));
+}
+
+#[test]
+fn point_source_over_a_rigid_floor_matches_its_image() {
+    let length = 4096;
+    let (microphone, source) = ([1.0, 0.0, 0.5], [0.0, 0.0, 1.0]);
+    let h = near_spectrum(&from_point(vec![floor(20.0)], microphone, source, length, 1));
+    let direct = distance(source, microphone);
+    let image = distance([0.0, 0.0, -1.0], microphone);
+    let n = spectrum_size(length);
+    let mut worst: f64 = 0.0;
+    for hz in [60.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0] {
+        let k = (hz * n as f64 / FS).round() as usize;
+        let omega = 2.0 * std::f64::consts::PI * k as f64 * FS / n as f64;
+        let exact = Complex64::new(1.0, 0.0) + Complex64::from_polar(direct / image, -omega * (image - direct) / C);
+        worst = worst.max((h[k] - exact).norm());
+    }
+    assert!(worst < 0.05, "largest error {worst}");
+}
+
+#[test]
+fn absorbing_floor_under_a_near_point_source_reflects_nothing() {
+    let length = 4096;
+    let h = near_spectrum(&from_point(vec![surface(floor(10.0).polygon, [0.0; 8])], [0.2, 0.0, 0.2], [0.0, 0.0, 0.3], length, 1));
+    let worst = [20.0, 40.0, 80.0, 160.0, 320.0, 1000.0, 4000.0]
+        .iter()
+        .map(|&hz| (at(&h, length, hz).norm() - 1.0).abs())
+        .fold(0.0, f64::max);
+    assert!(worst < 0.05, "largest deviation {worst}");
+}
+
+#[test]
+fn point_source_in_a_rigid_edge_adds_three_images_at_low_frequency() {
+    let length = 8192;
+    let wall = surface(rectangle([0.0, 0.0, 10.0], [10.0, 0.0, 0.0], [0.0, 0.0, 10.0]), RIGID);
+    let floor = surface(rectangle([0.0, 10.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]), RIGID);
+    let (microphone, source) = ([0.3, 0.4, 0.5], [-0.5, 1.0, 0.8]);
+    let h = near_spectrum(&from_point(vec![floor, wall], microphone, source, length, 2));
+    let direct = distance(source, microphone);
+    let images = [[-0.5, 1.0, -0.8], [-0.5, -1.0, 0.8], [-0.5, -1.0, -0.8]];
+    let expected = 1.0 + images.iter().map(|&i| direct / distance(i, microphone)).sum::<f64>();
+    let low = at(&h, length, 30.0).norm();
+    assert!((low / expected - 1.0).abs() < 0.06, "low {low}, expected {expected}");
+}
+
+#[test]
+fn alignment_delays_and_scales_the_filter() {
+    let mut s = scene(vec![], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], 256, 1);
+    s.gain = 0.5;
+    s.delay_seconds = 48.0 / FS;
+    let h = near_filter(&s);
+    assert!((h[48] - 0.5).abs() < 1e-4, "{}", h[48]);
+    assert!(h.iter().enumerate().all(|(i, x)| i == 48 || x.abs() < 1e-4));
 }
