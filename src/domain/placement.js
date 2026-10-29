@@ -57,6 +57,6 @@ export function withGap(point, nearest, gapMetres) {
 
 export function spaceCentre(space) {
   const points = expandObjects(space).flatMap(face => face.vertices);
-  if (!points.length) return [...firstListener(space).position];
+  if (!points.length) return [...(firstListener(space)?.position ?? [0, 0, 1.2])];
   return [0, 1, 2].map(i => points.reduce((sum, p) => sum + p[i], 0) / points.length);
 }

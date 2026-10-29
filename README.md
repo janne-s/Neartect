@@ -61,8 +61,10 @@ WebAssembly and heard live through a crossfading convolver.
   and a head with two ears; each is one element that binds, moves, and turns
   as a whole, with its spacing and angle on sliders. Mid-side decodes to left
   and right in the preview; export writes every capsule, or a stereo mix.
-  Microphones and layouts share one list: any of them can be removed while
-  another remains, and a layout added to a lone microphone takes its place.
+  Microphones and layouts share one list: any of them can be removed, and a
+  layout added to a lone microphone takes its place. A layout shows its front
+  as a bold arrow, coincident capsules fan out with their names at the tips,
+  and a head is drawn with its nose and ears.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
   resonances at the end-corrected length, the open ends' radiation, and the
   walls' losses.
@@ -73,7 +75,9 @@ WebAssembly and heard live through a crossfading convolver.
 - **Listening** — pink noise, clicks, a sweep, or your own file, with a
   free-field comparison.
 - **Plots** — the near filter and its response relative to the free field.
-- **Export** — the near filter or the filtered signal as 32-bit float WAV, and
+- **Grid** — a fixed metre grid on the ground, with tenths when close; the
+  grid button hides it.
+- **Export** — the impulse response (IR) for a convolution plugin, stereo as heard or one channel per capsule and optionally peak-normalised, or the filtered signal, as 32-bit float WAV, and
   the space as JSON.
 
 ## Reliability

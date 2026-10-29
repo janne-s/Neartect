@@ -60,7 +60,8 @@ const view = createNearView($('near-view'), {
   onEdit: apply => { apply(state.space); changed({ save: false }); },
   onCommit: () => changed({ panel: true }),
   onAreaEnd: () => setAreaSelect(false),
-  snapSurfaces: () => preferences.snapSurfaces
+  snapSurfaces: () => preferences.snapSurfaces,
+  showGrid: () => preferences.showGrid
 });
 
 // Each channel is computed on its own worker, so several microphones and
@@ -125,6 +126,14 @@ async function refreshFilter() {
   busy = true;
   dirty = false;
   const space = liveSpace();
+  if (!listeners(space).length) {
+    state.filter = null;
+    preview.silence();
+    setStatus('No microphone: add one from Layouts');
+    drawPlots();
+    busy = false;
+    return;
+  }
   try {
     const result = await computeFilter(space);
     state.filter = result;
@@ -177,7 +186,7 @@ function drawPlots() {
 function activeListener() {
   const chosen = state.selection?.type === 'microphone' ? state.space.microphones.find(m => m.id === state.selection.id)
     : state.selection?.type === 'rig' ? state.space.rigs.find(r => r.id === state.selection.id) : null;
-  return chosen ?? firstListener(state.space);
+  return chosen ?? firstListener(state.space) ?? { position: spaceCentre(state.space), reference: null, offset: [0, 0, 0] };
 }
 
 
@@ -303,6 +312,7 @@ const SIZE_TITLES = Object.freeze({ W: 'Width', D: 'Depth', H: 'Height', L: 'Len
 const RELIEF_LABELS = Object.freeze({ flat: 'Flat', waves: 'Waves', arches: 'Arches', scallops: 'Scallops', egg: 'Egg crate' });
 const PATTERN_LABELS = Object.freeze({ omni: 'Omni', wide: 'Wide cardioid', cardioid: 'Cardioid', supercardioid: 'Supercardioid', hypercardioid: 'Hypercardioid', figure8: 'Figure of eight' });
 const removeIcon = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+const RIG_COLOUR_START = 3;
 
 // A card is a header that opens it and, when open, captioned groups of
 // controls, so that place, shape, surface, and pickup read apart.
@@ -476,7 +486,6 @@ function removeObject(id) {
   changed({ panel: true });
 }
 
-const listenerCount = () => state.space.microphones.length + state.space.rigs.length;
 
 function refreshPanel() {
   live.length = 0;
@@ -487,7 +496,7 @@ function refreshPanel() {
   const listeners = $('listener-list');
   listeners.replaceChildren();
   state.space.microphones.forEach((microphone, index) => microphoneCard(listeners, microphone, index));
-  state.space.rigs.forEach(rig => rigCard(listeners, rig));
+  state.space.rigs.forEach((rig, index) => rigCard(listeners, rig, index));
   document.querySelectorAll('#listener-menu button').forEach(b => {
     b.disabled = b.dataset.kind === 'mono' ? state.space.microphones.length >= MOST_MICROPHONES : state.space.rigs.length >= MOST_RIGS;
   });
@@ -547,7 +556,7 @@ function microphoneCard(container, microphone, index) {
   cardHeader(card, {
     lead: [dot], name: microphone.name, kind: PATTERN_LABELS[microphone.pattern], selected,
     onToggle: () => select(selected ? null : { type: 'microphone', id: microphone.id }),
-    onRemove: listenerCount() > 1 ? () => removeMicrophone(microphone.id) : null, removeLabel: `Remove ${microphone.name}`
+    onRemove: () => removeMicrophone(microphone.id), removeLabel: `Remove ${microphone.name}`
   });
   if (selected) {
     const current = () => state.space.microphones.find(m => m.id === microphone.id);
@@ -565,7 +574,7 @@ function microphoneCard(container, microphone, index) {
     });
     if (microphone.pattern !== 'omni') {
       macro(macros, { label: 'Aim', title: 'Aim around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
-      macro(macros, { label: 'Aim up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
+      macro(macros, { label: 'Tilt', title: 'Aim tilted up or down', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     }
   }
   container.append(card);
@@ -575,11 +584,8 @@ function removeGroup(group) {
   group.objects.forEach(id => releaseObject(state.space, id));
   state.space.objects = state.space.objects.filter(o => !group.objects.includes(o.id));
   const microphones = state.space.microphones.filter(m => !group.points.includes(`microphone:${m.id}`));
-  const rigs = state.space.rigs.filter(r => !group.points.includes(`rig:${r.id}`));
-  if (microphones.length + rigs.length) {
-    state.space.microphones = microphones;
-    state.space.rigs = rigs;
-  }
+  state.space.microphones = microphones;
+  state.space.rigs = state.space.rigs.filter(r => !group.points.includes(`rig:${r.id}`));
   state.selection = null;
   changed({ panel: true });
 }
@@ -599,27 +605,28 @@ function towardsSource(microphone) {
   return d.map(v => v / n);
 }
 
-function rigBadge(kind) {
+function rigBadge(kind, index) {
   const badge = element('span', 'rig-badge');
+  badge.style.color = `var(--mic-${(RIG_COLOUR_START + index) % MOST_MICROPHONES + 1})`;
   if (kind === 'binaural') badge.innerHTML = headIcon(); else badge.textContent = RIG_KINDS[kind].short;
   return badge;
 }
 
-function rigCard(container, rig) {
+function rigCard(container, rig, index) {
   const selected = state.selection?.type === 'rig' && state.selection.id === rig.id;
   const card = element('div', 'card');
   card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(`rig:${rig.id}`))));
   cardHeader(card, {
-    lead: [rigBadge(rig.kind)], name: rig.name, kind: rigMembers(state.space, rig).map(m => m.name).join(' '), selected,
+    lead: [rigBadge(rig.kind, index)], name: rig.name, kind: rigMembers(state.space, rig).map(m => m.name).join(' '), selected,
     onToggle: () => select(selected ? null : { type: 'rig', id: rig.id }),
-    onRemove: listenerCount() > 1 ? () => removeRig(rig.id) : null, removeLabel: `Remove ${rig.name}`
+    onRemove: () => removeRig(rig.id), removeLabel: `Remove ${rig.name}`
   });
   if (selected) {
     const current = () => state.space.rigs.find(r => r.id === rig.id);
     pointControls(cardGroup(card, 'Place').macros, current, 0.5);
     const { macros } = cardGroup(card, rig.kind === 'binaural' ? 'Head' : 'Layout');
     macro(macros, { label: 'Facing', title: 'Facing around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
-    macro(macros, { label: 'Facing up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
+    macro(macros, { label: 'Tilt', title: 'Tilt up or down', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     const defaults = RIG_KINDS[rig.kind];
     if (defaults.spacingMetres > 0) {
       const binaural = rig.kind === 'binaural';
@@ -633,14 +640,12 @@ function rigCard(container, rig) {
 }
 
 function removeRig(id) {
-  if (listenerCount() <= 1) return;
   state.space.rigs = state.space.rigs.filter(r => r.id !== id);
   if (state.selection?.id === id) state.selection = null;
   changed({ panel: true });
 }
 
 function removeMicrophone(id) {
-  if (listenerCount() <= 1) return;
   state.space.microphones = state.space.microphones.filter(m => m.id !== id);
   if (state.selection?.id === id) state.selection = null;
   changed({ panel: true });
@@ -944,11 +949,17 @@ $('export').addEventListener('click', () => {
   exportDialog.focus();
 });
 $('export-filter').addEventListener('click', async () => {
+  if (!listeners(state.space).length) return;
   const result = await computeFilter(clone(state.space));
   const channels = $('export-mix').checked ? stereo(result.channels, result.pans) : result.channels;
-  download('neartect-filter.wav', new Blob([encodeFloat32Wav(channels, result.sampleRateHz)], { type: 'audio/wav' }));
+  if ($('export-normalise').checked) {
+    const peak = Math.max(1e-9, ...channels.map(c => c.reduce((m, x) => Math.max(m, Math.abs(x)), 0)));
+    channels.forEach(c => c.forEach((x, i) => { c[i] = x / peak; }));
+  }
+  download('neartect-ir.wav', new Blob([encodeFloat32Wav(channels, result.sampleRateHz)], { type: 'audio/wav' }));
 });
 $('export-processed').addEventListener('click', async () => {
+  if (!listeners(state.space).length) return;
   try {
     const { samples, sampleRate } = await signalSamples(state.space.render.sampleRateHz);
     const space = clone(state.space);
@@ -990,7 +1001,14 @@ $('attribution-button').addEventListener('click', () => {
 });
 $('view-reset').addEventListener('click', () => view.reset());
 
-const preferences = { panelWidth: 340, resultsHeight: 220, snapSurfaces: false, ...(readStored(PREFERENCES_KEY) ?? {}) };
+const preferences = { panelWidth: 340, resultsHeight: 220, snapSurfaces: false, showGrid: true, ...(readStored(PREFERENCES_KEY) ?? {}) };
+$('show-grid').setAttribute('aria-pressed', String(preferences.showGrid));
+$('show-grid').addEventListener('click', () => {
+  preferences.showGrid = !preferences.showGrid;
+  $('show-grid').setAttribute('aria-pressed', String(preferences.showGrid));
+  writeStored(PREFERENCES_KEY, preferences);
+  view.update(state.space, state.selection);
+});
 $('snap-surfaces').setAttribute('aria-pressed', String(preferences.snapSurfaces));
 $('snap-surfaces').addEventListener('click', () => {
   preferences.snapSurfaces = !preferences.snapSurfaces;

@@ -106,6 +106,11 @@ export function createPreview() {
       source = null;
     },
     setFilter,
+    silence() {
+      pending = null;
+      if (!context) return;
+      branches.forEach(branch => ramp(branch.gain.gain, 0, context.currentTime, CROSSFADE_SECONDS));
+    },
     setBypass(on) {
       bypass = on;
       if (context) levels(context.currentTime);

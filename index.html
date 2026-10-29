@@ -48,6 +48,7 @@
         <div class="view-side">
           <div class="icon-toggles view-tools" role="toolbar" aria-label="View" aria-orientation="vertical">
             <button type="button" class="icon-toggle" id="select-area" aria-pressed="false" aria-label="Select an area" title="Select an area: drag a rectangle (Shift-click adds or removes one)"><i class="fa-solid fa-object-group" aria-hidden="true"></i></button>
+            <button type="button" class="icon-toggle" id="show-grid" aria-pressed="true" aria-label="Metre grid" title="Metre grid"><svg class="ui-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></button>
             <button type="button" class="icon-toggle" id="snap-surfaces" aria-pressed="false" aria-label="Snap to surfaces" title="Snap to surfaces"><i class="fa-solid fa-magnet" aria-hidden="true"></i></button>
             <button type="button" class="icon-toggle" id="view-reset" aria-label="Reset view" title="Reset view"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i></button>
           </div>
@@ -68,16 +69,16 @@
         </header>
         <section data-sheet="emitters">
           <h2><i class="fa-solid fa-cubes" aria-hidden="true"></i>Objects</h2>
-          <p class="caption">Start from</p>
+          <p class="caption">Situations</p>
           <div class="build-menu situations" id="situations" role="toolbar" aria-label="Start from a situation"></div>
-          <p class="caption">Add</p>
+          <p class="caption">Shapes</p>
           <div class="build-menu" id="build-menu" role="toolbar" aria-label="Add an object"></div>
           <div class="list" id="object-list"></div>
         </section>
         <section data-sheet="receivers">
           <h2><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphones</h2>
           <div class="list" id="listener-list"></div>
-          <p class="caption">Add a microphone or a layout</p>
+          <p class="caption">Layouts</p>
           <div class="build-menu" id="listener-menu" role="toolbar" aria-label="Add a microphone or a layout"></div>
         </section>
         <section data-sheet="receivers">
@@ -130,10 +131,11 @@
         </header>
         <div class="export-body">
           <div class="export-choices">
-            <button type="button" id="export-filter">Near filter WAV</button>
+            <button type="button" id="export-filter" title="For a convolution plugin in a DAW">Impulse response (IR) WAV</button>
             <button type="button" id="export-processed">Filtered signal WAV</button>
           </div>
-          <label class="export-mix"><input type="checkbox" id="export-mix" /> Stereo mix, as heard in the preview</label>
+          <label class="export-mix"><input type="checkbox" id="export-mix" checked /> Stereo, as heard in the preview (off: one channel per capsule)</label>
+          <label class="export-mix"><input type="checkbox" id="export-normalise" /> Normalise the IR peak to 0 dB</label>
           <p class="export-summary" id="export-summary"></p>
           <p class="export-error" id="export-error" role="alert" hidden></p>
         </div>

@@ -3,7 +3,7 @@ import { arrivalVector } from '../domain/space.js';
 import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
 import { faceNormal, nearestSurface } from '../domain/placement.js';
 import { faceRelief, hasRelief } from '../domain/relief.js';
-import { rigMembers } from '../domain/rigs.js';
+import { rigFrame, rigMembers } from '../domain/rigs.js';
 
 const FIELD_OF_VIEW = 0.9;
 const CLICK_PIXELS = 4;
@@ -12,14 +12,24 @@ const ARROW_PIXELS = 70;
 const RING_PIXELS = 58;
 const RING_SEGMENTS = 48;
 const MOST_BARS_DRAWN = 80;
-const GRID_LINES_EACH_SIDE = 8;
+const NEAR_METRES = 0.05;
+const ARROW_GAP_PIXELS = 14;
+const GRID_LEAST_METRES = 6;
+const GRID_MOST_METRES = 40;
+const GRID_FINE_DISTANCE_METRES = 3;
+const GRID_FINE_REACH_METRES = 3;
+const RIG_FRONT_PIXELS = 46;
+const HEAD_LEAST_PIXELS = 9;
+const HEAD_NOSE_PIXELS = 18;
+const RIG_COLOUR_START = 3;
+const ARRIVAL_STOP = 0.6;
 const ARROWHEAD_PIXELS = 9;
 const ANGLE_SNAP_DEGREES = 5;
 const SNAP_PER_GRID = 20;
 const WORLD_AXES = Object.freeze([[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
-const AXIS_NAMES = Object.freeze(['E', 'N', 'Up']);
+const AXIS_NAMES = Object.freeze(['East', 'North', 'Up']);
 const SIZE_NAMES = Object.freeze(['W', 'D', 'H']);
-const OFFSET_NAMES = Object.freeze(['↔', '⟂', '↕']);
+const OFFSET_NAMES = Object.freeze(['Across', 'Gap', 'Up']);
 const DIMMED = 0.3;
 const SURFACE_SNAP_PIXELS = 10;
 const WHEEL_LINE_PIXELS = 16;
@@ -61,7 +71,7 @@ function insidePolygon([x, y], corners) {
   return inside;
 }
 
-export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false }) {
+export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true }) {
   const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
@@ -107,9 +117,23 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return free ? value : Math.round(value / step) * step;
   }
 
+  // A segment that passes behind the camera is cut at the near plane, so long
+  // lines such as the grid keep their visible part.
+  function clipped(a, b) {
+    const { forward, eye } = basis();
+    const da = dot(sub(a, eye), forward) - NEAR_METRES;
+    const db = dot(sub(b, eye), forward) - NEAR_METRES;
+    if (da < 0 && db < 0) return null;
+    if (da < 0) return [add(a, scale(sub(b, a), da / (da - db))), b];
+    if (db < 0) return [a, add(a, scale(sub(b, a), da / (da - db)))];
+    return [a, b];
+  }
+
   function line(context, a, b) {
-    const p = project(a);
-    const q = project(b);
+    const cut = clipped(a, b);
+    if (!cut) return null;
+    const p = project(cut[0]);
+    const q = project(cut[1]);
     if (!p || !q) return null;
     context.beginPath();
     context.moveTo(p[0], p[1]);
@@ -129,7 +153,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   // Microphones and a point source share one kind of marker and handles.
   function points() {
     const list = space.microphones.map((point, index) => ({ key: `microphone:${point.id}`, type: 'microphone', id: point.id, index, point }));
-    (space.rigs ?? []).forEach((point, index) => list.push({ key: `rig:${point.id}`, type: 'rig', id: point.id, index: space.microphones.length + index, point }));
+    (space.rigs ?? []).forEach((point, index) => list.push({ key: `rig:${point.id}`, type: 'rig', id: point.id, index: RIG_COLOUR_START + index, point }));
     if (space.source.kind === 'point') list.push({ key: 'source', type: 'source', point: space.source });
     return list;
   }
@@ -182,7 +206,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const chosen = space.microphones.find(m => selection?.type === 'microphone' && m.id === selection.id)
       ?? space.rigs.find(r => selection?.type === 'rig' && r.id === selection.id)
       ?? space.microphones[0] ?? space.rigs[0];
-    return chosen.position;
+    return chosen ? chosen.position : camera.target;
   }
 
   function drawFaces(context, colors, fill, edge) {
@@ -332,20 +356,21 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return live && live.id === handle.id;
   }
 
-  function moveHandles(context, colors, centre, target, axes = WORLD_AXES, names = AXIS_NAMES) {
+  // Move arrows start a little out from the centre, so the marker and its
+  // aim stay readable between them.
+  function moveHandles(context, colors, centre, target, axes = WORLD_AXES) {
     const length = pixelsToMetres(ARROW_PIXELS, centre);
+    const gap = pixelsToMetres(ARROW_GAP_PIXELS, centre);
     axes.forEach((axis, index) => {
-      const handle = { id: `move-${target}-${index}`, type: 'move', target, axis: index, vector: axis, length, name: names[index] };
+      const handle = { id: `move-${target}-${index}`, type: 'move', target, axis: index, vector: axis, length };
       const color = isHot(handle) ? colors.accent : colors.ink;
       context.strokeStyle = color;
       context.fillStyle = color;
-      context.lineWidth = 2;
-      const ends = line(context, centre, add(centre, scale(axis, length)));
+      context.lineWidth = isHot(handle) ? 2.5 : 1.5;
+      const ends = line(context, add(centre, scale(axis, gap)), add(centre, scale(axis, length)));
       context.lineWidth = 1;
       if (!ends) return;
       arrowHead(context, ends[0], ends[1]);
-      context.font = '10px system-ui, sans-serif';
-      context.fillText(names[index], ends[1][0] + 5, ends[1][1] - 3);
       handles.push({ ...handle, segment: ends });
     });
   }
@@ -411,18 +436,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const edge = style.getPropertyValue('--surface-edge').trim();
     const sourceColor = style.getPropertyValue('--source').trim();
 
-    const spacing = gridSpacing();
-    const half = GRID_LINES_EACH_SIDE * spacing;
-    const cx = Math.round(camera.target[0] / spacing) * spacing;
-    const cy = Math.round(camera.target[1] / spacing) * spacing;
-    context.strokeStyle = colors.grid;
-    for (let i = -GRID_LINES_EACH_SIDE; i <= GRID_LINES_EACH_SIDE; i += 1) {
-      line(context, [cx + i * spacing, cy - half, 0], [cx + i * spacing, cy + half, 0]);
-      line(context, [cx - half, cy + i * spacing, 0], [cx + half, cy + i * spacing, 0]);
-    }
-    context.fillStyle = colors.faint;
-    context.font = '11px system-ui, sans-serif';
-    context.fillText(`▦ ${formatGap(spacing)}`, 10, size.height - 10);
+    if (showGrid()) drawGrid(context, colors);
 
     drawFaces(context, colors, fill, edge);
 
@@ -431,7 +445,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const reach = pixelsToMetres(ARROW_PIXELS * 1.6, centre);
       const arrival = arrivalVector(space.arrival);
       const from = project(add(centre, scale(arrival, reach)));
-      const to = project(add(centre, scale(arrival, reach * 0.18)));
+      const to = project(add(centre, scale(arrival, reach * ARRIVAL_STOP)));
       if (from && to) {
         const handle = { id: 'arrival', type: 'arrival', point: from };
         const color = isHot(handle) ? colors.accent : colors.direct;
@@ -506,7 +520,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
           context.setLineDash([]);
         }
       }
-      if (active || space.microphones.length === 1 && item.type === 'microphone') gapLabel(context, colors, item.point, p);
+      if (item.type === 'microphone' && (active || space.microphones.length === 1)) gapLabel(context, colors, item.point, p);
       context.globalAlpha = 1;
     }
     if (selectedPoint?.type === 'rig' || (selectedPoint?.type === 'microphone' && selectedPoint.point.pattern !== 'omni')) {
@@ -528,7 +542,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const reference = referenceObject(space, selectedPoint.point);
       if (reference) {
         const { across, front, up } = objectFrame(reference);
-        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, [across, front, up], OFFSET_NAMES);
+        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, [across, front, up]);
       } else {
         moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key);
       }
@@ -583,24 +597,112 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     }
   }
 
+  // The ground grid is fixed to metres, with tenths when you come close.
+  function drawGrid(context, colors) {
+    const reach = Math.min(GRID_MOST_METRES, Math.max(GRID_LEAST_METRES, Math.ceil(camera.distance * 3)));
+    const cx = Math.round(camera.target[0]);
+    const cy = Math.round(camera.target[1]);
+    const lines = (step, extent, color) => {
+      context.strokeStyle = color;
+      const count = Math.round(extent / step);
+      const x0 = Math.round(cx / step) * step;
+      const y0 = Math.round(cy / step) * step;
+      for (let i = -count; i <= count; i += 1) {
+        line(context, [x0 + i * step, y0 - extent, 0], [x0 + i * step, y0 + extent, 0]);
+        line(context, [x0 - extent, y0 + i * step, 0], [x0 + extent, y0 + i * step, 0]);
+      }
+    };
+    const fine = camera.distance < GRID_FINE_DISTANCE_METRES;
+    if (fine) {
+      context.globalAlpha = 0.45;
+      lines(0.1, Math.min(reach, GRID_FINE_REACH_METRES), colors.grid);
+      context.globalAlpha = 1;
+    }
+    lines(1, reach, colors.grid);
+    context.fillStyle = colors.faint;
+    context.font = '11px system-ui, sans-serif';
+    context.fillText(fine ? '▦ 1 m · 10 cm' : '▦ 1 m', 10, size.height - 10);
+  }
+
+  // A rig shows its front as a bold arrow; capsules at one point fan out
+  // from it with their names at the tips, spaced capsules sit at their
+  // places, and a head is drawn as a head with a nose and its ears.
   function drawRig(context, rig, color) {
     const centre = rig.position;
+    const { front, right } = rigFrame(space, rig);
+    const c = project(centre);
+    if (!c) return;
+    context.strokeStyle = color;
+    context.fillStyle = color;
+    context.font = '10px system-ui, sans-serif';
+    const tip = (point, direction, pixels) => project(add(point, scale(direction, pixelsToMetres(pixels, point))));
+    const label = (text, at, from) => {
+      const dx = at[0] - from[0];
+      const dy = at[1] - from[1];
+      const n = Math.hypot(dx, dy) || 1;
+      context.fillText(text, at[0] + dx / n * 6 - 3, at[1] + dy / n * 6 + 3);
+    };
+    if (rig.kind === 'binaural') {
+      const radius = Math.max(HEAD_LEAST_PIXELS, rig.spacingMetres / 2 / pixelsToMetres(1, centre));
+      context.lineWidth = 1.5;
+      context.beginPath();
+      context.arc(c[0], c[1], radius, 0, 2 * Math.PI);
+      context.stroke();
+      const nose = tip(centre, front, radius + HEAD_NOSE_PIXELS);
+      const base = tip(centre, front, radius - 1);
+      if (nose && base) {
+        context.lineWidth = 2.5;
+        context.beginPath();
+        context.moveTo(base[0], base[1]);
+        context.lineTo(nose[0], nose[1]);
+        context.stroke();
+        arrowHead(context, base, nose);
+      }
+      context.lineWidth = 1;
+      for (const [name, side] of [['L', -1], ['R', 1]]) {
+        const ear = tip(centre, right.map(v => v * side), radius);
+        if (!ear) continue;
+        context.beginPath();
+        context.arc(ear[0], ear[1], 3, 0, 2 * Math.PI);
+        context.fill();
+        label(name, ear, c);
+      }
+      return;
+    }
+    const front0 = tip(centre, front, 6);
+    const front1 = tip(centre, front, RIG_FRONT_PIXELS);
+    if (front0 && front1) {
+      context.lineWidth = 3;
+      context.globalAlpha *= 0.6;
+      context.beginPath();
+      context.moveTo(front0[0], front0[1]);
+      context.lineTo(front1[0], front1[1]);
+      context.stroke();
+      arrowHead(context, front0, front1);
+      context.globalAlpha /= 0.6;
+      context.lineWidth = 1;
+    }
     for (const member of rigMembers(space, rig)) {
-      context.strokeStyle = color;
-      context.fillStyle = color;
-      line(context, centre, member.position);
       const m = project(member.position);
       if (!m) continue;
+      const together = Math.hypot(m[0] - c[0], m[1] - c[1]) < 2;
+      if (!together) line(context, centre, member.position);
       context.beginPath();
-      context.arc(m[0], m[1], 3.5, 0, 2 * Math.PI);
+      context.arc(m[0], m[1], 3, 0, 2 * Math.PI);
       context.fill();
-      const reach = pixelsToMetres(AIM_PIXELS * (member.ear ? 0.6 : 0.8), member.position);
-      if (member.ear || member.pattern !== 'omni') {
-        const ends = line(context, member.position, add(member.position, scale(member.facing, reach)));
-        if (ends) arrowHead(context, ends[0], ends[1]);
+      if (member.pattern !== 'omni') {
+        const end = tip(member.position, member.facing, AIM_PIXELS);
+        if (end) {
+          context.beginPath();
+          context.moveTo(m[0], m[1]);
+          context.lineTo(end[0], end[1]);
+          context.stroke();
+          arrowHead(context, m, end);
+          label(member.name, end, m);
+          continue;
+        }
       }
-      context.font = '10px system-ui, sans-serif';
-      context.fillText(member.name, m[0] + 5, m[1] - 5);
+      label(member.name, m, together ? (tip(centre, front, -10) ?? c) : c);
     }
   }
 
@@ -669,7 +771,11 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   function startDrag(handle, point) {
     if (handle.type === 'aim') {
       const microphone = findPoint(space, handle.key);
-      return { handle, snapshot: null, centre: [...microphone.position], start: { point }, bound: true, aim: true };
+      const centre = [...microphone.position];
+      const p = planePoint(centre, [0, 0, 1], point);
+      const facing = aimVector(space, microphone);
+      const start = { point, angle: p ? degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) : 0, azimuth: degrees(Math.atan2(facing[0], facing[1])) };
+      return { handle, snapshot: null, centre, start, bound: true, aim: true };
     }
     if (handle.target === 'group' || handle.group) {
       const centre = groupCentre();
@@ -749,7 +855,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (drag.aim) {
       const p = planePoint(centre, [0, 0, 1], point);
       if (!p) return;
-      const azimuth = wrap(snap(degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])), ANGLE_SNAP_DEGREES, free));
+      const turned = degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) - start.angle;
+      const azimuth = wrap(snap(start.azimuth + turned, ANGLE_SNAP_DEGREES, free));
       readout = { x: point[0], y: point[1], text: `↻ ${Math.round(azimuth)}°` };
       onEdit(next => {
         const microphone = findPoint(next, handle.key);
