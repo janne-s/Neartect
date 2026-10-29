@@ -33,3 +33,8 @@ test('the default wall stands on the floor edge and the microphone is 30 cm in f
   assert.ok(Math.abs(lowest) < 1e-9 && Math.abs(floorSouth + 1) < 1e-9);
   assert.ok(Math.abs(microphoneDistance(space, wall) - 0.3) < 1e-9);
 });
+
+test('a grid pattern keeps bars no wider than their period', () => {
+  const space = readSpace({ kind: 'neartect.space', surfaces: [{ pattern: { kind: 'grid', periodMetres: [0.02, 0], barMetres: [0.05, 0.01] } }] });
+  assert.deepEqual(space.surfaces[0].pattern.barMetres, [0.02, 0]);
+});

@@ -47,7 +47,8 @@ pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
             let pressure_release = -(j * omega_over_c) * soft;
             let r = reflection[index][k];
             let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
-            total[k] += scattered * (surface.strength * compensation);
+            let grating = surface.pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
+            total[k] += scattered * (surface.strength * compensation * grating);
         }
     }
 
@@ -58,7 +59,8 @@ pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
             let mut gain = Complex64::new(strength, 0.0) * Complex64::from_polar(1.0, -omega * path.delay_seconds);
             for r in &path.reflections {
                 let cutoff = 2.0 * PI * r.cutoff_hz;
-                gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff);
+                let grating = scene.surfaces[r.surface].pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
+                gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff) * grating;
             }
             total[k] += gain;
         }

@@ -3,7 +3,7 @@ import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
 export const SPACE_KIND = 'neartect.space';
 export const SPACE_VERSION = 1;
 export const SURFACE_SHAPES = Object.freeze(['rectangle']);
-export const PATTERN_KINDS = Object.freeze(['solid']);
+export const PATTERN_KINDS = Object.freeze(['solid', 'grid']);
 
 export const RANGES = Object.freeze({
   positionMetres: [-50, 50],
@@ -16,7 +16,9 @@ export const RANGES = Object.freeze({
   temperatureCelsius: [-40, 50],
   sampleRateHz: [8000, 192000],
   lengthMilliseconds: [10, 1000],
-  order: [1, 6]
+  order: [1, 6],
+  periodMetres: [0, 1],
+  thicknessMetres: [0, 0.2]
 });
 
 export class SpaceError extends Error {}
@@ -71,8 +73,19 @@ function readSurface(value, index = 0) {
     tiltDegrees: number(s.tiltDegrees, RANGES.tiltDegrees, 0),
     material: Object.hasOwn(MATERIALS, s.material) ? s.material : DEFAULT_MATERIAL,
     strength: number(s.strength, RANGES.strength, 1),
-    pattern: { kind: choice(s.pattern?.kind, PATTERN_KINDS, 'solid') }
+    pattern: readPattern(s.pattern)
   };
+}
+
+function readPattern(value) {
+  const p = isRecord(value) ? value : {};
+  const kind = choice(p.kind, PATTERN_KINDS, 'solid');
+  if (kind === 'solid') return { kind };
+  const pair = (list, fallback) => (Array.isArray(list) && list.length === 2 ? list : fallback)
+    .map((v, i) => number(v, RANGES.periodMetres, fallback[i]));
+  const periodMetres = pair(p.periodMetres, [0.04, 0.04]);
+  const barMetres = pair(p.barMetres, [0.008, 0.008]).map((bar, i) => Math.min(bar, periodMetres[i]));
+  return { kind, periodMetres, barMetres, thicknessMetres: number(p.thicknessMetres, RANGES.thicknessMetres, 0.003) };
 }
 
 export function defaultSpace() {

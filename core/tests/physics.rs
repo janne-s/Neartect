@@ -149,3 +149,42 @@ fn filter_has_no_nan_or_infinity() {
     let h = near_filter(&scene(vec![floor(2.0)], [0.0, 0.0, 0.002], [0.5, 0.0, 0.2], 1024, 3));
     assert!(h.iter().all(|x| x.is_finite()));
 }
+
+fn grating(period: [f64; 2], bar: [f64; 2], half: f64) -> Surface {
+    Surface {
+        polygon: rectangle([0.0, 0.0, 0.0], [half, 0.0, 0.0], [0.0, half, 0.0]),
+        strength: 1.0,
+        reflection: RIGID,
+        pattern: Pattern::Grid { period, bar, thickness: 0.003 },
+    }
+}
+
+#[test]
+fn slats_are_transparent_to_bass_and_reflect_treble() {
+    let length = 4096;
+    let slats = || grating([0.02, 0.0], [0.01, 0.0], 1.5);
+    let front = near_spectrum(&scene(vec![slats()], [0.0, 0.0, 0.3], [0.0, 0.0, 1.0], length, 1));
+    let behind = near_spectrum(&scene(vec![slats()], [0.0, 0.0, -0.3], [0.0, 0.0, 1.0], length, 1));
+    let reflected = |h: &[Complex64], lo: f64, hi: f64| {
+        let n = spectrum_size(length);
+        let a = (lo * n as f64 / FS) as usize;
+        let b = (hi * n as f64 / FS) as usize;
+        h[a..=b].iter().map(|x| (x - Complex64::new(1.0, 0.0)).norm()).sum::<f64>() / (b - a + 1) as f64
+    };
+    assert!(reflected(&front, 100.0, 300.0) < 0.15, "bass reflection {}", reflected(&front, 100.0, 300.0));
+    assert!(mean_magnitude(&behind, length, 100.0, 300.0) > 0.85);
+    let treble = reflected(&front, 4000.0, 8000.0);
+    assert!(treble > 0.25 && treble < 0.9, "treble reflection {treble}");
+}
+
+#[test]
+fn slats_seen_at_an_angle_give_a_repetition_pitch() {
+    let length = 4096;
+    let slats = grating([0.05, 0.0], [0.01, 0.0], 1.0);
+    let h = near_filter(&scene(vec![slats], [0.0, 0.0, 0.5], [-1.0, 0.0, 1.0], length, 1));
+    let peak = h[1..].iter().map(|x| x.abs()).fold(0.0f32, f32::max);
+    let taps = (2..length - 1)
+        .filter(|&i| h[i].abs() > 0.2 * peak && h[i].abs() >= h[i - 1].abs() && h[i].abs() >= h[i + 1].abs())
+        .count();
+    assert!(taps >= 5, "only {taps} taps: the bars do not repeat");
+}

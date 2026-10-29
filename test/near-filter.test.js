@@ -51,3 +51,13 @@ test('the default space builds fast enough for live preview', async () => {
   console.log(`default space: ${ms.toFixed(1)} ms per filter`);
   assert.ok(ms < 200);
 });
+
+test('a grid surface differs from a solid one and stays finite', async () => {
+  const base = { kind: 'neartect.space', microphone: { position: [0, 0, 0.3] }, arrival: { elevationDegrees: 60 }, render: { lengthMilliseconds: 30, order: 1 } };
+  const plate = { centre: [0, 0, 0], widthMetres: 1, heightMetres: 1, tiltDegrees: 90, material: 'rigid' };
+  const solid = await nearFilter(readSpace({ ...base, surfaces: [plate] }));
+  const grid = await nearFilter(readSpace({ ...base, surfaces: [{ ...plate, pattern: { kind: 'grid', periodMetres: [0.05, 0], barMetres: [0.01, 0] } }] }));
+  assert.ok(grid.samples.every(Number.isFinite));
+  const difference = solid.samples.reduce((sum, x, i) => sum + Math.abs(x - grid.samples[i]), 0);
+  assert.ok(difference > 0.1);
+});

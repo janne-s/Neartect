@@ -2,8 +2,13 @@ import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
 import { arrivalVector, speedOfSound, surfaceVertices } from './space.js';
 
-const PATTERN_CODES = Object.freeze({ solid: 0 });
+const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1 });
 const PATTERN_VALUES = 6;
+
+function patternValues(pattern) {
+  if (pattern.kind !== 'grid') return Array(PATTERN_VALUES).fill(0);
+  return [...pattern.periodMetres, ...pattern.barMetres, pattern.thicknessMetres, 0];
+}
 
 export function packSpace(space) {
   const settings = new Float64Array([
@@ -20,7 +25,7 @@ export function packSpace(space) {
       surface.strength,
       ...reflectionBands(surface.material),
       PATTERN_CODES[surface.pattern.kind] ?? 0,
-      ...Array(PATTERN_VALUES).fill(0),
+      ...patternValues(surface.pattern),
       vertices.length,
       ...vertices.flat()
     ];
