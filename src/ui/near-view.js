@@ -1,6 +1,6 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector } from '../domain/space.js';
-import { expandObject, objectBounds, objectFrame, toWorld } from '../domain/objects.js';
+import { expandObject, objectBounds, objectFrame, referenceObject, toWorld } from '../domain/objects.js';
 import { nearestSurface } from '../domain/placement.js';
 
 const FIELD_OF_VIEW = 0.9;
@@ -17,6 +17,9 @@ const SNAP_PER_GRID = 20;
 const WORLD_AXES = Object.freeze([[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
 const AXIS_NAMES = Object.freeze(['E', 'N', 'Up']);
 const SIZE_NAMES = Object.freeze(['W', 'D', 'H']);
+const OFFSET_NAMES = Object.freeze(['↔', '⟂', '↕']);
+const DIMMED = 0.3;
+const SURFACE_SNAP_PIXELS = 10;
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -51,7 +54,7 @@ function insidePolygon([x, y], corners) {
   return inside;
 }
 
-export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
+export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurfaces = () => false }) {
   const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
@@ -112,7 +115,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
   }
 
   const activeObjectId = () => (selection?.type === 'object' ? selection.id : !selection && hover?.type === 'object' ? hover.id : null);
-  const microphoneActive = () => selection?.type === 'microphone' || (!selection && hover?.type === 'microphone');
+  const microphoneActive = () => selection?.type === 'microphone';
+  const focusing = () => Boolean(drag?.handle) || selection?.type === 'object' || selection?.type === 'microphone';
 
   function drawFaces(context, colors, fill, edge) {
     faces = [];
@@ -127,7 +131,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
     const active = activeObjectId();
     for (const { object, face, corners } of faces) {
       const highlighted = object.id === active || (hover?.type === 'object' && hover.id === object.id);
-      context.globalAlpha = object.strength > 0 ? 1 : 0.4;
+      const dim = focusing() && object.id !== active ? DIMMED : 1;
+      context.globalAlpha = (object.strength > 0 ? 1 : 0.4) * dim;
       context.beginPath();
       corners.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
       context.closePath();
@@ -194,10 +199,10 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
     return live && live.id === handle.id;
   }
 
-  function moveHandles(context, colors, centre, target) {
+  function moveHandles(context, colors, centre, target, axes = WORLD_AXES, names = AXIS_NAMES) {
     const length = pixelsToMetres(ARROW_PIXELS, centre);
-    WORLD_AXES.forEach((axis, index) => {
-      const handle = { id: `move-${target}-${index}`, type: 'move', target, axis: index };
+    axes.forEach((axis, index) => {
+      const handle = { id: `move-${target}-${index}`, type: 'move', target, axis: index, vector: axis, length, name: names[index] };
       const color = isHot(handle) ? colors.accent : colors.ink;
       context.strokeStyle = color;
       context.fillStyle = color;
@@ -207,7 +212,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
       if (!ends) return;
       arrowHead(context, ends[0], ends[1]);
       context.font = '10px system-ui, sans-serif';
-      context.fillText(AXIS_NAMES[index], ends[1][0] + 5, ends[1][1] - 3);
+      context.fillText(names[index], ends[1][0] + 5, ends[1][1] - 3);
       handles.push({ ...handle, segment: ends });
     });
   }
@@ -223,7 +228,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
         const local = [0, 1, 2].map(i => (i === axis ? (side > 0 ? max[i] : min[i]) : (min[i] + max[i]) / 2));
         const p = project(toWorld(object, local));
         if (!p) continue;
-        const handle = { id: `size-${axis}-${side}`, type: 'size', axis, side, symmetric, point: p };
+        const handle = { id: `size-${axis}-${side}`, type: 'size', axis, side, symmetric, point: p, vector: [objectFrame(object).across, objectFrame(object).front, objectFrame(object).up][axis] };
         context.fillStyle = isHot(handle) ? colors.accent : colors.ink;
         context.fillRect(p[0] - 4, p[1] - 4, 8, 8);
         handles.push(handle);
@@ -314,28 +319,46 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
     const m = project(microphone);
     if (m) {
       const active = microphoneActive();
+      const reference = referenceObject(space);
+      context.globalAlpha = focusing() && !active ? 0.5 : 1;
       context.fillStyle = colors.receiver;
       context.beginPath();
       context.arc(m[0], m[1], 5, 0, 2 * Math.PI);
       context.fill();
-      if (selection?.type === 'microphone') {
+      if (active) {
         context.strokeStyle = colors.accent;
         context.lineWidth = 2;
         context.stroke();
         context.lineWidth = 1;
       }
-      const nearest = nearestSurface(space);
-      if (nearest) {
-        const foot = sub(microphone, scale(nearest.normal, nearest.distance));
+      if (reference) {
+        const { front } = objectFrame(reference);
+        const gap = space.microphone.offset[1];
+        const foot = sub(microphone, scale(front, gap));
         context.setLineDash([3, 3]);
         context.strokeStyle = colors.muted;
         line(context, microphone, foot);
         context.setLineDash([]);
         context.fillStyle = colors.muted;
         context.font = '11px system-ui, sans-serif';
-        context.fillText(formatGap(Math.abs(nearest.distance)), m[0] + 9, m[1] + 14);
+        context.fillText(`⟂ ${formatGap(gap)}`, m[0] + 9, m[1] + 14);
+      } else {
+        const nearest = nearestSurface(space);
+        if (nearest) {
+          context.fillStyle = colors.muted;
+          context.font = '11px system-ui, sans-serif';
+          context.fillText(formatGap(Math.abs(nearest.distance)), m[0] + 9, m[1] + 14);
+        }
       }
-      if (active) moveHandles(context, colors, microphone, 'microphone');
+      context.globalAlpha = 1;
+      if (active) {
+        if (reference) {
+          const { across, front, up } = objectFrame(reference);
+          moveHandles(context, colors, microphone, 'microphone', [across, front, up], OFFSET_NAMES);
+        } else {
+          moveHandles(context, colors, microphone, 'microphone');
+        }
+      }
     }
 
     const activeId = activeObjectId();
@@ -380,15 +403,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
     return null;
   }
 
-  function lineParameter(origin, axis, point) {
-    const r = ray(...point);
-    const w0 = sub(origin, r.origin);
-    const b = dot(axis, r.direction);
-    const denominator = 1 - b * b;
-    if (denominator < 1e-6) return 0;
-    return (b * dot(r.direction, w0) - dot(axis, w0)) / denominator;
-  }
-
   function planePoint(centre, normal, point) {
     const r = ray(...point);
     const along = dot(normal, r.direction);
@@ -402,12 +416,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
     const snapshot = JSON.parse(JSON.stringify(handle.target === 'microphone' || handle.type === 'arrival' ? { microphone: space.microphone, arrival: space.arrival } : object));
     const centre = handle.target === 'microphone' ? space.microphone.position : object ? objectCentre(object) : null;
     const start = { point };
-    if (handle.type === 'move') start.t = lineParameter(centre, WORLD_AXES[handle.axis], point);
-    if (handle.type === 'size') {
-      const local = objectFrame(object);
-      const axis = [local.across, local.front, local.up][handle.axis];
-      start.axis = axis;
-      start.t = lineParameter(centre, axis, point);
+    if (handle.type === 'move' || handle.type === 'size') {
+      start.axis = handle.vector;
+      start.screen = screenAxis(centre, handle.vector);
     }
     if (handle.type === 'ring') {
       start.centre = centre;
@@ -415,6 +426,42 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
       start.angle = p ? ringAngle(handle, object, centre, p) : 0;
     }
     return { handle, snapshot, centre, start, objectId: object?.id };
+  }
+
+  function screenAxis(centre, axis) {
+    const length = pixelsToMetres(ARROW_PIXELS, centre);
+    const a = project(centre);
+    const b = project(add(centre, scale(axis, length)));
+    if (!a || !b) return null;
+    const d = [b[0] - a[0], b[1] - a[1]];
+    const pixels = Math.hypot(...d);
+    return pixels < 6 ? null : { unit: [d[0] / pixels, d[1] / pixels], metresPerPixel: length / pixels };
+  }
+
+  function alongAxis(start, point) {
+    if (!start.screen) return 0;
+    const moved = [point[0] - start.point[0], point[1] - start.point[1]];
+    return (moved[0] * start.screen.unit[0] + moved[1] * start.screen.unit[1]) * start.screen.metresPerPixel;
+  }
+
+  function surfaceSnap(objectId, axis, candidate, base) {
+    const object = space.objects.find(o => o.id === objectId);
+    const shift = candidate - base;
+    const own = expandObject(object).flatMap(f => f.vertices).map(v => v[axis] + shift);
+    const [lo, hi] = [Math.min(...own), Math.max(...own)];
+    const reach = pixelsToMetres(SURFACE_SNAP_PIXELS, object.position);
+    let best = null;
+    for (const other of space.objects) {
+      if (other.id === objectId) continue;
+      const values = expandObject(other).flatMap(f => f.vertices).map(v => v[axis]);
+      for (const target of [Math.min(...values), Math.max(...values)]) {
+        for (const edge of [lo, hi]) {
+          const difference = target - edge;
+          if (Math.abs(difference) < reach && (!best || Math.abs(difference) < Math.abs(best))) best = difference;
+        }
+      }
+    }
+    return best === null ? candidate : candidate + best;
   }
 
   function ringAngle(handle, object, centre, p) {
@@ -427,24 +474,28 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit }) {
   function dragTo(point, free) {
     const { handle, snapshot, centre, start } = drag;
     const step = gridSpacing() / SNAP_PER_GRID;
-    if (handle.type === 'move') {
-      const delta = lineParameter(centre, WORLD_AXES[handle.axis], point) - start.t;
+    if (handle.type === 'move' && handle.target === 'microphone' && snapshot.microphone.reference) {
+      const value = snap(snapshot.microphone.offset[handle.axis] + alongAxis(start, point), step, free);
+      readout = { x: point[0], y: point[1], text: `${OFFSET_NAMES[handle.axis]} ${formatGap(value)}` };
+      onEdit(next => { next.microphone.offset[handle.axis] = value; });
+    } else if (handle.type === 'move') {
       const base = handle.target === 'microphone' ? snapshot.microphone.position : snapshot.position;
-      const value = snap(base[handle.axis] + delta, step, free);
+      let value = snap(base[handle.axis] + alongAxis(start, point), step, free);
+      if (handle.target === 'object' && snapSurfaces() && !free) value = surfaceSnap(drag.objectId, handle.axis, value, space.objects.find(o => o.id === drag.objectId).position[handle.axis]);
       readout = { x: point[0], y: point[1], text: `${AXIS_NAMES[handle.axis]} ${formatGap(value)}` };
       onEdit(next => {
         const target = handle.target === 'microphone' ? next.microphone.position : next.objects.find(o => o.id === drag.objectId).position;
         target[handle.axis] = value;
       });
     } else if (handle.type === 'size') {
-      const delta = (lineParameter(centre, start.axis, point) - start.t) * handle.side;
+      const delta = alongAxis(start, point) * handle.side;
       const size = Math.max(0.01, snap(snapshot.size[handle.axis] + delta, step, free));
       const change = size - snapshot.size[handle.axis];
       readout = { x: point[0], y: point[1], text: `${SIZE_NAMES[handle.axis]} ${formatGap(size)}` };
       onEdit(next => {
         const object = next.objects.find(o => o.id === drag.objectId);
         object.size[handle.axis] = size;
-        if (object.kind === 'pipe' && handle.axis === 1) object.size[2] = size;
+        if (object.kind === 'pipe' && handle.axis === 0) object.size[2] = size;
         if (handle.symmetric) {
           object.position = snapshot.position.map((p, i) => p + start.axis[i] * change / 2 * handle.side);
         }

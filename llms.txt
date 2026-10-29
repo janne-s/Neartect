@@ -7,10 +7,10 @@
 A space is JSON with `kind: "neartect.space"`. Every field has a default; unknown fields are dropped and out-of-range values are clamped.
 
 - `air.temperatureCelsius` — sets the speed of sound.
-- `microphone.position` — [east, north, up] in metres (ENU frame).
+- `microphone.reference` — an object id the microphone is bound to, or null; `microphone.offset` — [across, gap, up] in metres in that object's frame from its anchor (a flat object's centre, a box's front face, a pipe's front mouth, a corner's corner, a recess's opening); a negative gap is behind or inside. `microphone.position` — [east, north, up] in metres (ENU), used when there is no reference.
 - `arrival.azimuthDegrees` (compass, toward the source), `arrival.elevationDegrees`.
 - `render.sampleRateHz`, `render.lengthMilliseconds`, `render.order` (1–6).
-- `objects[]` — `kind` (`plane`, `disc`, `wall`, `grating`, `box`, `corner`, `recess`, `pipe`), `name`, `position` [e, n, u], `yawDegrees` (compass direction the front faces), `tiltDegrees` (0 upright, 90 front facing up), `size` [across, front, up] in metres (flat kinds use 0 for front; a pipe is [length, diameter, diameter]; a corner grows from its position along +across, +front, +up; a recess opens at its position and goes back by its depth), `material`, `strength` (1 physical). A `grating` has `pattern: { periodMetres: [across, up], barMetres: [across, up], thicknessMetres }`, a period of 0 leaving that axis without bars. A `wall` has `opening: { shape: "round" | "rectangle", sizeMetres: [w, h], offsetMetres: [across, up] }`.
+- `objects[]` — `kind` (`plane`, `disc`, `wall`, `grating`, `box`, `corner`, `recess`, `pipe`), `name`, `position` [e, n, u], `yawDegrees` (compass direction the front faces), `tiltDegrees` (0 upright, 90 front facing up), `size` [across, front, up] in metres (flat kinds use 0 for front; a pipe is [diameter, length, diameter] with its axis along front; a corner grows from its position along +across, +front, +up; a recess opens at its position and goes back by its depth), `material`, `strength` (1 physical). A `grating` has `pattern: { periodMetres: [across, up], barMetres: [across, up], thicknessMetres }`, a period of 0 leaving that axis without bars. A `wall` has `opening: { shape: "round" | "rectangle", sizeMetres: [w, h], offsetMetres: [across, up] }`.
 
 The filter is normalised to the free field: with no surfaces it is a unit impulse at time zero.
 

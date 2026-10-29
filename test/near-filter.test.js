@@ -79,3 +79,14 @@ test('every situation gives a finite filter that differs from the free field', a
     assert.ok(samples.slice(1).some(x => Math.abs(x) > 1e-3), `${id} adds nothing`);
   }
 });
+
+test('a microphone inside a pipe hears the pipe resonate', async () => {
+  const { magnitudeResponse } = await import('../src/domain/response.js');
+  const pipe = { kind: 'pipe', position: [0, 0, 1], size: [0.1, 1, 0.1], material: 'concrete' };
+  const space = readSpace({ kind: 'neartect.space', arrival: { azimuthDegrees: 90 }, render: { lengthMilliseconds: 200, order: 1 }, objects: [pipe], microphone: { position: [0, 0, 1] } });
+  const { samples, sampleRateHz } = await nearFilter(space);
+  const { frequencies, decibels } = magnitudeResponse(samples, sampleRateHz);
+  let peak = 0;
+  for (let k = 1; k < frequencies.length; k += 1) if (frequencies[k] > 100 && frequencies[k] < 250 && decibels[k] > decibels[peak]) peak = k;
+  assert.ok(Math.abs(frequencies[peak] / (343.2 / (2 * (1 + 2 * 0.6133 * 0.05))) - 1) < 0.05, `peak ${frequencies[peak]}`);
+});

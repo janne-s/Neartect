@@ -49,3 +49,17 @@ test('the gap slider puts the microphone at the stated distance from the nearest
   space.microphone.position = withGap(space, nearest, 0.004);
   assert.ok(Math.abs(Math.abs(nearestSurface(space).distance) - 0.004) < 1e-9);
 });
+
+test('the microphone follows its reference object and keeps a signed gap', async () => {
+  const { microphonePosition, referTo } = await import('../src/domain/objects.js');
+  const space = defaultSpace();
+  const wall = space.objects[1];
+  assert.equal(space.microphone.reference, wall.id);
+  assert.ok(Math.abs(space.microphone.offset[1] - 0.3) < 1e-9);
+  wall.position[1] += 1;
+  assert.ok(Math.abs(microphonePosition(space)[1] - (-0.7 + 1)) < 1e-9);
+  space.microphone.offset[1] = -0.05;
+  assert.ok(microphonePosition(space)[1] < wall.position[1]);
+  referTo(space, null);
+  assert.equal(space.microphone.reference, null);
+});

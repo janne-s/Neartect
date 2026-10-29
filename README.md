@@ -28,12 +28,17 @@ WebAssembly and heard live through a crossfading convolver.
   under a grating, at a pipe mouth, in a doorway, or over water.
 - **Handles** — hover or select an object to move it along east, north, and
   up, resize it from its faces, and turn or tilt it on its rings; values snap
-  to the grid and to 5°, and Shift moves freely. Exact values sit in Details,
+  to the grid and to 5°, and Shift moves freely; the magnet snaps an object's sides to other objects.
+  Everything else dims while you work. Exact values sit in Details,
   and Undo steps back.
 - **Gratings** — bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
-- **Microphone** — free placement, with the gap to the nearest surface on a
-  slider from 1 mm to 3 m.
+- **Microphone** — bound to an object of your choice and moving with it, or
+  free in the world. Across, gap, and up are signed (a negative gap is behind
+  the face or inside the object) on sliders from 1 mm to 5 m.
+- **Inside a pipe** — the microphone hears the pipe as a waveguide: its
+  resonances at the end-corrected length, the open ends' radiation, and the
+  walls' losses.
 - **Arrival** — the direction the sound comes from; drag the arrow's tail.
 - **Listening** — pink noise, clicks, a sweep, or your own file, with a
   free-field comparison.
@@ -46,8 +51,9 @@ WebAssembly and heard live through a crossfading convolver.
 Specular reflection from rigid surfaces is class A, absorption tables and the
 finite-size correction class B, the grating's low-frequency blend, the
 continuation of joined edges at other than right angles, and the strength
-control class C. Not modelled: the microphone capsule's own size, sound inside a pipe as a
-waveguide, room modes
+control class C. The pipe interior is class B below its first cross mode. Not modelled: the
+microphone capsule's own size, a smooth change at a pipe mouth (the model
+switches from outside to inside there), cross modes in wide pipes, room modes
 of closed small spaces, edge diffraction into the shadow beyond the Kirchhoff
 approximation, angle-dependent absorption, and surface vibration.
 

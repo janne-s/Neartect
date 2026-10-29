@@ -25,7 +25,7 @@ export const SITUATIONS = Object.freeze({
   },
   pipe: {
     label: 'At a pipe mouth',
-    objects: [floor(), { kind: 'pipe', name: 'Pipe', position: [0, 0, 0.5], size: [2, 0.3, 0.3], material: 'concrete' }],
+    objects: [floor(), { kind: 'pipe', name: 'Pipe', position: [0, 0, 0.5], size: [0.3, 2, 0.3], yawDegrees: 90, material: 'concrete' }],
     microphone: [1.03, 0, 0.5], arrival: { azimuthDegrees: 90, elevationDegrees: 10 }
   },
   doorway: {
@@ -42,5 +42,5 @@ export const SITUATIONS = Object.freeze({
 
 export function situationSpace(id, current) {
   const { objects, microphone, arrival } = SITUATIONS[id];
-  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphone: { position: microphone }, arrival });
+  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphone: { position: microphone }, arrival }, objects.length - 1);
 }

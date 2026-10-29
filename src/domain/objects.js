@@ -15,7 +15,7 @@ export const OBJECT_DEFAULTS = Object.freeze({
   box: { size: [0.6, 0.6, 0.6] },
   corner: { size: [2, 2, 2.5] },
   recess: { size: [0.6, 0.4, 0.8] },
-  pipe: { size: [2, 0.3, 0.3] }
+  pipe: { size: [0.3, 2, 0.3] }
 });
 
 export const FLAT_KINDS = Object.freeze(['plane', 'disc', 'grating', 'wall']);
@@ -74,15 +74,15 @@ function localFaces(object) {
       ];
     }
     case 'pipe': {
-      const radius = d / 2;
+      const radius = w / 2;
       const ring = i => {
         const a = 2 * Math.PI * i / PIPE_SIDES;
         return [radius * Math.cos(a), radius * Math.sin(a)];
       };
       return Array.from({ length: PIPE_SIDES }, (_, i) => {
-        const [y0, z0] = ring(i);
-        const [y1, z1] = ring(i + 1);
-        return { local: [[-w / 2, y0, z0], [w / 2, y0, z0], [w / 2, y1, z1], [-w / 2, y1, z1]] };
+        const [x0, z0] = ring(i);
+        const [x1, z1] = ring(i + 1);
+        return { local: [[x0, -d / 2, z0], [x0, d / 2, z0], [x1, d / 2, z1], [x1, -d / 2, z1]] };
       });
     }
     default:
@@ -123,4 +123,51 @@ export function objectBounds(object) {
     case 'recess': return { min: [-w / 2, -d, -h / 2], max: [w / 2, 0, h / 2] };
     default: return { min: [-w / 2, -d / 2, -h / 2], max: [w / 2, d / 2, h / 2] };
   }
+}
+
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+
+export function toLocal(object, point) {
+  const { across, front, up } = objectFrame(object);
+  const d = sub(point, object.position);
+  return [dot(d, across), dot(d, front), dot(d, up)];
+}
+
+export function anchor(object) {
+  const [, d] = object.size;
+  if (object.kind === 'box' || object.kind === 'pipe') return [0, d / 2, 0];
+  return [0, 0, 0];
+}
+
+export function referenceObject(space) {
+  const id = space.microphone.reference;
+  return id ? space.objects.find(o => o.id === id) ?? null : null;
+}
+
+export function microphonePosition(space) {
+  const object = referenceObject(space);
+  if (!object) return space.microphone.position;
+  const base = anchor(object);
+  return toWorld(object, space.microphone.offset.map((v, i) => v + base[i]));
+}
+
+export function referTo(space, id) {
+  const position = microphonePosition(space);
+  const object = id ? space.objects.find(o => o.id === id) : null;
+  space.microphone.reference = object ? object.id : null;
+  space.microphone.offset = object ? toLocal(object, position).map((v, i) => v - anchor(object)[i]) : [0, 0, 0];
+  space.microphone.position = position;
+}
+
+export function pipeAround(space, point) {
+  for (const object of space.objects) {
+    if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
+    const [x, y, z] = toLocal(object, point);
+    const [diameter, length] = object.size;
+    if (Math.hypot(x, z) < diameter / 2 && Math.abs(y) < length / 2) {
+      return { object, mouthA: toWorld(object, [0, -length / 2, 0]), mouthB: toWorld(object, [0, length / 2, 0]), radius: diameter / 2 };
+    }
+  }
+  return null;
 }

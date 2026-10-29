@@ -35,6 +35,7 @@ pub fn normalize(a: V3) -> V3 {
 
 const EPSILON_METRES: f64 = 1e-9;
 
+#[derive(Clone)]
 pub struct Polygon {
     pub origin: V3,
     pub normal: V3,

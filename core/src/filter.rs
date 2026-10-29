@@ -1,5 +1,7 @@
 use crate::images::specular_paths;
 use crate::kirchhoff::{scatter, Histograms, OVERSAMPLING};
+use crate::geom::{dot, scale, sub, V3};
+use crate::pipe::{received, transfer, PipeInside};
 use crate::scene::Scene;
 use crate::spectrum::{angular_frequency, minimum_phase, Fft};
 use rustfft::num_complex::Complex64;
@@ -14,6 +16,39 @@ pub fn spectrum_size(length: usize) -> usize {
 }
 
 pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
+    match scene.pipe {
+        Some(pipe) => inside_pipe(scene, pipe),
+        None => outside_spectrum(scene),
+    }
+}
+
+fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Complex64> {
+    let n = spectrum_size(scene.length);
+    let fs = scene.sample_rate;
+    let c = scene.speed_of_sound;
+    let length = pipe.length();
+    let along = pipe.along(scene.microphone);
+    let axis = crate::geom::normalize(sub(pipe.mouth_b, pipe.mouth_a));
+    let at_mouth = |mouth: V3| {
+        let mut outside = scene.clone();
+        outside.pipe = None;
+        outside.microphone = mouth;
+        outside_spectrum(&outside)
+    };
+    let from_a = at_mouth(pipe.mouth_a);
+    let from_b = at_mouth(pipe.mouth_b);
+    let inward_a = dot(scale(scene.arrival, -1.0), axis);
+    (0..=n / 2)
+        .map(|k| {
+            let f = k as f64 * fs / n as f64;
+            let ka = 2.0 * PI * f / c * pipe.radius;
+            from_a[k] * received(ka, inward_a) * transfer(f, c, pipe.radius, length, along)
+                + from_b[k] * received(ka, -inward_a) * transfer(f, c, pipe.radius, length, length - along)
+        })
+        .collect()
+}
+
+fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
     let n = spectrum_size(scene.length);
     let n_fine = n * OVERSAMPLING;
     let half = n / 2;

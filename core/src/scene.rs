@@ -1,7 +1,9 @@
 use crate::geom::{Polygon, V3};
 use crate::pattern::Pattern;
+use crate::pipe::PipeInside;
 use crate::spectrum::BAND_COUNT;
 
+#[derive(Clone)]
 pub struct Surface {
     pub polygon: Polygon,
     pub strength: f64,
@@ -15,6 +17,7 @@ impl Surface {
     }
 }
 
+#[derive(Clone)]
 pub struct Scene {
     pub surfaces: Vec<Surface>,
     pub microphone: V3,
@@ -23,6 +26,7 @@ pub struct Scene {
     pub sample_rate: f64,
     pub length: usize,
     pub max_order: usize,
+    pub pipe: Option<PipeInside>,
 }
 
 impl Scene {

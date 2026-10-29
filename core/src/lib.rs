@@ -3,6 +3,7 @@ pub mod geom;
 pub mod images;
 pub mod kirchhoff;
 pub mod pattern;
+pub mod pipe;
 pub mod scene;
 pub mod spectrum;
 
@@ -50,6 +51,11 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         max_order: settings[3] as usize,
         microphone: [settings[4], settings[5], settings[6]],
         arrival: normalize([settings[7], settings[8], settings[9]]),
+        pipe: (settings.len() >= 17 && settings[10] > 0.0).then(|| pipe::PipeInside {
+            radius: settings[10],
+            mouth_a: [settings[11], settings[12], settings[13]],
+            mouth_b: [settings[14], settings[15], settings[16]],
+        }),
     })
 }
 

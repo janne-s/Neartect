@@ -1,20 +1,24 @@
 import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
-import { expandObjects } from './objects.js';
+import { expandObject, microphonePosition, pipeAround } from './objects.js';
 import { arrivalVector, speedOfSound } from './space.js';
 
 const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1, opening: 2 });
 
 export function packSpace(space) {
+  const microphone = microphonePosition(space);
+  const pipe = pipeAround(space, microphone);
   const settings = new Float64Array([
     space.render.sampleRateHz,
     speedOfSound(space.air.temperatureCelsius),
     Math.round(space.render.lengthMilliseconds / 1000 * space.render.sampleRateHz),
     space.render.order,
-    ...space.microphone.position,
-    ...arrivalVector(space.arrival)
+    ...microphone,
+    ...arrivalVector(space.arrival),
+    ...(pipe ? [pipe.radius, ...pipe.mouthA, ...pipe.mouthB] : [])
   ]);
-  const records = expandObjects(space).flatMap(surface => {
+  const surfaces = space.objects.filter(object => object !== pipe?.object).flatMap(expandObject);
+  const records = surfaces.flatMap(surface => {
     const body = [
       surface.strength,
       ...reflectionBands(surface.material),

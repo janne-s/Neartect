@@ -26,7 +26,7 @@ fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
-    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order }
+    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None }
 }
 
 fn at(spectrum: &[Complex64], length: usize, hz: f64) -> Complex64 {
@@ -238,4 +238,29 @@ fn hidden_back_of_a_box_is_not_extended() {
     ];
     let s = scene(faces, [0.1, 0.9, 1.1], [0.0, 1.0, 0.0], 1024, 1);
     assert_eq!(neartect_core::kirchhoff::extended_edges(&s, 1), 0);
+}
+
+fn inside_pipe(along: f64, arrival: V3) -> Vec<Complex64> {
+    let mut s = scene(vec![], [0.0, along, 0.0], arrival, 8192, 1);
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05 });
+    near_spectrum(&s)
+}
+
+#[test]
+fn pipe_passes_the_outside_pressure_at_low_frequency() {
+    let h = inside_pipe(0.5, [1.0, 0.0, 0.0]);
+    let low = at(&h, 8192, 15.0).norm();
+    assert!((low - 1.0).abs() < 0.1, "low {low}");
+}
+
+#[test]
+fn open_pipe_resonates_at_its_end_corrected_length() {
+    let h = inside_pipe(0.5, [1.0, 0.0, 0.0]);
+    let n = spectrum_size(8192);
+    let (a, b) = ((100.0 * n as f64 / FS) as usize, (250.0 * n as f64 / FS) as usize);
+    let peak = (a..=b).max_by(|&i, &j| h[i].norm().partial_cmp(&h[j].norm()).unwrap()).unwrap();
+    let peak_hz = peak as f64 * FS / n as f64;
+    let expected = C / (2.0 * (1.0 + 2.0 * 0.6133 * 0.05));
+    assert!((peak_hz / expected - 1.0).abs() < 0.05, "peak {peak_hz} Hz, expected {expected}");
+    assert!(h[peak].norm() > 3.0, "resonance only {}", h[peak].norm());
 }

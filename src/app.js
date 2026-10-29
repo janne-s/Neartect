@@ -2,11 +2,11 @@ import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { defaultObject, defaultSpace, readSpace, SpaceError } from './domain/space.js';
-import { FLAT_KINDS } from './domain/objects.js';
+import { FLAT_KINDS, microphonePosition, referTo, referenceObject } from './domain/objects.js';
 import { BUILD_KINDS, objectIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
-import { nearestSurface, SMALLEST_GAP_METRES, spaceCentre, withGap } from './domain/placement.js';
+import { SMALLEST_GAP_METRES, spaceCentre } from './domain/placement.js';
 import { DISPLAY, PARAMETERS } from './domain/parameters.js';
 import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
@@ -15,7 +15,7 @@ import { createPreview } from './audio/preview.js';
 
 const STORAGE_KEY = 'neartect.space';
 const PREFERENCES_KEY = 'neartect.preferences';
-const GAP_RANGE_METRES = [SMALLEST_GAP_METRES, 3];
+const GAP_RANGE_METRES = [SMALLEST_GAP_METRES, 5];
 const HORIZONTAL_RANGE_METRES = [-5, 5];
 const HEIGHT_RANGE_METRES = [0, 5];
 const SLIDER_STEPS = 1000;
@@ -55,7 +55,8 @@ const preview = createPreview();
 const view = createNearView($('near-view'), {
   onSelect: selection => select(selection),
   onEdit: apply => { apply(state.space); changed({ save: false }); },
-  onCommit: () => changed({ panel: true })
+  onCommit: () => changed({ panel: true }),
+  snapSurfaces: () => preferences.snapSurfaces
 });
 
 const worker = new Worker(new URL('./filter-worker.js', import.meta.url), { type: 'module' });
@@ -140,6 +141,7 @@ function undo() {
 }
 
 function changed({ save = true, panel = false } = {}) {
+  state.space.microphone.position = microphonePosition(state.space);
   if (save) {
     writeStored(STORAGE_KEY, state.space);
     remember();
@@ -166,10 +168,23 @@ function paint(input) {
   input.style.setProperty('--to', `calc(6px + (100% - 12px) * ${t})`);
 }
 
-function macro(container, { label, title, read, write, range: [low, high], log = false, format, fallback }) {
-  const toSlider = value => Math.round(SLIDER_STEPS * (log ? Math.log(value / low) / Math.log(high / low) : (value - low) / (high - low)));
+function macro(container, { label, title, read, write, range: [low, high], log = false, signed = false, format, fallback }) {
+  const span = Math.log(high / low);
+  const toSlider = value => {
+    if (signed) {
+      if (Math.abs(value) < low) return SLIDER_STEPS / 2;
+      const t = Math.min(1, Math.log(Math.abs(value) / low) / span);
+      return Math.round(SLIDER_STEPS * (0.5 + Math.sign(value) * (0.02 + 0.48 * t)));
+    }
+    return Math.round(SLIDER_STEPS * (log ? Math.log(value / low) / span : (value - low) / (high - low)));
+  };
   const fromSlider = position => {
     const t = position / SLIDER_STEPS;
+    if (signed) {
+      const offset = t - 0.5;
+      if (Math.abs(offset) < 0.02) return 0;
+      return Math.sign(offset) * low * (high / low) ** ((Math.abs(offset) - 0.02) / 0.48);
+    }
     return log ? low * (high / low) ** t : low + t * (high - low);
   };
   const name = element('label', null, label);
@@ -209,7 +224,7 @@ const metres = formatGap;
 
 const SIZE_LABELS = Object.freeze({
   plane: ['W', null, 'H'], disc: ['⌀', null, '⌀↕'], grating: ['W', null, 'H'], wall: ['W', null, 'H'],
-  box: ['W', 'D', 'H'], corner: ['W', 'D', 'H'], recess: ['W', 'D', 'H'], pipe: ['L', '⌀', null]
+  box: ['W', 'D', 'H'], corner: ['W', 'D', 'H'], recess: ['W', 'D', 'H'], pipe: ['⌀', 'L', null]
 });
 
 function objectCard(container, object) {
@@ -253,7 +268,7 @@ function objectCard(container, object) {
       macro(macros, {
         label, title: { W: 'Width', D: 'Depth', H: 'Height', L: 'Length', '⌀': 'Diameter', '⌀↕': 'Diameter up' }[label], range: [0.01, 20], log: true, format: formatGap, fallback: defaultObject(object.kind).size[axis],
         read: () => current().size[axis],
-        write: v => { current().size[axis] = v; if (object.kind === 'pipe' && axis === 1) current().size[2] = v; }
+        write: v => { current().size[axis] = v; if (object.kind === 'pipe' && axis === 0) current().size[2] = v; }
       });
     });
     macro(macros, { label: '↻', title: 'Facing', range: [0, 360], format: degrees, fallback: 0, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
@@ -300,6 +315,7 @@ function objectCard(container, object) {
 }
 
 function removeObject(id) {
+  if (state.space.microphone.reference === id) referTo(state.space, null);
   state.space.objects = state.space.objects.filter(o => o.id !== id);
   if (state.selection?.id === id) state.selection = null;
   changed({ panel: true });
@@ -313,19 +329,28 @@ function refreshPanel() {
 
   const microphone = $('microphone-macros');
   microphone.replaceChildren();
-  const position = () => state.space.microphone.position;
-  const nearest = nearestSurface(state.space);
-  if (nearest) {
-    const name = state.space.objects[nearest.index].name;
-    macro(microphone, {
-      label: `Gap to ${name}`, range: GAP_RANGE_METRES, log: true, fallback: 0.3, format: formatGap,
-      read: () => Math.abs(nearestSurface(state.space)?.distance ?? GAP_RANGE_METRES[1]),
-      write: v => { state.space.microphone.position = withGap(state.space, nearestSurface(state.space) ?? nearest, v); }
-    });
+  const reference = referenceObject(state.space);
+  const referenceRow = element('div', 'fields reference-row');
+  fields.selectField(referenceRow, {
+    label: '⚓', value: reference?.id ?? '',
+    options: [['', 'World'], ...state.space.objects.map(o => [o.id, o.name])],
+    onCommit: id => { referTo(state.space, id || null); changed({ panel: true }); }
+  });
+  referenceRow.querySelector('label').title = 'Bound to';
+  microphone.before(referenceRow);
+  document.querySelectorAll('.reference-row').forEach(row => { if (row !== referenceRow) row.remove(); });
+  if (reference) {
+    const offset = () => state.space.microphone.offset;
+    [['↔', 'Across'], ['⟂', 'Gap'], ['↕', 'Up']].forEach(([label, title], axis) => macro(microphone, {
+      label, title, signed: true, range: GAP_RANGE_METRES, format: formatGap, fallback: axis === 1 ? 0.3 : 0,
+      read: () => offset()[axis], write: v => { offset()[axis] = v; }
+    }));
+  } else {
+    const position = () => state.space.microphone.position;
+    macro(microphone, { label: 'E', title: 'East', range: HORIZONTAL_RANGE_METRES, format: formatGap, fallback: 0, read: () => position()[0], write: v => { position()[0] = v; } });
+    macro(microphone, { label: 'N', title: 'North', range: HORIZONTAL_RANGE_METRES, format: formatGap, fallback: 0, read: () => position()[1], write: v => { position()[1] = v; } });
+    macro(microphone, { label: 'Up', title: 'Height', range: HEIGHT_RANGE_METRES, format: formatGap, fallback: 1.2, read: () => position()[2], write: v => { position()[2] = v; } });
   }
-  macro(microphone, { label: 'East', range: HORIZONTAL_RANGE_METRES, fallback: 0, format: metres, read: () => position()[0], write: v => { position()[0] = v; } });
-  macro(microphone, { label: 'North', range: HORIZONTAL_RANGE_METRES, fallback: 0, format: metres, read: () => position()[1], write: v => { position()[1] = v; } });
-  macro(microphone, { label: 'Height', range: HEIGHT_RANGE_METRES, fallback: 1.2, format: metres, read: () => position()[2], write: v => { position()[2] = v; } });
 
   const arrival = $('arrival-macros');
   arrival.replaceChildren();
@@ -375,7 +400,7 @@ function openDetails(id) {
   const sizeNames = { W: 'Width', D: 'Depth', H: 'Height', L: 'Length', '⌀': 'Diameter', '⌀↕': 'Diameter up' };
   SIZE_LABELS[object.kind].forEach((label, axis) => {
     if (!label) return;
-    fields.numberField(shape, { key: 'sizeMetres', label: sizeNames[label], value: object.size[axis], onCommit: v => update(o => { o.size[axis] = v; if (o.kind === 'pipe' && axis === 1) o.size[2] = v; }) });
+    fields.numberField(shape, { key: 'sizeMetres', label: sizeNames[label], value: object.size[axis], onCommit: v => update(o => { o.size[axis] = v; if (o.kind === 'pipe' && axis === 0) o.size[2] = v; }) });
   });
   const acoustics = group('Acoustics');
   fields.selectField(acoustics, {
@@ -415,7 +440,7 @@ function placeNew(kind) {
     box: { position: [at[0] + 0.6, at[1] + 0.3, 0.3], material: 'woodPanel' },
     corner: { position: [at[0] - 0.4, at[1] - 0.4, 0], material: 'plaster' },
     recess: { position: [at[0], at[1] + 0.3, at[2]], yawDegrees: 180, material: 'plaster' },
-    pipe: { position: [at[0], at[1] + 0.4, at[2]], material: 'concrete' }
+    pipe: { position: [at[0] + 1.1, at[1], at[2]], yawDegrees: 90, material: 'concrete' }
   };
   const object = defaultObject(kind, placements[kind]);
   state.space.objects.push(object);
@@ -596,7 +621,13 @@ $('attribution-button').addEventListener('click', () => {
 });
 $('view-reset').addEventListener('click', () => view.reset());
 
-const preferences = { panelWidth: 340, resultsHeight: 220, ...(readStored(PREFERENCES_KEY) ?? {}) };
+const preferences = { panelWidth: 340, resultsHeight: 220, snapSurfaces: false, ...(readStored(PREFERENCES_KEY) ?? {}) };
+$('snap-surfaces').setAttribute('aria-pressed', String(preferences.snapSurfaces));
+$('snap-surfaces').addEventListener('click', () => {
+  preferences.snapSurfaces = !preferences.snapSurfaces;
+  $('snap-surfaces').setAttribute('aria-pressed', String(preferences.snapSurfaces));
+  writeStored(PREFERENCES_KEY, preferences);
+});
 attachSplitters(document.querySelector('.layout'), { column: $('split-column'), row: $('split-row') }, preferences, sizes => {
   Object.assign(preferences, sizes);
   writeStored(PREFERENCES_KEY, preferences);
