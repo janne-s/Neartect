@@ -20,7 +20,8 @@ export function drawImpulse(canvas, filter) {
   const { context, colors, plot } = frame(canvas);
   if (!filter) return;
   const { samples, sampleRateHz } = filter;
-  const peak = Math.max(1e-9, ...samples.map(Math.abs));
+  let peak = 1e-9;
+  for (const x of samples) peak = Math.max(peak, Math.abs(x));
   const seconds = samples.length / sampleRateHz;
   const step = niceStep(seconds * 1000, 6);
   context.strokeStyle = colors.grid;
