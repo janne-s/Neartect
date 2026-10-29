@@ -148,3 +148,7 @@
 .panel section + section {
   margin-top: 22px;
 }
+.results figcaption {
+  left: auto;
+  right: 10px;
+}
