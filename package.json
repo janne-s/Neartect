@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "echo 'http://localhost:8003/' && python3 -m http.server 8003 --bind 127.0.0.1",
-    "test": "node --test"
+    "test": "node --test",
+    "build:core": "sh tools/build-core.sh",
+    "test:core": "cd core && cargo test --release"
   }
 }
