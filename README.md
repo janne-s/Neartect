@@ -44,7 +44,8 @@ WebAssembly and heard live through a crossfading convolver.
   its slope, so rough surfaces lose their coherent treble and scatter it, and
   repeating shapes send their own lobes. A speed moves the relief while the
   preview plays (moving water), and each new filter glides in over the time
-  since the last one.
+  since the last one. The view shades the relief by height, lighter where it
+  rises and darker where it sinks, with true-scale profiles across it.
 - **Gratings** — bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
 - **Microphones** — up to eight, each bound to an object of your choice and
@@ -60,6 +61,8 @@ WebAssembly and heard live through a crossfading convolver.
   and a head with two ears; each is one element that binds, moves, and turns
   as a whole, with its spacing and angle on sliders. Mid-side decodes to left
   and right in the preview; export writes every capsule, or a stereo mix.
+  Microphones and layouts share one list: any of them can be removed while
+  another remains, and a layout added to a lone microphone takes its place.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
   resonances at the end-corrected length, the open ends' radiation, and the
   walls' losses.

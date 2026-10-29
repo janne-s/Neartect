@@ -68,17 +68,20 @@
         </header>
         <section data-sheet="emitters">
           <h2><i class="fa-solid fa-cubes" aria-hidden="true"></i>Objects</h2>
+          <p class="caption">Start from</p>
           <div class="build-menu situations" id="situations" role="toolbar" aria-label="Start from a situation"></div>
+          <p class="caption">Add</p>
           <div class="build-menu" id="build-menu" role="toolbar" aria-label="Add an object"></div>
           <div class="list" id="object-list"></div>
         </section>
         <section data-sheet="receivers">
           <h2><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphones</h2>
-          <div class="list" id="microphone-list"></div>
-          <div class="build-menu"><button type="button" class="build-button" id="add-microphone" title="Add a microphone" aria-label="Add a microphone"><i class="fa-solid fa-plus" aria-hidden="true"></i></button></div>
-          <div class="list" id="rig-list"></div>
-          <div class="build-menu rig-menu" id="rig-menu" role="toolbar" aria-label="Add a microphone layout"></div>
-          <h2 class="subheading"><i class="fa-solid fa-volume-low" aria-hidden="true"></i>Source</h2>
+          <div class="list" id="listener-list"></div>
+          <p class="caption">Add a microphone or a layout</p>
+          <div class="build-menu" id="listener-menu" role="toolbar" aria-label="Add a microphone or a layout"></div>
+        </section>
+        <section data-sheet="receivers">
+          <h2><i class="fa-solid fa-volume-low" aria-hidden="true"></i>Source</h2>
           <div class="build-menu" id="source-kind" role="radiogroup" aria-label="Source">
             <button type="button" class="build-button" data-kind="far" role="radio" title="Far away: a plane wave from a direction" aria-label="Far away"><i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i></button>
             <button type="button" class="build-button" data-kind="point" role="radio" title="A point in the scene" aria-label="Point"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i></button>

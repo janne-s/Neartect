@@ -1,7 +1,8 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector } from '../domain/space.js';
 import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
-import { nearestSurface } from '../domain/placement.js';
+import { faceNormal, nearestSurface } from '../domain/placement.js';
+import { faceRelief, hasRelief } from '../domain/relief.js';
 import { rigMembers } from '../domain/rigs.js';
 
 const FIELD_OF_VIEW = 0.9;
@@ -23,6 +24,9 @@ const DIMMED = 0.3;
 const SURFACE_SNAP_PIXELS = 10;
 const WHEEL_LINE_PIXELS = 16;
 const AIM_PIXELS = 26;
+const MOST_RELIEF_CELLS = 2400;
+const MOST_RELIEF_CELLS_ALONG = 240;
+const MOST_PROFILE_POINTS = 400;
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -175,7 +179,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     : next.microphones.find(m => `microphone:${m.id}` === key));
 
   function listeningCentre() {
-    const chosen = space.microphones.find(m => selection?.type === 'microphone' && m.id === selection.id) ?? space.microphones[0];
+    const chosen = space.microphones.find(m => selection?.type === 'microphone' && m.id === selection.id)
+      ?? space.rigs.find(r => selection?.type === 'rig' && r.id === selection.id)
+      ?? space.microphones[0] ?? space.rigs[0];
     return chosen.position;
   }
 
@@ -212,7 +218,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       context.stroke();
       context.lineWidth = 1;
       if (face.pattern.kind === 'grid') drawBars(context, face, highlighted ? colors.accent : edge);
-      if (object.relief && object.relief.shape !== 'flat') drawRelief(context, object, face, highlighted ? colors.accent : edge);
+      if (hasRelief(object)) drawRelief(context, object, face, hole ? [corners, hole] : [corners], highlighted ? colors.accent : edge);
       context.globalAlpha = 1;
     }
   }
@@ -260,38 +266,55 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     });
   }
 
-  // Lines where the relief's shape repeats: the crests of waves, the seams
-  // of arches and scallops, and both directions of an egg crate.
-  function drawRelief(context, object, face, color) {
-    const r = object.relief;
-    const { across, up } = objectFrame(object);
-    const a = r.directionDegrees * Math.PI / 180;
-    const along = across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
-    const sideways = across.map((v, i) => -v * Math.sin(a) + up[i] * Math.cos(a));
-    const shifted = r.offsetMetres + r.speedMetresPerSecond * reliefTime;
-    const directions = r.shape === 'egg' ? [[along, shifted], [sideways, 0]] : [[along, shifted]];
-    const start = r.shape === 'waves' ? r.periodMetres / 4 : 0;
-    const step = r.shape === 'egg' ? r.periodMetres / 2 : r.periodMetres;
-    context.strokeStyle = color;
-    context.setLineDash([2, 3]);
-    for (const [d, shift] of directions) {
-      const s = face.vertices.map(v => dot(sub(v, object.position), d) - shift);
-      const [lo, hi] = [Math.min(...s), Math.max(...s)];
-      const first = Math.ceil((lo - start) / step);
-      const last = Math.floor((hi - start) / step);
-      const every = Math.max(1, Math.ceil((last - first + 1) / MOST_BARS_DRAWN));
-      for (let n = first; n <= last; n += every) {
-        const level = start + n * step;
-        const cuts = [];
-        face.vertices.forEach((v, i) => {
-          const w = face.vertices[(i + 1) % face.vertices.length];
-          const [sv, sw] = [s[i], s[(i + 1) % s.length]];
-          if ((sv - level) * (sw - level) < 0) cuts.push(add(v, scale(sub(w, v), (level - sv) / (sw - sv))));
-        });
-        if (cuts.length >= 2) line(context, cuts[0], cuts[1]);
+  // The relief as it is: each patch of the face is shaded by its height,
+  // lighter where it rises and darker where it sinks, and a few profiles show
+  // the true shape across it when you come close.
+  function drawRelief(context, object, face, outline, color) {
+    const normal = faceNormal(face.vertices);
+    const relief = faceRelief(object, normal, object.relief.speedMetresPerSecond * reliefTime);
+    if (!(relief.range > 0)) return;
+    const { along, sideways } = relief;
+    const origin = face.vertices[0];
+    const coordinates = face.vertices.map(v => [dot(sub(v, origin), along), dot(sub(v, origin), sideways)]);
+    const [s0, s1] = [Math.min(...coordinates.map(c => c[0])), Math.max(...coordinates.map(c => c[0]))];
+    const [t0, t1] = [Math.min(...coordinates.map(c => c[1])), Math.max(...coordinates.map(c => c[1]))];
+    const step = relief.finest / 6;
+    const ns = Math.max(1, Math.min(MOST_RELIEF_CELLS_ALONG, Math.ceil((s1 - s0) / step)));
+    const nt = relief.oneWay ? 1 : Math.max(1, Math.min(Math.floor(MOST_RELIEF_CELLS / ns), Math.ceil((t1 - t0) / step)));
+    const point = (s, t) => add(origin, add(scale(along, s), scale(sideways, t)));
+    context.save();
+    context.beginPath();
+    outline.forEach(path => path.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y))));
+    context.clip('evenodd');
+    const ds = (s1 - s0) / ns;
+    const dt = (t1 - t0) / nt;
+    for (let i = 0; i < ns; i += 1) {
+      for (let j = 0; j < nt; j += 1) {
+        const s = s0 + (i + 0.5) * ds;
+        const t = t0 + (j + 0.5) * dt;
+        const h = relief.at(point(s, t)) / relief.range;
+        const corners = [[s - ds / 2, t - dt / 2], [s + ds / 2, t - dt / 2], [s + ds / 2, t + dt / 2], [s - ds / 2, t + dt / 2]].map(([a, b]) => project(point(a, b)));
+        if (corners.some(c => !c)) continue;
+        context.fillStyle = h >= 0 ? `rgba(255, 255, 255, ${(0.35 * h).toFixed(3)})` : `rgba(0, 0, 0, ${(-0.45 * h).toFixed(3)})`;
+        context.beginPath();
+        corners.forEach(([x, y], k) => (k ? context.lineTo(x, y) : context.moveTo(x, y)));
+        context.closePath();
+        context.fill();
       }
     }
-    context.setLineDash([]);
+    context.restore();
+    context.strokeStyle = color;
+    const samples = Math.min(MOST_PROFILE_POINTS, Math.max(2, Math.ceil((s1 - s0) / (relief.finest / 8))));
+    for (const t of [t0 + (t1 - t0) / 4, (t0 + t1) / 2, t1 - (t1 - t0) / 4]) {
+      const points = Array.from({ length: samples + 1 }, (_, k) => {
+        const p = point(s0 + (s1 - s0) * k / samples, t);
+        return project(add(p, scale(normal, relief.at(p))));
+      });
+      if (points.some(p => !p)) continue;
+      context.beginPath();
+      points.forEach(([x, y], k) => (k ? context.lineTo(x, y) : context.moveTo(x, y)));
+      context.stroke();
+    }
   }
 
   function arrowHead(context, from, to) {

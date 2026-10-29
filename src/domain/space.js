@@ -197,9 +197,9 @@ export function readSpace(value, referenceIndex = null) {
   if (!isRecord(value) || value.kind !== SPACE_KIND) throw new SpaceError('This is not a Neartect space.');
   if (value.objects !== undefined && !Array.isArray(value.objects)) throw new SpaceError('The objects are not a list.');
   const air = isRecord(value.air) ? value.air : {};
-  const microphones = Array.isArray(value.microphones) && value.microphones.length
-    ? value.microphones.slice(0, MOST_MICROPHONES)
-    : [isRecord(value.microphone) ? value.microphone : {}];
+  const rigs = Array.isArray(value.rigs) ? value.rigs.slice(0, MOST_RIGS) : [];
+  const listed = Array.isArray(value.microphones) ? value.microphones.slice(0, MOST_MICROPHONES) : [];
+  const microphones = listed.length || rigs.length ? listed : [isRecord(value.microphone) ? value.microphone : {}];
   const arrival = isRecord(value.arrival) ? value.arrival : {};
   const render = isRecord(value.render) ? value.render : {};
   const space = {
@@ -207,7 +207,7 @@ export function readSpace(value, referenceIndex = null) {
     version: SPACE_VERSION,
     air: { temperatureCelsius: number(air.temperatureCelsius, RANGES.temperatureCelsius, 20) },
     microphones: microphones.map(readMicrophone),
-    rigs: (Array.isArray(value.rigs) ? value.rigs.slice(0, MOST_RIGS) : []).map(readRig),
+    rigs: rigs.map(readRig),
     source: readSource(value.source),
     arrival: {
       azimuthDegrees: angle(arrival.azimuthDegrees, 0),

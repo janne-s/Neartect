@@ -106,7 +106,7 @@ function planePattern(object) {
 export const RELIEF_SHAPES = Object.freeze(['flat', 'waves', 'arches', 'scallops', 'egg']);
 export const FLAT_RELIEF = Object.freeze({ shape: 'flat', heightMetres: 0.02, periodMetres: 0.2, directionDegrees: 0, roughMetres: 0, grainMetres: 0.05, offsetMetres: 0, speedMetresPerSecond: 0 });
 
-function seedOf(id) {
+export function seedOf(id) {
   let hash = 2166136261;
   for (const ch of id) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619) >>> 0;
   return hash % 1000003;
@@ -217,6 +217,10 @@ export function placePointAt(space, point, position) {
   const object = referenceObject(space, point);
   if (object) point.offset = toLocal(object, position).map((v, i) => v - anchor(object)[i]);
   point.position = position;
+}
+
+export function firstListener(space) {
+  return space.microphones[0] ?? space.rigs[0];
 }
 
 export function boundPoints(space) {

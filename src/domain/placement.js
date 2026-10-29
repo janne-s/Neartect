@@ -1,4 +1,4 @@
-import { expandObjects } from './objects.js';
+import { expandObjects, firstListener } from './objects.js';
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -7,7 +7,7 @@ const normalize = a => { const n = Math.hypot(...a); return n > 0 ? a.map(v => v
 
 export const SMALLEST_GAP_METRES = 0.001;
 
-function faceNormal(vertices) {
+export function faceNormal(vertices) {
   const n = [0, 0, 0];
   vertices.forEach((a, i) => {
     const b = vertices[(i + 1) % vertices.length];
@@ -57,6 +57,6 @@ export function withGap(point, nearest, gapMetres) {
 
 export function spaceCentre(space) {
   const points = expandObjects(space).flatMap(face => face.vertices);
-  if (!points.length) return [...space.microphones[0].position];
+  if (!points.length) return [...firstListener(space).position];
   return [0, 1, 2].map(i => points.reduce((sum, p) => sum + p[i], 0) / points.length);
 }

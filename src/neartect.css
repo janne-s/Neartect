@@ -28,14 +28,14 @@
 }
 .build-menu {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
   gap: 4px;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 .build-button {
   display: grid;
   place-items: center;
-  height: 36px;
+  height: 30px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -47,8 +47,8 @@
   color: var(--accent-hover);
 }
 .object-glyph {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 .object-icon {
   display: inline-grid;
@@ -81,7 +81,7 @@
   margin: 0 4px;
 }
 .rig-button {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -102,4 +102,49 @@
 .rig-badge .object-glyph {
   width: 16px;
   height: 16px;
+}
+.panel .caption {
+  margin: 4px 0 6px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.card-group {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.card-group:first-of-type {
+  border-top: 0;
+  padding-top: 2px;
+}
+.card-group .caption {
+  margin: 0 0 8px;
+}
+.tile-row {
+  margin: 0 0 10px;
+}
+.card .macros {
+  row-gap: 8px;
+}
+.macros label i {
+  margin-right: 4px;
+  font-size: 10px;
+}
+.row-select {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--raised);
+  padding: 3px 6px;
+  color: var(--ink);
+  font: inherit;
+}
+.card-actions {
+  margin-top: 12px;
+}
+.panel section + section {
+  margin-top: 22px;
 }

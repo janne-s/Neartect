@@ -1,4 +1,5 @@
 import { readSpace, SPACE_KIND } from './space.js';
+import { firstListener } from './objects.js';
 
 const floor = (material = 'concrete', z = 0) => ({ kind: 'plane', name: 'Floor', position: [0, 0, z], size: [6, 0, 6], tiltDegrees: 90, material });
 
@@ -56,7 +57,7 @@ export const SITUATIONS = Object.freeze({
 // to the situation's main object.
 export function situationSpace(id, current) {
   const { objects, microphone, arrival } = SITUATIONS[id];
-  const first = current.microphones[0].position;
+  const first = firstListener(current).position;
   const shift = microphone.map((v, i) => v - first[i]);
   const moved = point => ({ ...point, reference: null, offset: [0, 0, 0], position: point.position.map((v, i) => v + shift[i]) });
   const source = current.source.kind === 'point' ? moved(current.source) : { ...current.source, reference: null };

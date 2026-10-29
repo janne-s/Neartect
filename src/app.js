@@ -3,7 +3,7 @@ import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, readSpace, SpaceError } from './domain/space.js';
 import { RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
-import { aimAt, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
+import { aimAt, firstListener, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
@@ -174,9 +174,12 @@ function drawPlots() {
   drawResponse($('response'), filter);
 }
 
-function activeMicrophone() {
-  return state.space.microphones[shownMicrophone()];
+function activeListener() {
+  const chosen = state.selection?.type === 'microphone' ? state.space.microphones.find(m => m.id === state.selection.id)
+    : state.selection?.type === 'rig' ? state.space.rigs.find(r => r.id === state.selection.id) : null;
+  return chosen ?? firstListener(state.space);
 }
+
 
 const UNDO_DEPTH = 50;
 const history = [];
@@ -296,15 +299,83 @@ const SIZE_LABELS = Object.freeze({
   plane: ['W', null, 'H'], disc: ['⌀', null, '⌀↕'], grating: ['W', null, 'H'], wall: ['W', null, 'H'],
   box: ['W', 'D', 'H'], corner: ['W', 'D', 'H'], recess: ['W', 'D', 'H'], pipe: ['⌀', 'L', null]
 });
+const SIZE_TITLES = Object.freeze({ W: 'Width', D: 'Depth', H: 'Height', L: 'Length', '⌀': 'Diameter', '⌀↕': 'Diameter up' });
+const RELIEF_LABELS = Object.freeze({ flat: 'Flat', waves: 'Waves', arches: 'Arches', scallops: 'Scallops', egg: 'Egg crate' });
+const PATTERN_LABELS = Object.freeze({ omni: 'Omni', wide: 'Wide cardioid', cardioid: 'Cardioid', supercardioid: 'Supercardioid', hypercardioid: 'Hypercardioid', figure8: 'Figure of eight' });
+const removeIcon = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+
+// A card is a header that opens it and, when open, captioned groups of
+// controls, so that place, shape, surface, and pickup read apart.
+function cardHeader(card, { lead, name, kind, selected, onToggle, onRemove, removeLabel }) {
+  const header = element('div', 'card-header');
+  header.tabIndex = 0;
+  header.setAttribute('role', 'button');
+  header.setAttribute('aria-expanded', String(selected));
+  header.append(...lead, element('span', 'name', name), element('span', 'kind', kind));
+  if (onRemove) {
+    const remove = element('button', 'icon-button');
+    remove.type = 'button';
+    remove.title = 'Remove';
+    remove.setAttribute('aria-label', removeLabel);
+    remove.innerHTML = removeIcon;
+    remove.addEventListener('click', event => {
+      event.stopPropagation();
+      onRemove();
+    });
+    header.append(remove);
+  }
+  header.addEventListener('click', onToggle);
+  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); } });
+  card.append(header);
+}
+
+function cardGroup(card, title) {
+  const group = element('div', 'card-group');
+  group.append(element('p', 'caption', title));
+  const macros = element('div', 'macros');
+  group.append(macros);
+  card.append(group);
+  return { group, macros };
+}
+
+function tileRow(group, macros, { label, items, chosen, onPick }) {
+  const row = element('div', 'build-menu tile-row');
+  row.setAttribute('role', 'radiogroup');
+  row.setAttribute('aria-label', label);
+  items.forEach(([value, title, html]) => {
+    const button = element('button', 'build-button');
+    button.type = 'button';
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', String(value === chosen));
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.innerHTML = html;
+    button.addEventListener('click', () => onPick(value));
+    row.append(button);
+  });
+  group.insertBefore(row, macros);
+}
+
+function selectRow(macros, { label, title, value, options, onChange, note = '' }) {
+  const name = element('label', null);
+  name.innerHTML = label;
+  name.title = title;
+  const select = element('select', 'row-select');
+  select.setAttribute('aria-label', title);
+  options.forEach(([key, text]) => {
+    const option = element('option', null, text);
+    option.value = key;
+    select.append(option);
+  });
+  select.value = value;
+  select.addEventListener('change', () => onChange(select.value));
+  macros.append(name, select, element('span', 'macro-value', note));
+}
 
 function objectCard(container, object) {
   const selected = state.selection?.type === 'object' && state.selection.id === object.id;
   const card = element('div', 'card');
   card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.objects?.includes(object.id))));
-  const header = element('div', 'card-header');
-  header.tabIndex = 0;
-  header.setAttribute('role', 'button');
-  header.setAttribute('aria-expanded', String(selected));
   const enabled = element('input');
   enabled.type = 'checkbox';
   enabled.checked = object.strength > 0;
@@ -314,52 +385,41 @@ function objectCard(container, object) {
     object.strength = enabled.checked ? 1 : 0;
     changed({ panel: true });
   });
-  const remove = element('button', 'icon-button');
-  remove.type = 'button';
-  remove.title = 'Remove';
-  remove.setAttribute('aria-label', `Remove ${object.name}`);
-  remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-  remove.addEventListener('click', event => {
-    event.stopPropagation();
-    removeObject(object.id);
-  });
-  const toggle = () => select(selected ? null : { type: 'object', id: object.id });
-  header.addEventListener('click', toggle);
-  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
   const icon = element('span', 'object-icon');
   icon.innerHTML = objectIcon(object.kind);
-  header.append(enabled, icon, element('span', 'name', object.name), element('span', 'kind', MATERIALS[object.material].label), remove);
-  card.append(header);
+  cardHeader(card, {
+    lead: [enabled, icon], name: object.name, kind: MATERIALS[object.material].label, selected,
+    onToggle: () => select(selected ? null : { type: 'object', id: object.id }),
+    onRemove: () => removeObject(object.id), removeLabel: `Remove ${object.name}`
+  });
   if (selected) {
     const current = () => state.space.objects.find(o => o.id === object.id);
-    const macros = element('div', 'macros');
+    const { macros: shape } = cardGroup(card, 'Shape and place');
     SIZE_LABELS[object.kind].forEach((label, axis) => {
       if (!label) return;
-      macro(macros, {
-        label, title: { W: 'Width', D: 'Depth', H: 'Height', L: 'Length', '⌀': 'Diameter', '⌀↕': 'Diameter up' }[label], range: [0.01, 20], log: true, format: formatGap, fallback: defaultObject(object.kind).size[axis],
+      macro(shape, {
+        label: SIZE_TITLES[label], range: [0.01, 20], log: true, format: formatGap, fallback: defaultObject(object.kind).size[axis],
         read: () => current().size[axis],
         write: v => { current().size[axis] = v; if (object.kind === 'pipe' && axis === 0) current().size[2] = v; }
       });
     });
-    macro(macros, { label: '↻', title: 'Facing', range: [0, 360], format: degrees, fallback: 0, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
-    macro(macros, { label: '⤢', title: 'Tilt', range: [-90, 90], format: degrees, fallback: FLAT_KINDS.includes(object.kind) ? current().tiltDegrees : 0, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
+    macro(shape, { label: 'Facing', title: 'Compass direction the front faces', range: [0, 360], format: degrees, fallback: 0, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
+    macro(shape, { label: 'Tilt', title: 'Tilt (90° faces up)', range: [-90, 90], format: degrees, fallback: FLAT_KINDS.includes(object.kind) ? current().tiltDegrees : 0, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
     if (object.kind === 'grating') {
-      macro(macros, { label: '▥', title: 'Bar spacing', range: [0.002, 0.5], log: true, format: formatGap, fallback: 0.034, read: () => current().pattern.periodMetres[0], write: v => { const p = current().pattern; p.periodMetres = p.periodMetres.map(x => (x > 0 ? v : 0)); p.barMetres = p.barMetres.map(b => Math.min(b, v)); } });
-      macro(macros, { label: '▮', title: 'Bar width', range: [0.001, 0.2], log: true, format: formatGap, fallback: 0.004, read: () => current().pattern.barMetres[0], write: v => { const p = current().pattern; p.barMetres = p.barMetres.map((b, i) => (p.periodMetres[i] > 0 ? Math.min(v, p.periodMetres[i]) : 0)); } });
+      macro(shape, { label: 'Bar spacing', range: [0.002, 0.5], log: true, format: formatGap, fallback: 0.034, read: () => current().pattern.periodMetres[0], write: v => { const p = current().pattern; p.periodMetres = p.periodMetres.map(x => (x > 0 ? v : 0)); p.barMetres = p.barMetres.map(b => Math.min(b, v)); } });
+      macro(shape, { label: 'Bar width', range: [0.001, 0.2], log: true, format: formatGap, fallback: 0.004, read: () => current().pattern.barMetres[0], write: v => { const p = current().pattern; p.barMetres = p.barMetres.map((b, i) => (p.periodMetres[i] > 0 ? Math.min(v, p.periodMetres[i]) : 0)); } });
     }
     if (object.kind === 'wall') {
-      macro(macros, { label: '◯', title: 'Opening', range: [0.02, 5], log: true, format: formatGap, fallback: 0.4, read: () => current().opening.sizeMetres[0], write: v => { const o = current().opening; o.sizeMetres = [Math.min(v, current().size[0]), Math.min(v, current().size[2])]; } });
+      macro(shape, { label: 'Opening', title: 'Opening size', range: [0.02, 5], log: true, format: formatGap, fallback: 0.4, read: () => current().opening.sizeMetres[0], write: v => { const o = current().opening; o.sizeMetres = [Math.min(v, current().size[0]), Math.min(v, current().size[2])]; } });
     }
-    macro(macros, { label: '%', title: 'Strength', range: [0, 2], fallback: 1, format: v => `${Math.round(v * 100)} %`, read: () => current().strength, write: v => { current().strength = v; } });
-    card.append(macros);
-    reliefControls(card, current);
-    const material = element('div', 'fields');
-    fields.selectField(material, {
-      label: 'Material', value: object.material, reliability: MATERIALS[object.material].reliability,
+    const surface = cardGroup(card, 'Surface');
+    selectRow(surface.macros, {
+      label: 'Material', title: 'Material', value: object.material, note: MATERIALS[object.material].reliability,
       options: Object.entries(MATERIALS).map(([id, m]) => [id, m.label]),
-      onCommit: v => { current().material = v; changed({ panel: true }); }
+      onChange: v => { current().material = v; changed({ panel: true }); }
     });
-    card.append(material);
+    macro(surface.macros, { label: 'Strength', title: 'Effect strength (100 % is physical)', range: [0, 2], fallback: 1, format: v => `${Math.round(v * 100)} %`, read: () => current().strength, write: v => { current().strength = v; } });
+    reliefControls(card, current);
     const actions = element('div', 'card-actions');
     const button = (html, title, action) => {
       const b = element('button');
@@ -385,41 +445,28 @@ function objectCard(container, object) {
   container.append(card);
 }
 
-const RELIEF_LABELS = Object.freeze({ flat: 'Flat', waves: 'Waves', arches: 'Arches', scallops: 'Scallops', egg: 'Egg crate' });
-
 function reliefControls(card, current) {
   const relief = () => current().relief;
-  const shapes = element('div', 'build-menu pattern-menu');
-  shapes.setAttribute('role', 'radiogroup');
-  shapes.setAttribute('aria-label', 'Relief');
-  RELIEF_SHAPES.forEach(shape => {
-    const button = element('button', 'build-button');
-    button.type = 'button';
-    button.setAttribute('role', 'radio');
-    button.setAttribute('aria-checked', String(relief().shape === shape));
-    button.title = RELIEF_LABELS[shape];
-    button.setAttribute('aria-label', RELIEF_LABELS[shape]);
-    button.innerHTML = reliefIcon(shape);
-    button.addEventListener('click', () => { relief().shape = shape; changed({ panel: true }); });
-    shapes.append(button);
+  const { group, macros } = cardGroup(card, 'Relief');
+  tileRow(group, macros, {
+    label: 'Relief', chosen: relief().shape,
+    items: RELIEF_SHAPES.map(shape => [shape, RELIEF_LABELS[shape], reliefIcon(shape)]),
+    onPick: shape => { relief().shape = shape; changed({ panel: true }); }
   });
-  card.append(shapes);
-  const macros = element('div', 'macros');
   const shaped = relief().shape !== 'flat';
   if (shaped) {
-    macro(macros, { label: '↕', title: 'Relief height', range: [0.001, 0.5], log: true, format: formatGap, fallback: 0.02, read: () => relief().heightMetres, write: v => { relief().heightMetres = v; } });
-    macro(macros, { label: '↔', title: 'Relief period', range: [0.01, 5], log: true, format: formatGap, fallback: 0.2, read: () => relief().periodMetres, write: v => { relief().periodMetres = v; } });
-    macro(macros, { label: '∠', title: 'Relief direction', range: [0, 180], format: degrees, fallback: 0, read: () => relief().directionDegrees % 180, write: v => { relief().directionDegrees = v; } });
+    macro(macros, { label: 'Height', title: 'Relief height', range: [0.001, 0.5], log: true, format: formatGap, fallback: 0.02, read: () => relief().heightMetres, write: v => { relief().heightMetres = v; } });
+    macro(macros, { label: 'Period', title: 'Relief period', range: [0.01, 5], log: true, format: formatGap, fallback: 0.2, read: () => relief().periodMetres, write: v => { relief().periodMetres = v; } });
+    macro(macros, { label: 'Direction', title: 'Relief direction (0° along the width)', range: [0, 180], format: degrees, fallback: 0, read: () => relief().directionDegrees % 180, write: v => { relief().directionDegrees = v; } });
   }
-  macro(macros, { label: '≈', title: 'Roughness', range: [0.0005, 0.05], zero: true, format: v => (v ? formatGap(v) : 'smooth'), fallback: 0, read: () => relief().roughMetres, write: v => { relief().roughMetres = v; } });
+  macro(macros, { label: 'Rough', title: 'Roughness height (rms)', range: [0.0005, 0.05], zero: true, format: v => (v ? formatGap(v) : 'smooth'), fallback: 0, read: () => relief().roughMetres, write: v => { relief().roughMetres = v; } });
   if (relief().roughMetres > 0) {
-    macro(macros, { label: '◦', title: 'Roughness grain', range: [0.01, 1], log: true, format: formatGap, fallback: 0.05, read: () => relief().grainMetres, write: v => { relief().grainMetres = v; } });
+    macro(macros, { label: 'Grain', title: 'Roughness grain', range: [0.01, 1], log: true, format: formatGap, fallback: 0.05, read: () => relief().grainMetres, write: v => { relief().grainMetres = v; } });
   }
   if (shaped || relief().roughMetres > 0) {
-    macro(macros, { label: '⇢', title: 'Motion while playing (m/s)', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
-    macro(macros, { label: '⇥', title: 'Relief position', range: [0.001, 5], signed: true, format: formatGap, fallback: 0, read: () => relief().offsetMetres, write: v => { relief().offsetMetres = v; } });
+    macro(macros, { label: 'Motion', title: 'Moves while the preview plays', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
+    macro(macros, { label: 'Shift', title: 'Relief position along its direction', range: [0.001, 5], signed: true, format: formatGap, fallback: 0, read: () => relief().offsetMetres, write: v => { relief().offsetMetres = v; } });
   }
-  card.append(macros);
 }
 
 function removeObject(id) {
@@ -429,21 +476,21 @@ function removeObject(id) {
   changed({ panel: true });
 }
 
+const listenerCount = () => state.space.microphones.length + state.space.rigs.length;
+
 function refreshPanel() {
   live.length = 0;
   const list = $('object-list');
   list.replaceChildren();
   state.space.objects.forEach(object => objectCard(list, object));
 
-  document.querySelectorAll('.reference-row').forEach(row => row.remove());
-  const microphones = $('microphone-list');
-  microphones.replaceChildren();
-  state.space.microphones.forEach((microphone, index) => microphoneCard(microphones, microphone, index));
-  $('add-microphone').disabled = state.space.microphones.length >= MOST_MICROPHONES;
-  const rigs = $('rig-list');
-  rigs.replaceChildren();
-  state.space.rigs.forEach(rig => rigCard(rigs, rig));
-  document.querySelectorAll('#rig-menu button').forEach(b => { b.disabled = state.space.rigs.length >= MOST_RIGS; });
+  const listeners = $('listener-list');
+  listeners.replaceChildren();
+  state.space.microphones.forEach((microphone, index) => microphoneCard(listeners, microphone, index));
+  state.space.rigs.forEach(rig => rigCard(listeners, rig));
+  document.querySelectorAll('#listener-menu button').forEach(b => {
+    b.disabled = b.dataset.kind === 'mono' ? state.space.microphones.length >= MOST_MICROPHONES : state.space.rigs.length >= MOST_RIGS;
+  });
 
   const source = state.space.source;
   document.querySelectorAll('#source-kind [data-kind]').forEach(button => button.setAttribute('aria-checked', String(button.dataset.kind === source.kind)));
@@ -454,7 +501,7 @@ function refreshPanel() {
   if (source.kind === 'point') {
     pointControls(sourceMacros, () => state.space.source, 1);
   } else {
-    macro(sourceMacros, { label: 'From', range: [0, 360], fallback: 0, format: degrees, read: () => state.space.arrival.azimuthDegrees, write: v => { state.space.arrival.azimuthDegrees = v % 360; } });
+    macro(sourceMacros, { label: 'From', title: 'Compass direction the sound comes from', range: [0, 360], fallback: 0, format: degrees, read: () => state.space.arrival.azimuthDegrees, write: v => { state.space.arrival.azimuthDegrees = v % 360; } });
     macro(sourceMacros, { label: 'Elevation', range: [-90, 90], fallback: 10, format: degrees, read: () => state.space.arrival.elevationDegrees, write: v => { state.space.arrival.elevationDegrees = v; } });
   }
 
@@ -470,27 +517,24 @@ function refreshPanel() {
   fields.numberField(output, { key: 'order', value: state.space.render.order, reliability: 'A', onCommit: v => { state.space.render.order = v; changed(); } });
 }
 
-function pointControls(container, current, gapFallback) {
-  const point = current();
-  const reference = referenceObject(state.space, point);
-  const row = element('div', 'fields reference-row');
-  fields.selectField(row, {
-    label: '⚓', value: reference?.id ?? '',
+function pointControls(macros, current, gapFallback) {
+  const reference = referenceObject(state.space, current());
+  selectRow(macros, {
+    label: '<i class="fa-solid fa-anchor" aria-hidden="true"></i> Bound to', title: 'Bound to an object, or free in the world',
+    value: reference?.id ?? '',
     options: [['', 'World'], ...state.space.objects.map(o => [o.id, o.name])],
-    onCommit: id => { referTo(state.space, current(), id || null); changed({ panel: true }); }
+    onChange: id => { referTo(state.space, current(), id || null); changed({ panel: true }); }
   });
-  row.querySelector('label').title = 'Bound to';
-  container.before(row);
   if (reference) {
-    [['↔', 'Across'], ['⟂', 'Gap'], ['↕', 'Up']].forEach(([label, title], axis) => macro(container, {
+    [['↔ Across', 'Across the object'], ['⟂ Gap', 'Out from the object (negative is behind or inside)'], ['↕ Up', 'Up along the object']].forEach(([label, title], axis) => macro(macros, {
       label, title, signed: true, range: GAP_RANGE_METRES, format: formatGap, fallback: axis === 1 ? gapFallback : 0,
       read: () => current().offset[axis], write: v => { current().offset[axis] = v; }
     }));
   } else {
     const position = () => current().position;
-    macro(container, { label: 'E', title: 'East', range: HORIZONTAL_RANGE_METRES, format: formatGap, fallback: 0, read: () => position()[0], write: v => { position()[0] = v; } });
-    macro(container, { label: 'N', title: 'North', range: HORIZONTAL_RANGE_METRES, format: formatGap, fallback: 0, read: () => position()[1], write: v => { position()[1] = v; } });
-    macro(container, { label: 'Up', title: 'Height', range: HEIGHT_RANGE_METRES, format: formatGap, fallback: 1.2, read: () => position()[2], write: v => { position()[2] = v; } });
+    macro(macros, { label: 'East', range: HORIZONTAL_RANGE_METRES, format: formatGap, fallback: 0, read: () => position()[0], write: v => { position()[0] = v; } });
+    macro(macros, { label: 'North', range: HORIZONTAL_RANGE_METRES, format: formatGap, fallback: 0, read: () => position()[1], write: v => { position()[1] = v; } });
+    macro(macros, { label: 'Up', title: 'Height', range: HEIGHT_RANGE_METRES, format: formatGap, fallback: 1.2, read: () => position()[2], write: v => { position()[2] = v; } });
   }
 }
 
@@ -498,59 +542,30 @@ function microphoneCard(container, microphone, index) {
   const selected = state.selection?.type === 'microphone' && state.selection.id === microphone.id;
   const card = element('div', 'card');
   card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(`microphone:${microphone.id}`))));
-  const header = element('div', 'card-header');
-  header.tabIndex = 0;
-  header.setAttribute('role', 'button');
-  header.setAttribute('aria-expanded', String(selected));
   const dot = element('span', 'mic-dot');
   dot.style.background = `var(--mic-${index % MOST_MICROPHONES + 1})`;
-  const count = state.space.microphones.length;
-  const side = count === 1 ? '' : index === 0 ? 'L' : index === count - 1 ? 'R' : '';
-  header.append(dot, element('span', 'name', microphone.name), element('span', 'kind', side));
-  if (count > 1) {
-    const remove = element('button', 'icon-button');
-    remove.type = 'button';
-    remove.title = 'Remove';
-    remove.setAttribute('aria-label', `Remove ${microphone.name}`);
-    remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-    remove.addEventListener('click', event => {
-      event.stopPropagation();
-      removeMicrophone(microphone.id);
-    });
-    header.append(remove);
-  }
-  const toggle = () => select(selected ? null : { type: 'microphone', id: microphone.id });
-  header.addEventListener('click', toggle);
-  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
-  card.append(header);
+  cardHeader(card, {
+    lead: [dot], name: microphone.name, kind: PATTERN_LABELS[microphone.pattern], selected,
+    onToggle: () => select(selected ? null : { type: 'microphone', id: microphone.id }),
+    onRemove: listenerCount() > 1 ? () => removeMicrophone(microphone.id) : null, removeLabel: `Remove ${microphone.name}`
+  });
   if (selected) {
-    const macros = element('div', 'macros');
     const current = () => state.space.microphones.find(m => m.id === microphone.id);
-    const patterns = element('div', 'build-menu pattern-menu');
-    patterns.setAttribute('role', 'radiogroup');
-    patterns.setAttribute('aria-label', 'Pickup pattern');
-    Object.entries(PATTERNS).forEach(([name, a]) => {
-      const button = element('button', 'build-button');
-      button.type = 'button';
-      button.setAttribute('role', 'radio');
-      button.setAttribute('aria-checked', String(microphone.pattern === name));
-      button.title = PATTERN_LABELS[name];
-      button.setAttribute('aria-label', PATTERN_LABELS[name]);
-      button.innerHTML = patternIcon(a);
-      button.addEventListener('click', () => {
+    pointControls(cardGroup(card, 'Place').macros, current, 0.3);
+    const { group, macros } = cardGroup(card, 'Pickup');
+    tileRow(group, macros, {
+      label: 'Pickup pattern', chosen: microphone.pattern,
+      items: Object.entries(PATTERNS).map(([name, a]) => [name, PATTERN_LABELS[name], patternIcon(a)]),
+      onPick: name => {
         const mic = current();
         if (mic.pattern === 'omni' && name !== 'omni') aimAt(state.space, mic, towardsSource(mic));
         mic.pattern = name;
         changed({ panel: true });
-      });
-      patterns.append(button);
+      }
     });
-    card.append(patterns);
-    card.append(macros);
-    pointControls(macros, current, 0.3);
     if (microphone.pattern !== 'omni') {
-      macro(macros, { label: '↻', title: 'Aim', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
-      macro(macros, { label: '⤢', title: 'Aim up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
+      macro(macros, { label: 'Aim', title: 'Aim around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
+      macro(macros, { label: 'Aim up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     }
   }
   container.append(card);
@@ -559,9 +574,12 @@ function microphoneCard(container, microphone, index) {
 function removeGroup(group) {
   group.objects.forEach(id => releaseObject(state.space, id));
   state.space.objects = state.space.objects.filter(o => !group.objects.includes(o.id));
-  const keep = state.space.microphones.filter(m => !group.points.includes(`microphone:${m.id}`));
-  if (keep.length) state.space.microphones = keep;
-  state.space.rigs = state.space.rigs.filter(r => !group.points.includes(`rig:${r.id}`));
+  const microphones = state.space.microphones.filter(m => !group.points.includes(`microphone:${m.id}`));
+  const rigs = state.space.rigs.filter(r => !group.points.includes(`rig:${r.id}`));
+  if (microphones.length + rigs.length) {
+    state.space.microphones = microphones;
+    state.space.rigs = rigs;
+  }
   state.selection = null;
   changed({ panel: true });
 }
@@ -572,8 +590,6 @@ function setAreaSelect(on) {
 }
 $('select-area').addEventListener('click', () => setAreaSelect($('select-area').getAttribute('aria-pressed') !== 'true'));
 
-const PATTERN_LABELS = Object.freeze({ omni: 'Omni', wide: 'Wide cardioid', cardioid: 'Cardioid', supercardioid: 'Supercardioid', hypercardioid: 'Hypercardioid', figure8: 'Figure of eight' });
-
 function towardsSource(microphone) {
   if (state.space.source.kind === 'far') return arrivalVector(state.space.arrival);
   const from = pointPosition(state.space, microphone);
@@ -583,97 +599,101 @@ function towardsSource(microphone) {
   return d.map(v => v / n);
 }
 
+function rigBadge(kind) {
+  const badge = element('span', 'rig-badge');
+  if (kind === 'binaural') badge.innerHTML = headIcon(); else badge.textContent = RIG_KINDS[kind].short;
+  return badge;
+}
+
 function rigCard(container, rig) {
   const selected = state.selection?.type === 'rig' && state.selection.id === rig.id;
   const card = element('div', 'card');
   card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(`rig:${rig.id}`))));
-  const header = element('div', 'card-header');
-  header.tabIndex = 0;
-  header.setAttribute('role', 'button');
-  header.setAttribute('aria-expanded', String(selected));
-  const badge = element('span', 'rig-badge');
-  if (rig.kind === 'binaural') badge.innerHTML = headIcon(); else badge.textContent = RIG_KINDS[rig.kind].short;
-  const remove = element('button', 'icon-button');
-  remove.type = 'button';
-  remove.title = 'Remove';
-  remove.setAttribute('aria-label', `Remove ${rig.name}`);
-  remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-  remove.addEventListener('click', event => {
-    event.stopPropagation();
-    removeRig(rig.id);
+  cardHeader(card, {
+    lead: [rigBadge(rig.kind)], name: rig.name, kind: rigMembers(state.space, rig).map(m => m.name).join(' '), selected,
+    onToggle: () => select(selected ? null : { type: 'rig', id: rig.id }),
+    onRemove: listenerCount() > 1 ? () => removeRig(rig.id) : null, removeLabel: `Remove ${rig.name}`
   });
-  header.append(badge, element('span', 'name', rig.name), element('span', 'kind', rigMembers(state.space, rig).map(m => m.name).join(' ')), remove);
-  const toggle = () => select(selected ? null : { type: 'rig', id: rig.id });
-  header.addEventListener('click', toggle);
-  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
-  card.append(header);
   if (selected) {
     const current = () => state.space.rigs.find(r => r.id === rig.id);
-    const macros = element('div', 'macros');
-    card.append(macros);
-    pointControls(macros, current, 0.5);
-    macro(macros, { label: '↻', title: 'Facing', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
-    macro(macros, { label: '⤢', title: 'Facing up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
+    pointControls(cardGroup(card, 'Place').macros, current, 0.5);
+    const { macros } = cardGroup(card, rig.kind === 'binaural' ? 'Head' : 'Layout');
+    macro(macros, { label: 'Facing', title: 'Facing around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
+    macro(macros, { label: 'Facing up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     const defaults = RIG_KINDS[rig.kind];
     if (defaults.spacingMetres > 0) {
-      const title = rig.kind === 'binaural' ? 'Head width' : 'Spacing';
-      macro(macros, { label: '↔', title, range: rig.kind === 'binaural' ? [0.1, 0.3] : [0.01, 5], log: true, format: formatGap, fallback: defaults.spacingMetres, read: () => current().spacingMetres, write: v => { current().spacingMetres = v; } });
+      const binaural = rig.kind === 'binaural';
+      macro(macros, { label: binaural ? 'Head width' : 'Spacing', range: binaural ? [0.1, 0.3] : [0.01, 5], log: true, format: formatGap, fallback: defaults.spacingMetres, read: () => current().spacingMetres, write: v => { current().spacingMetres = v; } });
     }
     if (defaults.angleDegrees !== undefined && rig.kind !== 'ab' && rig.kind !== 'decca') {
-      macro(macros, { label: '∠', title: 'Angle between', range: RIG_ANGLE_DEGREES, format: degrees, fallback: defaults.angleDegrees, read: () => current().angleDegrees, write: v => { current().angleDegrees = v; } });
+      macro(macros, { label: 'Angle', title: 'Angle between the capsules', range: RIG_ANGLE_DEGREES, format: degrees, fallback: defaults.angleDegrees, read: () => current().angleDegrees, write: v => { current().angleDegrees = v; } });
     }
   }
   container.append(card);
 }
 
 function removeRig(id) {
+  if (listenerCount() <= 1) return;
   state.space.rigs = state.space.rigs.filter(r => r.id !== id);
   if (state.selection?.id === id) state.selection = null;
   changed({ panel: true });
 }
 
-for (const [kind, { label }] of Object.entries(RIG_KINDS)) {
-  const button = element('button', 'build-button rig-button', kind === 'binaural' ? '' : RIG_KINDS[kind].short);
-  if (kind === 'binaural') button.innerHTML = headIcon();
-  button.type = 'button';
-  button.title = label;
-  button.setAttribute('aria-label', `Add ${label}`);
-  button.addEventListener('click', () => {
-    if (state.space.rigs.length >= MOST_RIGS) return;
-    const model = activeMicrophone();
-    const step = 0.4 * (state.space.rigs.length + 1);
-    const rig = defaultRig(kind, { position: model.position.map((v, i) => v + (i === 0 ? step : 0)) });
-    aimAt(state.space, rig, towardsSource({ ...rig, reference: null }));
-    state.space.rigs.push(rig);
-    state.selection = { type: 'rig', id: rig.id };
-    changed({ panel: true });
-  });
-  $('rig-menu').append(button);
-}
-
 function removeMicrophone(id) {
-  if (state.space.microphones.length <= 1) return;
+  if (listenerCount() <= 1) return;
   state.space.microphones = state.space.microphones.filter(m => m.id !== id);
   if (state.selection?.id === id) state.selection = null;
   changed({ panel: true });
 }
 
-$('add-microphone').addEventListener('click', () => {
-  const list = state.space.microphones;
-  if (list.length >= MOST_MICROPHONES) return;
-  const model = activeMicrophone();
-  const copy = defaultMicrophone(list.length, { position: model.position.map((v, i) => v + (i === 0 ? 0.2 : 0)), reference: model.reference, offset: model.offset.map((v, i) => v + (i === 0 ? 0.2 : 0)) });
-  list.push(copy);
-  state.selection = { type: 'microphone', id: copy.id };
+// Adding a layout while a lone microphone is all there is puts the layout
+// in its place: same binding, same spot, and its aim if it had one.
+function addListener(kind) {
+  const space = state.space;
+  const model = activeListener();
+  if (kind === 'mono') {
+    if (space.microphones.length >= MOST_MICROPHONES) return;
+    const copy = defaultMicrophone(space.microphones.length, { position: model.position.map((v, i) => v + (i === 0 ? 0.2 : 0)), reference: model.reference, offset: model.offset.map((v, i) => v + (i === 0 ? 0.2 : 0)) });
+    space.microphones.push(copy);
+    state.selection = { type: 'microphone', id: copy.id };
+    changed({ panel: true });
+    return;
+  }
+  if (space.rigs.length >= MOST_RIGS) return;
+  const lone = space.microphones.length === 1 && space.rigs.length === 0 ? space.microphones[0] : null;
+  const rig = lone
+    ? defaultRig(kind, { position: [...lone.position], reference: lone.reference, offset: [...lone.offset] })
+    : defaultRig(kind, { position: model.position.map((v, i) => v + (i === 0 ? 0.4 * (space.rigs.length + 1) : 0)) });
+  if (lone && lone.pattern !== 'omni') rig.aim = { ...lone.aim };
+  else aimAt(space, rig, towardsSource({ ...rig }));
+  if (lone) space.microphones = [];
+  space.rigs.push(rig);
+  state.selection = { type: 'rig', id: rig.id };
   changed({ panel: true });
-});
+}
+
+{
+  const menu = $('listener-menu');
+  const tile = (kind, title, html) => {
+    const button = element('button', 'build-button rig-button');
+    button.type = 'button';
+    button.dataset.kind = kind;
+    button.title = title;
+    button.setAttribute('aria-label', `Add ${title.toLowerCase()}`);
+    button.innerHTML = html;
+    button.addEventListener('click', () => addListener(kind));
+    menu.append(button);
+  };
+  tile('mono', 'Microphone', '<i class="fa-solid fa-microphone" aria-hidden="true"></i>');
+  for (const [kind, { label, short }] of Object.entries(RIG_KINDS)) tile(kind, label, kind === 'binaural' ? headIcon() : short);
+}
 
 document.querySelectorAll('#source-kind [data-kind]').forEach(button => button.addEventListener('click', () => {
   const source = state.space.source;
   if (source.kind === button.dataset.kind) return;
   source.kind = button.dataset.kind;
   if (source.kind === 'point' && !source.reference) {
-    const at = activeMicrophone().position;
+    const at = activeListener().position;
     const toward = [Math.sin(state.space.arrival.azimuthDegrees * Math.PI / 180), Math.cos(state.space.arrival.azimuthDegrees * Math.PI / 180)];
     source.position = [at[0] + toward[0], at[1] + toward[1], at[2]];
   }
@@ -747,7 +767,7 @@ function openDetails(id) {
 $('details-close').addEventListener('click', () => $('details').close());
 
 function placeNew(kind) {
-  const at = activeMicrophone().position;
+  const at = activeListener().position;
   const placements = {
     plane: { position: [at[0], at[1] + 0.5, at[2]], yawDegrees: 180 },
     disc: { position: [at[0], at[1] + 0.5, at[2]], yawDegrees: 180 },
@@ -783,7 +803,7 @@ for (const [id, { label }] of Object.entries(SITUATIONS)) {
   button.addEventListener('click', () => {
     state.space = situationSpace(id, state.space);
     state.selection = null;
-    view.centre(activeMicrophone().position);
+    view.centre(activeListener().position);
     changed({ panel: true });
   });
   $('situations').append(button);
