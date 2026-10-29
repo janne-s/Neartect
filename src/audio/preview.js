@@ -1,6 +1,7 @@
 const CROSSFADE_SECONDS = 0.04;
 const OUTPUT_GAIN = 0.35;
 const BRANCHES = 4;
+const RELEASE_MARGIN_SECONDS = 0.05;
 
 // Each channel plays at its [left, right] gains: free microphones spread from
 // left to right, stereo pairs sit at their sides, and mid-side decodes.
@@ -40,7 +41,7 @@ export function createPreview() {
       const gain = context.createGain();
       gain.gain.value = 0;
       convolver.connect(gain).connect(output);
-      return { convolver, gain };
+      return { convolver, gain, silentFrom: Infinity };
     });
     dry = context.createGain();
     dry.gain.value = 0;
@@ -59,9 +60,27 @@ export function createPreview() {
     param.linearRampToValueAtTime(target, time + fade);
   }
 
+  // A convolver at zero gain still convolves, so a branch that has faded out
+  // gives up its filter; the active one keeps it for bypass and silence.
   function levels(time, fade = CROSSFADE_SECONDS) {
-    branches.forEach((branch, index) => ramp(branch.gain.gain, !bypass && index === active && branch.convolver.buffer ? 1 : 0, time, fade));
+    branches.forEach((branch, index) => {
+      const heard = !bypass && index === active && branch.convolver.buffer;
+      const silent = branch.gain.gain.value === 0;
+      ramp(branch.gain.gain, heard ? 1 : 0, time, fade);
+      branch.silentFrom = heard ? Infinity : silent ? Math.min(branch.silentFrom, time) : time + fade;
+    });
     ramp(dry.gain, bypass ? 1 : 0, time, CROSSFADE_SECONDS);
+    release();
+  }
+
+  function release() {
+    let wait = Infinity;
+    branches.forEach((branch, index) => {
+      if (index === active || !branch.convolver.buffer) return;
+      if (context.currentTime >= branch.silentFrom) branch.convolver.buffer = null;
+      else wait = Math.min(wait, branch.silentFrom - context.currentTime);
+    });
+    if (wait < Infinity) setTimeout(release, (wait + RELEASE_MARGIN_SECONDS) * 1000);
   }
 
   function setFilter(filter, fade = CROSSFADE_SECONDS) {
@@ -74,6 +93,7 @@ export function createPreview() {
     branches[active].gain.gain.cancelScheduledValues(context.currentTime);
     branches[active].gain.gain.setValueAtTime(0, context.currentTime);
     branches[active].convolver.buffer = buffer;
+    branches[active].silentFrom = Infinity;
     levels(context.currentTime, Math.max(CROSSFADE_SECONDS, fade));
   }
 
