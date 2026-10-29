@@ -20,6 +20,7 @@ const SIZE_NAMES = Object.freeze(['W', 'D', 'H']);
 const OFFSET_NAMES = Object.freeze(['↔', '⟂', '↕']);
 const DIMMED = 0.3;
 const SURFACE_SNAP_PIXELS = 10;
+const WHEEL_LINE_PIXELS = 16;
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -177,9 +178,22 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
       if (!(period > 0) || !(bar > 0)) return;
       const count = Math.floor(span / period);
       const step = Math.max(1, Math.ceil(count / MOST_BARS_DRAWN));
+      context.fillStyle = color;
       for (let i = 0; i <= count; i += step) {
-        const start = add(origin, scale(along, i * period + bar / 2));
-        line(context, start, add(start, scale(other, otherSpan)));
+        const from = Math.min(i * period, span);
+        const to = Math.min(i * period + bar, span);
+        const start = add(origin, scale(along, from));
+        const strip = [start, add(start, scale(along, to - from))].flatMap(p => [p, add(p, scale(other, otherSpan))]);
+        const corners = [strip[0], strip[2], strip[3], strip[1]].map(project);
+        if (step > 1 || !corners.every(Boolean) || Math.hypot(corners[1][0] - corners[0][0], corners[1][1] - corners[0][1]) < 1.5) {
+          const middle = add(start, scale(along, (to - from) / 2));
+          line(context, middle, add(middle, scale(other, otherSpan)));
+          continue;
+        }
+        context.beginPath();
+        corners.forEach(([x, y], k) => (k ? context.lineTo(x, y) : context.moveTo(x, y)));
+        context.closePath();
+        context.fill();
       }
     });
   }
@@ -380,9 +394,16 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     }
   }
 
+  function microphoneAt(point) {
+    const m = space && project(space.microphone.position);
+    return Boolean(m) && Math.hypot(point[0] - m[0], point[1] - m[1]) < HANDLE_PIXELS * 1.5;
+  }
+
   function handleAt(point) {
+    const onMicrophone = selection?.type !== 'microphone' && microphoneAt(point);
     for (let i = handles.length - 1; i >= 0; i -= 1) {
       const h = handles[i];
+      if (onMicrophone && h.type !== 'arrival') continue;
       if (h.segment && distanceToSegment(point, h.segment[0], h.segment[1]) < HANDLE_PIXELS) return h;
       if (h.point && Math.hypot(point[0] - h.point[0], point[1] - h.point[1]) < HANDLE_PIXELS) return h;
       if (h.points) {
@@ -395,8 +416,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   }
 
   function itemAt(point) {
-    const m = space && project(space.microphone.position);
-    if (m && Math.hypot(point[0] - m[0], point[1] - m[1]) < HANDLE_PIXELS * 1.5) return { type: 'microphone' };
+    if (microphoneAt(point)) return { type: 'microphone' };
     for (let i = faces.length - 1; i >= 0; i -= 1) {
       if (insidePolygon(point, faces[i].corners)) return { type: 'object', id: faces[i].object.id };
     }
@@ -540,9 +560,38 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     return [event.clientX - rect.left, event.clientY - rect.top];
   };
 
+  const touches = new Map();
+  let pinch = null;
+
+  function pinchState() {
+    const [a, b] = [...touches.values()];
+    return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, distance: Math.hypot(a[0] - b[0], a[1] - b[1]) };
+  }
+
+  function panBy(dx, dy) {
+    const { right, up } = basis();
+    const metres = pixelsToMetres(1, camera.target);
+    camera.target = add(camera.target, add(scale(right, -dx * metres), scale(up, dy * metres)));
+  }
+
+  function zoomBy(factor) {
+    camera.distance = Math.min(60, Math.max(0.1, camera.distance / factor));
+  }
+
   canvas.addEventListener('pointerdown', event => {
     canvas.setPointerCapture(event.pointerId);
     const point = pointer(event);
+    if (event.pointerType === 'touch') {
+      touches.set(event.pointerId, point);
+      if (touches.size === 2) {
+        if (drag?.handle) onCommit();
+        drag = null;
+        readout = null;
+        pinch = pinchState();
+        return;
+      }
+      if (touches.size > 2) return;
+    }
     const handle = event.button === 0 ? handleAt(point) : null;
     if (handle) {
       drag = startDrag(handle, point);
@@ -556,6 +605,17 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
 
   canvas.addEventListener('pointermove', event => {
     const point = pointer(event);
+    if (event.pointerType === 'touch' && touches.has(event.pointerId)) {
+      touches.set(event.pointerId, point);
+      if (pinch && touches.size === 2) {
+        const next = pinchState();
+        if (pinch.distance > 0) zoomBy(next.distance / pinch.distance);
+        panBy(next.x - pinch.x, next.y - pinch.y);
+        pinch = next;
+        draw();
+        return;
+      }
+    }
     if (!drag) {
       const handle = space ? handleAt(point) : null;
       const item = handle ? null : space ? itemAt(point) : null;
@@ -590,7 +650,26 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
     draw();
   });
 
+  const forget = event => {
+    if (event.pointerType !== 'touch') return;
+    touches.delete(event.pointerId);
+    if (pinch && touches.size < 2) pinch = null;
+  };
+  canvas.addEventListener('pointercancel', event => {
+    forget(event);
+    canvas.classList.remove('dragging');
+    if (drag?.handle) onCommit();
+    drag = null;
+    readout = null;
+    draw();
+  });
   canvas.addEventListener('pointerup', event => {
+    const pinching = Boolean(pinch);
+    forget(event);
+    if (pinching) {
+      drag = null;
+      return;
+    }
     canvas.classList.remove('dragging');
     if (drag?.handle) {
       readout = null;
@@ -610,9 +689,23 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, snapSurface
   canvas.addEventListener('contextmenu', event => event.preventDefault());
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
-    camera.distance = Math.min(60, Math.max(0.1, camera.distance * Math.exp(event.deltaY * 0.001)));
+    const lines = event.deltaMode === 1 ? WHEEL_LINE_PIXELS : 1;
+    const deltaX = event.deltaX * lines;
+    const deltaY = event.deltaY * lines;
+    const mouseWheel = event.deltaMode === 1 || (event.deltaX === 0 && Math.abs(event.deltaY) >= 40 && Number.isInteger(event.deltaY));
+    if (event.ctrlKey || mouseWheel) zoomBy(Math.exp(-deltaY * (event.ctrlKey ? 0.01 : 0.001)));
+    else panBy(-deltaX, -deltaY);
     draw();
   }, { passive: false });
+  let gestureScale = 1;
+  canvas.addEventListener('gesturestart', event => { event.preventDefault(); gestureScale = 1; });
+  canvas.addEventListener('gesturechange', event => {
+    event.preventDefault();
+    zoomBy(event.scale / gestureScale);
+    gestureScale = event.scale;
+    draw();
+  });
+  canvas.addEventListener('gestureend', event => event.preventDefault());
   canvas.addEventListener('dblclick', event => {
     const item = itemAt(pointer(event));
     if (item?.type === 'object') camera.target = objectCentre(space.objects.find(o => o.id === item.id));
