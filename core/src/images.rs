@@ -29,12 +29,20 @@ pub struct Path {
 pub fn specular_paths(scene: &Scene) -> Vec<Path> {
     let mut paths = Vec::new();
     let mut sequence = Vec::new();
-    extend(scene, &mut sequence, &mut paths);
+    let covered = covered_pairs(scene);
+    extend(scene, &covered, &mut sequence, &mut paths);
     paths
 }
 
-fn extend(scene: &Scene, sequence: &mut Vec<usize>, paths: &mut Vec<Path>) {
-    if sequence.len() >= 2 {
+// Second-order sequences, nearest the microphone first, that the Kirchhoff sum
+// via a joined flat surface already holds (both orders).
+fn covered_pairs(scene: &Scene) -> Vec<[usize; 2]> {
+    crate::kirchhoff::via_pairs(scene).into_iter().flat_map(|(i, j)| [[i, j], [j, i]]).collect()
+}
+
+fn extend(scene: &Scene, covered: &[[usize; 2]], sequence: &mut Vec<usize>, paths: &mut Vec<Path>) {
+    let held = sequence.len() == 2 && covered.contains(&[sequence[0], sequence[1]]);
+    if sequence.len() >= 2 && !held {
         if let Some(path) = trace(scene, sequence) {
             paths.push(path);
         }
@@ -47,7 +55,7 @@ fn extend(scene: &Scene, sequence: &mut Vec<usize>, paths: &mut Vec<Path>) {
             continue;
         }
         sequence.push(i);
-        extend(scene, sequence, paths);
+        extend(scene, covered, sequence, paths);
         sequence.pop();
     }
 }

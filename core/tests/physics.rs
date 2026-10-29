@@ -641,3 +641,21 @@ fn rough_shadowing_is_none_overhead_and_grows_towards_grazing() {
     assert!(seen.windows(2).all(|w| w[1] <= w[0] + 1e-12), "{seen:?}");
     assert!(seen[4] < 0.5, "{seen:?}");
 }
+
+fn wall(half: f64, height: f64) -> Surface {
+    surface(rectangle([0.0, 0.0, height], [half, 0.0, 0.0], [0.0, 0.0, height]), RIGID)
+}
+
+#[test]
+fn second_order_through_a_barely_relieved_wall_matches_the_images() {
+    let length = 4096;
+    let arrival = [0.3, 1.0, 0.4];
+    let microphone = [0.2, 0.6, 0.4];
+    let barely = relieved(wall(4.0, 2.0), [1.0, 1e-9, 1.0, 0.0, 0.0, 0.0, 0.05, 1.0]);
+    let images = near_spectrum(&scene(vec![floor(4.0), wall(4.0, 2.0)], microphone, arrival, length, 2));
+    let summed = near_spectrum(&scene(vec![floor(4.0), barely], microphone, arrival, length, 2));
+    let n = spectrum_size(length);
+    let (a, b) = ((100.0 * n as f64 / FS) as usize, (3000.0 * n as f64 / FS) as usize);
+    let error = (a..=b).map(|k| (images[k] - summed[k]).norm()).sum::<f64>() / (b - a + 1) as f64;
+    assert!(error < 0.06, "mean error {error}");
+}

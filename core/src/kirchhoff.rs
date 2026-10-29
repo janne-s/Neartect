@@ -49,9 +49,42 @@ impl Histograms {
     }
 }
 
+// A second reflection on a flat surface `j` joined at a right angle to a
+// surface with relief: the relief is lit from the source's image in `j`, and
+// its extension across the join (the relief mirrored) holds the other order,
+// so both second-order paths take the relief's lobes, exactly so as the relief
+// flattens. Other pairs and higher orders keep the images with Eckart's factor
+// (a finite unjoined `j` would need its own diffraction).
+pub fn via_pairs(scene: &Scene) -> Vec<(usize, usize)> {
+    if scene.max_order < 2 || scene.pipe.is_some() {
+        return Vec::new();
+    }
+    let mut list = Vec::new();
+    for (i, s) in scene.surfaces.iter().enumerate() {
+        if s.strength <= 0.0 || s.relief.is_flat() {
+            continue;
+        }
+        for (j, other) in scene.surfaces.iter().enumerate() {
+            if j == i || other.strength <= 0.0 || !other.relief.is_flat() {
+                continue;
+            }
+            if joined_with(scene, i, j) {
+                list.push((i, j));
+            }
+        }
+    }
+    list
+}
+
+fn joined_with(scene: &Scene, index: usize, other: usize) -> bool {
+    let polygon = &scene.surfaces[index].polygon;
+    (0..polygon.points.len()).any(|e| joined(scene, index, polygon.edge(e), Some(other)))
+}
+
 struct Context<'a> {
     scene: &'a Scene,
     index: usize,
+    via: Option<usize>,
     domain: Polygon,
     lit_normal: V3,
     relief_element: f64,
@@ -69,9 +102,49 @@ fn edge_element_size(distance: f64) -> f64 {
     element_size(distance).min((distance * EDGE_ELEMENT_PER_DISTANCE).max(SHORTEST_EDGE_ELEMENT_METRES))
 }
 
+impl Context<'_> {
+    fn incident(&self, x: V3) -> crate::scene::Incident {
+        match self.via {
+            Some(j) => {
+                let mirror = &self.scene.surfaces[j].polygon;
+                let mut incident = self.scene.incident(mirror.mirror_point(x));
+                incident.towards_source = mirror.mirror_direction(incident.towards_source);
+                incident
+            }
+            None => self.scene.incident(x),
+        }
+    }
+
+    // Whether the leg from `x` towards the source's image passes the via
+    // surface where it is solid and is otherwise clear on both sides.
+    fn through_via(&self, j: usize, x: V3, direction: V3, length: f64) -> bool {
+        let surface = &self.scene.surfaces[j];
+        let Some(t) = surface.polygon.ray_hit(x, direction, length) else { return false };
+        let hit = crate::geom::add(x, scale(direction, t));
+        if !surface.is_solid(surface.polygon.to_plane(hit)) || self.scene.occluded(&[self.index, j], x, direction, t) {
+            return false;
+        }
+        let onward = surface.polygon.mirror_direction(direction);
+        !self.scene.occluded(&[j], hit, onward, length - t)
+    }
+}
+
 pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms> {
+    scatter_via(scene, index, length, None)
+}
+
+pub fn scatter_via(scene: &Scene, index: usize, length: usize, via: Option<usize>) -> Option<Histograms> {
     let surface = &scene.surfaces[index];
-    let facing = scene.source_side(&surface.polygon);
+    let facing = match via {
+        Some(j) => {
+            let mirror = &scene.surfaces[j].polygon;
+            match scene.source {
+                None => dot(surface.polygon.normal, mirror.mirror_direction(scene.arrival)),
+                Some(source) => surface.polygon.signed_distance(mirror.mirror_point(source)),
+            }
+        }
+        None => scene.source_side(&surface.polygon),
+    };
     if facing.abs() < 1e-9 {
         return None;
     }
@@ -87,7 +160,8 @@ pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms>
     let mut context = Context {
         scene,
         index,
-        domain: domain(scene, index, extension),
+        via,
+        domain: domain(scene, index, extension, via),
         lit_normal,
         relief_element,
         rate,
@@ -104,10 +178,10 @@ pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms>
 // the join, so that a right-angled wedge or corner keeps its exact image
 // solution instead of diffracting from the join. Convex joins, such as the
 // outside of a box, and other angles keep their edges (class B diffraction).
-fn domain(scene: &Scene, index: usize, extension: f64) -> Polygon {
+fn domain(scene: &Scene, index: usize, extension: f64, via: Option<usize>) -> Polygon {
     let polygon = &scene.surfaces[index].polygon;
     let distances: Vec<f64> = (0..polygon.points.len())
-        .map(|i| if joined(scene, index, polygon.edge(i)) { extension } else { 0.0 })
+        .map(|i| if joined(scene, index, polygon.edge(i), via) { extension } else { 0.0 })
         .collect();
     polygon.offset(&distances)
 }
@@ -118,10 +192,10 @@ const JOIN_PROBE_METRES: f64 = 5e-3;
 
 pub fn extended_edges(scene: &Scene, index: usize) -> usize {
     let polygon = &scene.surfaces[index].polygon;
-    (0..polygon.points.len()).filter(|&i| joined(scene, index, polygon.edge(i))).count()
+    (0..polygon.points.len()).filter(|&i| joined(scene, index, polygon.edge(i), None)).count()
 }
 
-fn joined(scene: &Scene, index: usize, (a, b): (V3, V3)) -> bool {
+fn joined(scene: &Scene, index: usize, (a, b): (V3, V3), only: Option<usize>) -> bool {
     let this = &scene.surfaces[index].polygon;
     let middle = scale(crate::geom::add(a, b), 0.5);
     let edge = sub(b, a);
@@ -129,6 +203,7 @@ fn joined(scene: &Scene, index: usize, (a, b): (V3, V3)) -> bool {
     scene.surfaces.iter().enumerate().any(|(j, other)| {
         let p = &other.polygon;
         if j == index
+            || only.is_some_and(|o| o != j)
             || dot(this.normal, p.normal).abs() >= RIGHT_ANGLE_COSINE
             || p.signed_distance(a).abs() >= JOIN_TOLERANCE_METRES
             || p.signed_distance(b).abs() >= JOIN_TOLERANCE_METRES
@@ -167,7 +242,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let to_microphone = sub(context.scene.microphone, x);
     let distance = norm(to_microphone);
     let c = context.scene.speed_of_sound;
-    let incident = context.scene.incident(x);
+    let incident = context.incident(x);
     let earliest = (incident.extra_metres + distance - size * std::f64::consts::SQRT_2 - 2.0 * surface.relief.bound()) / c;
     if earliest * context.rate > context.histograms.len() as f64 {
         return;
@@ -219,7 +294,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let tilted = scale(sub(normal, crate::geom::add(scale(polygon.u, slope[0]), scale(polygon.v, slope[1]))), side);
     let tangent_u = crate::geom::add(polygon.u, scale(normal, slope[0]));
     let tangent_v = crate::geom::add(polygon.v, scale(normal, slope[1]));
-    let incident = scene.incident(x);
+    let incident = context.incident(x);
     if shaped && dot(tilted, incident.towards_source) <= 0.0 {
         return;
     }
@@ -230,7 +305,12 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if shades(incident.towards_source) {
         return;
     }
-    if !virtual_element && scene.occluded(&skip, x, incident.towards_source, incident.source_distance) {
+    let towards_source_clear = virtual_element
+        || match context.via {
+            Some(j) => context.through_via(j, x, incident.towards_source, incident.source_distance),
+            None => !scene.occluded(&skip, x, incident.towards_source, incident.source_distance),
+        };
+    if !towards_source_clear {
         return;
     }
     let to_microphone = sub(scene.microphone, x);

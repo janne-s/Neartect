@@ -1,5 +1,5 @@
 use crate::images::specular_paths;
-use crate::kirchhoff::{scatter, Histograms, OVERSAMPLING};
+use crate::kirchhoff::{scatter_via, via_pairs, Histograms, OVERSAMPLING};
 use crate::geom::{dot, scale, sub, V3};
 use crate::pipe::{received, transfer, PipeInside};
 use crate::scene::Scene;
@@ -90,25 +90,29 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
         .collect();
     let j = Complex64::new(0.0, 1.0);
 
-    let mut groups: Vec<(Vec<u64>, usize, Histograms)> = Vec::new();
-    for (index, surface) in scene.surfaces.iter().enumerate() {
-        if surface.strength <= 0.0 {
-            continue;
+    let mut groups: Vec<(Vec<u64>, usize, Option<usize>, Histograms)> = Vec::new();
+    let single = scene.surfaces.iter().enumerate().filter(|(_, s)| s.strength > 0.0).map(|(i, _)| (i, None));
+    let second = via_pairs(scene).into_iter().map(|(i, j)| (i, Some(j)));
+    for (index, also) in single.chain(second) {
+        let surface = &scene.surfaces[index];
+        let Some(h) = scatter_via(scene, index, n_fine, also) else { continue };
+        let mut key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
+        if let Some(j) = also {
+            key.push(u64::MAX);
+            key.extend(scene.surfaces[j].reflection.iter().map(|r| r.to_bits()).chain(scene.surfaces[j].pattern.low_frequency_key()));
         }
-        let Some(h) = scatter(scene, index, n_fine) else { continue };
-        let key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
-        let s = surface.strength;
-        match groups.iter_mut().find(|(k, _, _)| *k == key) {
-            Some((_, _, sum)) => sum.add_scaled(&h, s),
+        let s = surface.strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
+        match groups.iter_mut().find(|(k, _, _, _)| *k == key) {
+            Some((_, _, _, sum)) => sum.add_scaled(&h, s),
             None => {
                 let mut scaled = Histograms::new(h.sets.len(), n_fine);
                 scaled.add_scaled(&h, s);
-                groups.push((key, index, scaled));
+                groups.push((key, index, also, scaled));
             }
         }
     }
 
-    for (_, index, h) in &groups {
+    for (_, index, also, h) in &groups {
         let surface = &scene.surfaces[*index];
         for (set, lists) in h.sets.iter().enumerate() {
             let [rigid_far_list, rigid_near_list, soft_list, soft_near_list] = lists;
@@ -130,8 +134,10 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
                 let pressure_release = -(j * omega_over_c * soft + soft_near);
                 let r = reflection[*index][k];
                 let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
-                let grating = surface.pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
-                total[k] += scattered * factors[set][k] * (compensation * grating);
+                let hz = k as f64 * fs / n as f64;
+                let grating = surface.pattern.low_frequency_factor(hz, c);
+                let second = also.map_or(Complex64::new(1.0, 0.0), |j| reflection[j][k] * scene.surfaces[j].pattern.low_frequency_factor(hz, c));
+                total[k] += scattered * second * factors[set][k] * (compensation * grating);
             }
         }
     }
