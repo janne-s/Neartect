@@ -1,9 +1,17 @@
+import { planeReflectionMagnitude } from '../shared/domain/ground.js';
+
 // Octave-band absorption 125 Hz–4 kHz, random incidence, from the RoomTreat
 // table (CC BY 4.0, roomtreat.com/data/absorption-coefficients), which
 // aggregates Vorländer, Cox & D'Antonio, Bies & Hansen, and ISO 354 data.
 // Class B; 63 Hz and 8 kHz repeat the nearest band.
 
-export const MATERIAL_ATTRIBUTION = 'Absorption coefficients: RoomTreat, CC BY 4.0 (aggregated from Vorländer, Cox & D\'Antonio, Bies & Hansen, ISO 354 data).';
+export const MATERIAL_ATTRIBUTION = 'Absorption coefficients: RoomTreat, CC BY 4.0 (aggregated from Vorländer, Cox & D\'Antonio, Bies & Hansen, ISO 354 data). Grounds: Delany–Bazley impedance with flow resistivities from Embleton et al.';
+
+const TABLE_BANDS_HZ = [125, 250, 500, 1000, 2000, 4000];
+
+// Porous grounds from tect-shared's Delany–Bazley model at normal incidence
+// (class B; the angle dependence is left out).
+const fromGround = groundType => TABLE_BANDS_HZ.map(hz => 1 - planeReflectionMagnitude(hz, groundType, 1) ** 2);
 
 const WATER_REFLECTION = (1.48e6 - 413) / (1.48e6 + 413);
 
@@ -21,7 +29,12 @@ export const MATERIALS = Object.freeze({
   carpet: { label: 'Carpet', absorption: [0.05, 0.15, 0.35, 0.55, 0.65, 0.7], reliability: 'B' },
   curtain: { label: 'Heavy curtain', absorption: [0.14, 0.35, 0.55, 0.72, 0.7, 0.65], reliability: 'B' },
   foam: { label: 'Acoustic foam 50 mm', absorption: [0.08, 0.25, 0.6, 0.9, 0.95, 0.98], reliability: 'B' },
-  mineralWool: { label: 'Mineral wool 50 mm', absorption: [0.15, 0.55, 0.9, 1, 1, 1], reliability: 'B' }
+  mineralWool: { label: 'Mineral wool 50 mm', absorption: [0.15, 0.55, 0.9, 1, 1, 1], reliability: 'B' },
+  stonyGround: { label: 'Stony ground', absorption: fromGround('stonyGround'), reliability: 'B' },
+  soil: { label: 'Soil', absorption: fromGround('soil'), reliability: 'B' },
+  grass: { label: 'Grass', absorption: fromGround('grass'), reliability: 'B' },
+  forestFloor: { label: 'Forest floor', absorption: fromGround('forestFloor'), reliability: 'B' },
+  snow: { label: 'Snow', absorption: fromGround('snow'), reliability: 'B' }
 });
 
 export const DEFAULT_MATERIAL = 'concrete';

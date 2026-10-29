@@ -6,7 +6,8 @@ const FIELD_OF_VIEW = 0.9;
 const CLICK_PIXELS = 4;
 const MICROPHONE_PICK_PIXELS = 12;
 const MOST_BARS_DRAWN = 80;
-const GRID_HALF_METRES = 4;
+const GRID_LINES_EACH_SIDE = 8;
+const ARROWHEAD_PIXELS = 9;
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -81,12 +82,19 @@ export function createNearView(canvas, { onSelect }) {
     if (!space) return;
     const project = projector(width, height);
 
+    const spacing = 10 ** Math.floor(Math.log10(camera.distance / 2));
+    const half = GRID_LINES_EACH_SIDE * spacing;
+    const cx = Math.round(camera.target[0] / spacing) * spacing;
+    const cy = Math.round(camera.target[1] / spacing) * spacing;
     context.strokeStyle = colors.grid;
     context.lineWidth = 1;
-    for (let i = -GRID_HALF_METRES; i <= GRID_HALF_METRES; i += 1) {
-      line(context, project, [i, -GRID_HALF_METRES, 0], [i, GRID_HALF_METRES, 0]);
-      line(context, project, [-GRID_HALF_METRES, i, 0], [GRID_HALF_METRES, i, 0]);
+    for (let i = -GRID_LINES_EACH_SIDE; i <= GRID_LINES_EACH_SIDE; i += 1) {
+      line(context, project, [cx + i * spacing, cy - half, 0], [cx + i * spacing, cy + half, 0]);
+      line(context, project, [cx - half, cy + i * spacing, 0], [cx + half, cy + i * spacing, 0]);
     }
+    context.fillStyle = colors.faint;
+    context.font = '11px system-ui, sans-serif';
+    context.fillText(`Floor grid ${formatGap(spacing)}`, 10, height - 10);
 
     projected = space.surfaces.map((surface, index) => {
       const corners = surfaceVertices(surface).map(project);
@@ -114,19 +122,29 @@ export function createNearView(canvas, { onSelect }) {
     }
 
     const microphone = space.microphone.position;
-    const reach = Math.max(0.3, camera.distance * 0.12);
+    const reach = Math.max(0.3, camera.distance * 0.15);
     const arrival = arrivalVector(space.arrival);
-    context.strokeStyle = colors.direct;
-    context.lineWidth = 2;
-    const tail = add(microphone, scale(arrival, reach * 2));
-    line(context, project, tail, add(microphone, scale(arrival, reach * 0.35)));
-    const { right } = basis();
-    const side = scale(right, reach * 0.4);
-    for (const offset of [0, 0.5, 1]) {
-      const centre = add(microphone, scale(arrival, reach * (2 - offset * 0.5)));
-      line(context, project, sub(centre, side), add(centre, side));
+    const from = project(add(microphone, scale(arrival, reach * 2)));
+    const to = project(add(microphone, scale(arrival, reach * 0.25)));
+    if (from && to) {
+      context.strokeStyle = colors.direct;
+      context.fillStyle = colors.direct;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(from[0], from[1]);
+      context.lineTo(to[0], to[1]);
+      context.stroke();
+      const angle = Math.atan2(to[1] - from[1], to[0] - from[0]);
+      context.beginPath();
+      context.moveTo(to[0], to[1]);
+      context.lineTo(to[0] - ARROWHEAD_PIXELS * Math.cos(angle - 0.4), to[1] - ARROWHEAD_PIXELS * Math.sin(angle - 0.4));
+      context.lineTo(to[0] - ARROWHEAD_PIXELS * Math.cos(angle + 0.4), to[1] - ARROWHEAD_PIXELS * Math.sin(angle + 0.4));
+      context.closePath();
+      context.fill();
+      context.lineWidth = 1;
+      context.font = '11px system-ui, sans-serif';
+      context.fillText('Sound', from[0] + 6, from[1] - 6);
     }
-    context.lineWidth = 1;
 
     const m = project(microphone);
     microphoneOnScreen = m;

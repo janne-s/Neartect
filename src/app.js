@@ -144,7 +144,7 @@ function paint(input) {
   input.style.setProperty('--to', `calc(6px + (100% - 12px) * ${t})`);
 }
 
-function macro(container, { label, read, write, range: [low, high], log = false, format }) {
+function macro(container, { label, read, write, range: [low, high], log = false, format, fallback }) {
   const toSlider = value => Math.round(SLIDER_STEPS * (log ? Math.log(value / low) / Math.log(high / low) : (value - low) / (high - low)));
   const fromSlider = position => {
     const t = position / SLIDER_STEPS;
@@ -169,6 +169,12 @@ function macro(container, { label, read, write, range: [low, high], log = false,
     changed({ save: false });
   });
   input.addEventListener('change', () => changed());
+  input.addEventListener('dblclick', () => {
+    if (fallback === undefined) return;
+    write(fallback);
+    sync();
+    changed();
+  });
   container.append(name, input, value);
   live.push(sync);
   sync();
@@ -215,12 +221,19 @@ function surfaceCard(container, surface, index) {
     card.append(element('p', 'card-summary', `${formatGap(surface.widthMetres)} × ${formatGap(surface.heightMetres)} · ${MATERIALS[surface.material].label}`));
     const macros = element('div', 'macros');
     const current = () => state.space.surfaces[index];
-    macro(macros, { label: 'Width', range: [0.05, 20], log: true, format: formatGap, read: () => current().widthMetres, write: v => { current().widthMetres = v; } });
-    macro(macros, { label: 'Height', range: [0.05, 20], log: true, format: formatGap, read: () => current().heightMetres, write: v => { current().heightMetres = v; } });
-    macro(macros, { label: 'Facing', range: [0, 360], format: degrees, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
-    macro(macros, { label: 'Tilt', range: [-90, 90], format: degrees, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
-    macro(macros, { label: 'Strength', range: [0, 2], format: v => `${Math.round(v * 100)} %`, read: () => current().strength, write: v => { current().strength = v; } });
+    macro(macros, { label: 'Width', range: [0.05, 20], log: true, fallback: 2, format: formatGap, read: () => current().widthMetres, write: v => { current().widthMetres = v; } });
+    macro(macros, { label: 'Height', range: [0.05, 20], log: true, fallback: 2, format: formatGap, read: () => current().heightMetres, write: v => { current().heightMetres = v; } });
+    macro(macros, { label: 'Facing', range: [0, 360], fallback: 0, format: degrees, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
+    macro(macros, { label: 'Tilt', range: [-90, 90], fallback: 0, format: degrees, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
+    macro(macros, { label: 'Strength', range: [0, 2], fallback: 1, format: v => `${Math.round(v * 100)} %`, read: () => current().strength, write: v => { current().strength = v; } });
     card.append(macros);
+    const material = element('div', 'fields');
+    fields.selectField(material, {
+      label: 'Material', value: surface.material, reliability: MATERIALS[surface.material].reliability,
+      options: Object.entries(MATERIALS).map(([id, m]) => [id, m.label]),
+      onCommit: v => { current().material = v; changed({ panel: true }); }
+    });
+    card.append(material);
     const actions = element('div', 'card-actions');
     const button = (text, action) => {
       const b = element('button', null, text);
@@ -255,19 +268,19 @@ function refreshPanel() {
   if (nearest) {
     const name = state.space.surfaces[nearest.index].name;
     macro(microphone, {
-      label: `Gap to ${name}`, range: GAP_RANGE_METRES, log: true, format: formatGap,
+      label: `Gap to ${name}`, range: GAP_RANGE_METRES, log: true, fallback: 0.3, format: formatGap,
       read: () => Math.abs(nearestSurface(state.space)?.distance ?? GAP_RANGE_METRES[1]),
       write: v => { state.space.microphone.position = withGap(state.space, nearest.index, v); }
     });
   }
-  macro(microphone, { label: 'East', range: HORIZONTAL_RANGE_METRES, format: metres, read: () => position()[0], write: v => { position()[0] = v; } });
-  macro(microphone, { label: 'North', range: HORIZONTAL_RANGE_METRES, format: metres, read: () => position()[1], write: v => { position()[1] = v; } });
-  macro(microphone, { label: 'Height', range: HEIGHT_RANGE_METRES, format: metres, read: () => position()[2], write: v => { position()[2] = v; } });
+  macro(microphone, { label: 'East', range: HORIZONTAL_RANGE_METRES, fallback: 0, format: metres, read: () => position()[0], write: v => { position()[0] = v; } });
+  macro(microphone, { label: 'North', range: HORIZONTAL_RANGE_METRES, fallback: 0, format: metres, read: () => position()[1], write: v => { position()[1] = v; } });
+  macro(microphone, { label: 'Height', range: HEIGHT_RANGE_METRES, fallback: 1.2, format: metres, read: () => position()[2], write: v => { position()[2] = v; } });
 
   const arrival = $('arrival-macros');
   arrival.replaceChildren();
-  macro(arrival, { label: 'From', range: [0, 360], format: degrees, read: () => state.space.arrival.azimuthDegrees, write: v => { state.space.arrival.azimuthDegrees = v % 360; } });
-  macro(arrival, { label: 'Elevation', range: [-90, 90], format: degrees, read: () => state.space.arrival.elevationDegrees, write: v => { state.space.arrival.elevationDegrees = v; } });
+  macro(arrival, { label: 'From', range: [0, 360], fallback: 0, format: degrees, read: () => state.space.arrival.azimuthDegrees, write: v => { state.space.arrival.azimuthDegrees = v % 360; } });
+  macro(arrival, { label: 'Elevation', range: [-90, 90], fallback: 10, format: degrees, read: () => state.space.arrival.elevationDegrees, write: v => { state.space.arrival.elevationDegrees = v; } });
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -378,10 +391,10 @@ document.addEventListener('keydown', event => {
   $('play').click();
 });
 $('signal').addEventListener('change', () => {
-  if ($('signal').value === 'file') { $('signal-file').click(); return; }
   state.signal = $('signal').value;
   if (preview.playing) startPlayback();
 });
+$('load-signal').addEventListener('click', () => $('signal-file').click());
 $('signal-file').addEventListener('change', async () => {
   const file = $('signal-file').files[0];
   $('signal-file').value = '';
@@ -395,7 +408,10 @@ $('signal-file').addEventListener('change', async () => {
     }
     state.file = { samples, sampleRate: audio.sampleRate, name: file.name };
     state.signal = 'file';
-    $('signal').options[3].textContent = file.name;
+    const option = $('signal').options[3];
+    option.textContent = file.name;
+    option.hidden = false;
+    $('signal').value = 'file';
     if (preview.playing) startPlayback();
   } catch {
     setStatus('The file could not be read as audio.', true);
