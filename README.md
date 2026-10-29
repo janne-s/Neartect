@@ -107,8 +107,9 @@ wavelength with the microphone close to it, which the model overstates), angle-d
 `npm start` serves the app at http://localhost:8003/. `npm test` runs the
 JavaScript tests, `npm run test:core` the Rust core tests, and
 `npm run build:core` rebuilds `src/core/` (Rust with the
-`wasm32-unknown-unknown` target and `wasm-bindgen`). `src/shared/` is a synced
-copy of tect-shared.
+`wasm32-unknown-unknown` target, `wasm-bindgen`, and Binaryen's `wasm-opt`).
+`node tools/bench.mjs` times the core over the situations and can save and
+compare filters. `src/shared/` is a synced copy of tect-shared.
 
 ## License
 
