@@ -560,6 +560,7 @@ function microphoneCard(container, microphone, index) {
   });
   if (selected) {
     const current = () => state.space.microphones.find(m => m.id === microphone.id);
+    layoutTiles(card, 'mono', kind => changeLayout(current(), kind));
     pointControls(cardGroup(card, 'Place').macros, current, 0.3);
     const { group, macros } = cardGroup(card, 'Pickup');
     tileRow(group, macros, {
@@ -623,8 +624,9 @@ function rigCard(container, rig, index) {
   });
   if (selected) {
     const current = () => state.space.rigs.find(r => r.id === rig.id);
+    layoutTiles(card, rig.kind, kind => changeLayout(current(), kind));
     pointControls(cardGroup(card, 'Place').macros, current, 0.5);
-    const { macros } = cardGroup(card, rig.kind === 'binaural' ? 'Head' : 'Layout');
+    const { macros } = cardGroup(card, rig.kind === 'binaural' ? 'Head' : 'Arrangement');
     macro(macros, { label: 'Facing', title: 'Facing around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
     macro(macros, { label: 'Tilt', title: 'Tilt up or down', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     const defaults = RIG_KINDS[rig.kind];
@@ -648,6 +650,45 @@ function removeRig(id) {
 function removeMicrophone(id) {
   state.space.microphones = state.space.microphones.filter(m => m.id !== id);
   if (state.selection?.id === id) state.selection = null;
+  changed({ panel: true });
+}
+
+const LAYOUT_TILES = () => [['mono', 'Microphone', '<i class="fa-solid fa-microphone" aria-hidden="true"></i>'], ...Object.entries(RIG_KINDS).map(([kind, { label, short }]) => [kind, label, kind === 'binaural' ? headIcon() : short])];
+
+function layoutTiles(card, chosen, onPick) {
+  const { group, macros } = cardGroup(card, 'Layout');
+  group.classList.add('layout-group');
+  tileRow(group, macros, { label: 'Layout', chosen, items: LAYOUT_TILES(), onPick });
+  group.querySelectorAll('.tile-row .build-button').forEach(b => b.classList.add('rig-button'));
+}
+
+// Changing the layout of a selected microphone or layout keeps its place,
+// binding, and aim; only the capsules change.
+function changeLayout(point, kind) {
+  const space = state.space;
+  const isRig = space.rigs.includes(point);
+  if ((isRig && point.kind === kind) || (!isRig && kind === 'mono')) return;
+  const place = { position: [...point.position], reference: point.reference, offset: [...point.offset] };
+  const aimed = isRig || point.pattern !== 'omni';
+  const aim = aimed ? { ...point.aim } : null;
+  if (kind === 'mono') {
+    const microphone = defaultMicrophone(space.microphones.length, { ...place, pattern: 'cardioid', aim });
+    space.rigs = space.rigs.filter(r => r !== point);
+    space.microphones.push(microphone);
+    state.selection = { type: 'microphone', id: microphone.id };
+  } else if (isRig) {
+    const fresh = defaultRig(kind, place);
+    point.name = point.name === RIG_KINDS[point.kind].label ? fresh.name : point.name;
+    point.kind = kind;
+    point.spacingMetres = fresh.spacingMetres;
+    point.angleDegrees = fresh.angleDegrees;
+  } else {
+    const rig = defaultRig(kind, place);
+    if (aim) rig.aim = aim; else aimAt(space, rig, towardsSource({ ...rig }));
+    space.microphones = space.microphones.filter(m => m !== point);
+    space.rigs.push(rig);
+    state.selection = { type: 'rig', id: rig.id };
+  }
   changed({ panel: true });
 }
 

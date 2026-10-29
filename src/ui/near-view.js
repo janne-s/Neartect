@@ -13,7 +13,13 @@ const RING_PIXELS = 58;
 const RING_SEGMENTS = 48;
 const MOST_BARS_DRAWN = 80;
 const NEAR_METRES = 0.05;
-const ARROW_GAP_PIXELS = 14;
+const POINT_ARROW_START_PIXELS = 16;
+const MOVE_ARROW_PIXELS = 34;
+const MOVE_ARROW_SHORTEST_PIXELS = 6;
+const MOVE_HEAD_PIXELS = 11;
+const MOVE_HEAD_HALF_PIXELS = 9;
+const MOVE_SHAFT_PIXELS = 5;
+const AIM_RING_PIXELS = 40;
 const GRID_LEAST_METRES = 6;
 const GRID_MOST_METRES = 40;
 const GRID_FINE_DISTANCE_METRES = 3;
@@ -38,6 +44,12 @@ const MOST_RELIEF_CELLS = 2400;
 const MOST_RELIEF_CELLS_ALONG = 240;
 const MOST_PROFILE_POINTS = 400;
 
+const withAlpha = (color, alpha) => {
+  const hex = color.trim().replace('#', '');
+  if (hex.length !== 6) return color;
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -356,22 +368,41 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return live && live.id === handle.id;
   }
 
-  // Move arrows start a little out from the centre, so the marker and its
-  // aim stay readable between them.
-  function moveHandles(context, colors, centre, target, axes = WORLD_AXES) {
-    const length = pixelsToMetres(ARROW_PIXELS, centre);
-    const gap = pixelsToMetres(ARROW_GAP_PIXELS, centre);
+  // Move arrows are short hollow arrows that start at the edge of the turning
+  // ring (or just out from a marker without one) and fade in towards their
+  // tips, so the centre, the marker, and its aim stay readable inside them.
+  function moveHandles(context, colors, centre, target, axes = WORLD_AXES, startPixels = POINT_ARROW_START_PIXELS) {
+    const c = project(centre);
+    if (!c) return;
     axes.forEach((axis, index) => {
-      const handle = { id: `move-${target}-${index}`, type: 'move', target, axis: index, vector: axis, length };
-      const color = isHot(handle) ? colors.accent : colors.ink;
-      context.strokeStyle = color;
-      context.fillStyle = color;
-      context.lineWidth = isHot(handle) ? 2.5 : 1.5;
-      const ends = line(context, add(centre, scale(axis, gap)), add(centre, scale(axis, length)));
+      const handle = { id: `move-${target}-${index}`, type: 'move', target, axis: index, vector: axis };
+      const a = project(add(centre, scale(axis, pixelsToMetres(startPixels, centre))));
+      const b = project(add(centre, scale(axis, pixelsToMetres(startPixels + MOVE_ARROW_PIXELS, centre))));
+      if (!a || !b) return;
+      const along = [b[0] - a[0], b[1] - a[1]];
+      const length = Math.hypot(...along);
+      if (length < MOVE_ARROW_SHORTEST_PIXELS) return;
+      const u = [along[0] / length, along[1] / length];
+      const v = [-u[1], u[0]];
+      const at = (s, w) => [a[0] + u[0] * s + v[0] * w, a[1] + u[1] * s + v[1] * w];
+      const neck = Math.max(0, length - MOVE_HEAD_PIXELS);
+      const outline = [at(0, -MOVE_SHAFT_PIXELS), at(neck, -MOVE_SHAFT_PIXELS), at(neck, -MOVE_HEAD_HALF_PIXELS), at(length, 0), at(neck, MOVE_HEAD_HALF_PIXELS), at(neck, MOVE_SHAFT_PIXELS), at(0, MOVE_SHAFT_PIXELS)];
+      const hot = isHot(handle);
+      const color = hot ? colors.accent : colors.ink;
+      const fade = context.createLinearGradient(a[0], a[1], b[0], b[1]);
+      fade.addColorStop(0, withAlpha(color, 0));
+      fade.addColorStop(0.45, withAlpha(color, hot ? 0.9 : 0.55));
+      fade.addColorStop(1, withAlpha(color, 1));
+      context.beginPath();
+      outline.forEach(([x, y], k) => (k ? context.lineTo(x, y) : context.moveTo(x, y)));
+      context.closePath();
+      context.fillStyle = withAlpha(color, hot ? 0.18 : 0.06);
+      context.fill();
+      context.strokeStyle = fade;
+      context.lineWidth = hot ? 1.8 : 1.2;
+      context.stroke();
       context.lineWidth = 1;
-      if (!ends) return;
-      arrowHead(context, ends[0], ends[1]);
-      handles.push({ ...handle, segment: ends });
+      handles.push({ ...handle, segment: [a, b], reach: MOVE_HEAD_HALF_PIXELS + 2 });
     });
   }
 
@@ -523,13 +554,21 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       if (item.type === 'microphone' && (active || space.microphones.length === 1)) gapLabel(context, colors, item.point, p);
       context.globalAlpha = 1;
     }
-    if (selectedPoint?.type === 'rig' || (selectedPoint?.type === 'microphone' && selectedPoint.point.pattern !== 'omni')) {
+    const aimed = selectedPoint?.type === 'rig' || (selectedPoint?.type === 'microphone' && selectedPoint.point.pattern !== 'omni');
+    if (aimed) {
       const centre = selectedPoint.point.position;
-      const ring = { id: 'ring-aim', type: 'aim', key: selectedPoint.key, points: ringPoints(centre, [1, 0, 0], [0, 1, 0], pixelsToMetres(RING_PIXELS * 0.75, centre)) };
-      if (!ring.points.some(p => !p)) {
+      const facing = aimVector(space, selectedPoint.point);
+      const level = Math.hypot(facing[0], facing[1]);
+      const heading = level > 0.01 ? [facing[0] / level, facing[1] / level, 0] : [0, 1, 0];
+      const rings = [
+        { id: 'ring-aim', type: 'aim', which: 'yaw', key: selectedPoint.key, points: ringPoints(centre, [1, 0, 0], [0, 1, 0], pixelsToMetres(AIM_RING_PIXELS, centre)) },
+        { id: 'ring-aim-tilt', type: 'aim', which: 'tilt', key: selectedPoint.key, heading, points: ringPoints(centre, heading, [0, 0, 1], pixelsToMetres(AIM_RING_PIXELS * 0.8, centre)) }
+      ];
+      for (const ring of rings) {
+        if (ring.points.some(p => !p)) continue;
         context.strokeStyle = isHot(ring) ? colors.accent : colors.muted;
         context.lineWidth = isHot(ring) ? 2 : 1;
-        context.setLineDash([1, 3]);
+        context.setLineDash(ring.which === 'tilt' ? [4, 3] : [1, 3]);
         context.beginPath();
         ring.points.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
         context.stroke();
@@ -540,11 +579,12 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     }
     if (selectedPoint) {
       const reference = referenceObject(space, selectedPoint.point);
+      const start = aimed ? AIM_RING_PIXELS + 3 : POINT_ARROW_START_PIXELS;
       if (reference) {
         const { across, front, up } = objectFrame(reference);
-        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, [across, front, up]);
+        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, [across, front, up], start);
       } else {
-        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key);
+        moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, WORLD_AXES, start);
       }
     }
 
@@ -554,7 +594,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const centre = objectCentre(object);
       rotationHandles(context, colors, object, centre);
       sizeHandles(context, colors, object);
-      moveHandles(context, colors, centre, 'object');
+      moveHandles(context, colors, centre, 'object', WORLD_AXES, RING_PIXELS + 3);
     }
 
     if (grouped()) {
@@ -571,7 +611,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
           context.lineWidth = 1;
           handles.push(ring);
         }
-        moveHandles(context, colors, centre, 'group');
+        moveHandles(context, colors, centre, 'group', WORLD_AXES, RING_PIXELS + 3);
       }
       const count = grouped().objects.length + grouped().points.length;
       context.fillStyle = colors.accent;
@@ -740,7 +780,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     for (let i = handles.length - 1; i >= 0; i -= 1) {
       const h = handles[i];
       if (unselectedPoint && h.type !== 'arrival') continue;
-      if (h.segment && distanceToSegment(point, h.segment[0], h.segment[1]) < HANDLE_PIXELS) return h;
+      if (h.segment && distanceToSegment(point, h.segment[0], h.segment[1]) < (h.reach ?? HANDLE_PIXELS)) return h;
       if (h.point && Math.hypot(point[0] - h.point[0], point[1] - h.point[1]) < HANDLE_PIXELS) return h;
       if (h.points) {
         for (let k = 1; k < h.points.length; k += 1) {
@@ -772,9 +812,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (handle.type === 'aim') {
       const microphone = findPoint(space, handle.key);
       const centre = [...microphone.position];
-      const p = planePoint(centre, [0, 0, 1], point);
       const facing = aimVector(space, microphone);
-      const start = { point, angle: p ? degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) : 0, azimuth: degrees(Math.atan2(facing[0], facing[1])) };
+      const start = { point, azimuth: degrees(Math.atan2(facing[0], facing[1])), elevation: degrees(Math.asin(Math.max(-1, Math.min(1, facing[2])))) };
+      start.angle = aimAngle(handle, centre, point) ?? 0;
       return { handle, snapshot: null, centre, start, bound: true, aim: true };
     }
     if (handle.target === 'group' || handle.group) {
@@ -804,6 +844,18 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       start.angle = p ? ringAngle(handle, object, centre, p) : 0;
     }
     return { handle, snapshot, centre, start, objectId: object?.id, bound: Boolean(bound) };
+  }
+
+  function aimAngle(handle, centre, point) {
+    if (handle.which === 'tilt') {
+      const h = handle.heading;
+      const p = planePoint(centre, [h[1], -h[0], 0], point);
+      if (!p) return null;
+      const d = sub(p, centre);
+      return degrees(Math.atan2(d[2], d[0] * h[0] + d[1] * h[1]));
+    }
+    const p = planePoint(centre, [0, 0, 1], point);
+    return p ? degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) : null;
   }
 
   function screenAxis(centre, axis) {
@@ -852,10 +904,20 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   function dragTo(point, free) {
     const { handle, snapshot, centre, start } = drag;
     const step = gridSpacing() / SNAP_PER_GRID;
+    if (drag.aim && handle.which === 'tilt') {
+      const angle = aimAngle(handle, centre, point);
+      if (angle === null) return;
+      const elevation = Math.max(-90, Math.min(90, snap(start.elevation + angle - start.angle, ANGLE_SNAP_DEGREES, free)));
+      readout = { x: point[0], y: point[1], text: `Tilt ${Math.round(elevation)}°` };
+      const e = elevation * Math.PI / 180;
+      const h = handle.heading;
+      onEdit(next => aimAt(next, findPoint(next, handle.key), [h[0] * Math.cos(e), h[1] * Math.cos(e), Math.sin(e)]));
+      return;
+    }
     if (drag.aim) {
-      const p = planePoint(centre, [0, 0, 1], point);
-      if (!p) return;
-      const turned = degrees(Math.atan2(p[0] - centre[0], p[1] - centre[1])) - start.angle;
+      const angle = aimAngle(handle, centre, point);
+      if (angle === null) return;
+      const turned = angle - start.angle;
       const azimuth = wrap(snap(start.azimuth + turned, ANGLE_SNAP_DEGREES, free));
       readout = { x: point[0], y: point[1], text: `↻ ${Math.round(azimuth)}°` };
       onEdit(next => {

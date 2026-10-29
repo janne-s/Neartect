@@ -64,7 +64,9 @@ WebAssembly and heard live through a crossfading convolver.
   Microphones and layouts share one list: any of them can be removed, and a
   layout added to a lone microphone takes its place. A layout shows its front
   as a bold arrow, coincident capsules fan out with their names at the tips,
-  and a head is drawn with its nose and ears.
+  and a head is drawn with its nose and ears. A selected microphone or layout
+  can switch to another layout in place, keeping its spot, binding, and aim;
+  its aim turns on a level ring and tilts on an upright one.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
   resonances at the end-corrected length, the open ends' radiation, and the
   walls' losses.
