@@ -1,14 +1,9 @@
 import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
-import { arrivalVector, speedOfSound, surfaceVertices } from './space.js';
+import { expandObjects } from './objects.js';
+import { arrivalVector, speedOfSound } from './space.js';
 
-const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1 });
-const PATTERN_VALUES = 6;
-
-function patternValues(pattern) {
-  if (pattern.kind !== 'grid') return Array(PATTERN_VALUES).fill(0);
-  return [...pattern.periodMetres, ...pattern.barMetres, pattern.thicknessMetres, 0];
-}
+const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1, opening: 2 });
 
 export function packSpace(space) {
   const settings = new Float64Array([
@@ -19,15 +14,14 @@ export function packSpace(space) {
     ...space.microphone.position,
     ...arrivalVector(space.arrival)
   ]);
-  const records = space.surfaces.flatMap(surface => {
-    const vertices = surfaceVertices(surface);
+  const records = expandObjects(space).flatMap(surface => {
     const body = [
       surface.strength,
       ...reflectionBands(surface.material),
-      PATTERN_CODES[surface.pattern.kind] ?? 0,
-      ...patternValues(surface.pattern),
-      vertices.length,
-      ...vertices.flat()
+      PATTERN_CODES[surface.pattern.kind],
+      ...surface.pattern.values,
+      surface.vertices.length,
+      ...surface.vertices.flat()
     ];
     return [body.length + 1, ...body];
   });

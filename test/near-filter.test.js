@@ -33,7 +33,7 @@ test('a large rigid floor 1 cm below the microphone lifts by 6 dB and notches ne
     microphone: { position: [0, 0, 0.01] },
     arrival: { azimuthDegrees: 0, elevationDegrees: 90 },
     render: { lengthMilliseconds: 60, order: 1 },
-    surfaces: [{ centre: [0, 0, 0], widthMetres: 6, heightMetres: 6, tiltDegrees: 90, material: 'rigid' }]
+    objects: [{ kind: 'plane', position: [0, 0, 0], size: [6, 0, 6], tiltDegrees: 90, material: 'rigid' }]
   });
   const { samples, sampleRateHz } = await nearFilter(space);
   const low = magnitudeAt(samples, sampleRateHz, 1000);
@@ -52,12 +52,20 @@ test('the default space builds fast enough for live preview', async () => {
   assert.ok(ms < 200);
 });
 
-test('a grid surface differs from a solid one and stays finite', async () => {
+test('a grating differs from a plane and stays finite', async () => {
   const base = { kind: 'neartect.space', microphone: { position: [0, 0, 0.3] }, arrival: { elevationDegrees: 60 }, render: { lengthMilliseconds: 30, order: 1 } };
-  const plate = { centre: [0, 0, 0], widthMetres: 1, heightMetres: 1, tiltDegrees: 90, material: 'rigid' };
-  const solid = await nearFilter(readSpace({ ...base, surfaces: [plate] }));
-  const grid = await nearFilter(readSpace({ ...base, surfaces: [{ ...plate, pattern: { kind: 'grid', periodMetres: [0.05, 0], barMetres: [0.01, 0] } }] }));
+  const plate = { position: [0, 0, 0], size: [1, 0, 1], tiltDegrees: 90, material: 'rigid' };
+  const solid = await nearFilter(readSpace({ ...base, objects: [{ ...plate, kind: 'plane' }] }));
+  const grid = await nearFilter(readSpace({ ...base, objects: [{ ...plate, kind: 'grating', pattern: { periodMetres: [0.05, 0], barMetres: [0.01, 0] } }] }));
   assert.ok(grid.samples.every(Number.isFinite));
   const difference = solid.samples.reduce((sum, x, i) => sum + Math.abs(x - grid.samples[i]), 0);
   assert.ok(difference > 0.1);
+});
+
+test('every object kind gives a finite filter', async () => {
+  for (const kind of ['plane', 'disc', 'grating', 'wall', 'box', 'corner', 'recess', 'pipe']) {
+    const space = readSpace({ kind: 'neartect.space', microphone: { position: [0.1, 0.9, 1.1] }, render: { lengthMilliseconds: 30 }, objects: [{ kind, position: [0, 0, 1] }] });
+    const { samples } = await nearFilter(space);
+    assert.ok(samples.every(Number.isFinite), kind);
+  }
 });

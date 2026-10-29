@@ -188,3 +188,54 @@ fn slats_seen_at_an_angle_give_a_repetition_pitch() {
         .count();
     assert!(taps >= 5, "only {taps} taps: the bars do not repeat");
 }
+
+#[test]
+fn round_opening_lets_sound_through_a_screen() {
+    let mut screen = floor(5.0);
+    let solid = near_spectrum(&scene(vec![floor(5.0)], [0.0, 0.0, -0.3], [0.0, 0.0, 1.0], 4096, 1));
+    screen.pattern = Pattern::Opening { centre: [5.0, 5.0], half: [0.3, 0.3], round: true };
+    let open = near_spectrum(&scene(vec![screen], [0.0, 0.0, -0.3], [0.0, 0.0, 1.0], 4096, 1));
+    let through = mean_magnitude(&open, 4096, 2000.0, 8000.0);
+    assert!(mean_magnitude(&solid, 4096, 2000.0, 8000.0) < 0.1 && through > 0.6, "through {through}");
+}
+
+#[test]
+fn outside_of_a_box_edge_is_not_extended() {
+    let top = surface(rectangle([0.0, 0.0, 1.0], [0.5, 0.0, 0.0], [0.0, 0.5, 0.0]), RIGID);
+    let side = surface(rectangle([0.5, 0.0, 0.5], [0.0, 0.5, 0.0], [0.0, 0.0, 0.5]), RIGID);
+    let length = 4096;
+    let alone = near_spectrum(&scene(vec![surface(rectangle([0.0, 0.0, 1.0], [0.5, 0.0, 0.0], [0.0, 0.5, 0.0]), RIGID)], [0.0, 0.0, 1.3], [0.0, 0.0, 1.0], length, 1));
+    let with_side = near_spectrum(&scene(vec![top, side], [0.0, 0.0, 1.3], [0.0, 0.0, 1.0], length, 1));
+    let difference = mean_magnitude(&alone, length, 100.0, 300.0) - mean_magnitude(&with_side, length, 100.0, 300.0);
+    assert!(difference.abs() < 0.1, "a convex edge changed the bass by {difference}");
+}
+
+#[test]
+fn niche_lip_is_not_extended_into_the_room() {
+    let wall_with_hole = Surface {
+        polygon: rectangle([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        strength: 1.0,
+        reflection: RIGID,
+        pattern: Pattern::Opening { centre: [1.0, 1.0], half: [0.2, 0.2], round: false },
+    };
+    let side = surface(rectangle([-0.2, -0.1, 1.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.2]), RIGID);
+    let length = 2048;
+    let s = scene(vec![wall_with_hole, side], [0.0, 0.5, 1.0], [0.0, 1.0, 0.0], length, 1);
+    let lip = neartect_core::kirchhoff::extended_edges(&s, 1);
+    assert_eq!(lip, 0, "the niche side was extended past its lip");
+}
+
+#[test]
+fn hidden_back_of_a_box_is_not_extended() {
+    let h = 0.3;
+    let faces = vec![
+        surface(rectangle([0.0, h, 1.0], [h, 0.0, 0.0], [0.0, 0.0, h]), RIGID),
+        surface(rectangle([0.0, -h, 1.0], [h, 0.0, 0.0], [0.0, 0.0, h]), RIGID),
+        surface(rectangle([h, 0.0, 1.0], [0.0, h, 0.0], [0.0, 0.0, h]), RIGID),
+        surface(rectangle([-h, 0.0, 1.0], [0.0, h, 0.0], [0.0, 0.0, h]), RIGID),
+        surface(rectangle([0.0, 0.0, 1.0 + h], [h, 0.0, 0.0], [0.0, h, 0.0]), RIGID),
+        surface(rectangle([0.0, 0.0, 1.0 - h], [h, 0.0, 0.0], [0.0, h, 0.0]), RIGID),
+    ];
+    let s = scene(faces, [0.1, 0.9, 1.1], [0.0, 1.0, 0.0], 1024, 1);
+    assert_eq!(neartect_core::kirchhoff::extended_edges(&s, 1), 0);
+}

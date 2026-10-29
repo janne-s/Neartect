@@ -1,6 +1,6 @@
 # Neartect
 
-> Neartect designs a microphone's near environment — walls, floors, panels, and gratings from centimetres to metres — and computes the filter it imposes on sound arriving from a direction. Browser app, no backend; the filter comes from a Rust core compiled to WebAssembly.
+> Neartect designs a microphone's near environment — walls, floors, niches, pipes, and gratings from centimetres to metres — and computes the filter it imposes on sound arriving from a direction. Browser app, no backend; the filter comes from a Rust core compiled to WebAssembly.
 
 ## Space document
 
@@ -10,7 +10,7 @@ A space is JSON with `kind: "neartect.space"`. Every field has a default; unknow
 - `microphone.position` — [east, north, up] in metres (ENU frame).
 - `arrival.azimuthDegrees` (compass, toward the source), `arrival.elevationDegrees`.
 - `render.sampleRateHz`, `render.lengthMilliseconds`, `render.order` (1–6).
-- `surfaces[]` — `shape: "rectangle"`, `centre` [e, n, u], `widthMetres`, `heightMetres`, `yawDegrees` (direction the front faces), `tiltDegrees` (0 vertical, 90 facing up), `material`, `strength` (1 physical), `pattern` (`{ kind: "solid" }` or `{ kind: "grid", periodMetres: [across, up], barMetres: [across, up], thicknessMetres }`; a period of 0 leaves that axis without bars).
+- `objects[]` — `kind` (`plane`, `disc`, `wall`, `grating`, `box`, `corner`, `recess`, `pipe`), `name`, `position` [e, n, u], `yawDegrees` (compass direction the front faces), `tiltDegrees` (0 upright, 90 front facing up), `size` [across, front, up] in metres (flat kinds use 0 for front; a pipe is [length, diameter, diameter]; a corner grows from its position along +across, +front, +up; a recess opens at its position and goes back by its depth), `material`, `strength` (1 physical). A `grating` has `pattern: { periodMetres: [across, up], barMetres: [across, up], thicknessMetres }`, a period of 0 leaving that axis without bars. A `wall` has `opening: { shape: "round" | "rectangle", sizeMetres: [w, h], offsetMetres: [across, up] }`.
 
 The filter is normalised to the free field: with no surfaces it is a unit impulse at time zero.
 

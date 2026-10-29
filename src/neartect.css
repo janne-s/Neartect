@@ -26,3 +26,39 @@
 .export-body {
   padding: 12px 16px;
 }
+.build-menu {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 4px;
+  margin: 0 0 10px;
+}
+.build-button {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+}
+.build-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+.object-glyph {
+  width: 22px;
+  height: 22px;
+}
+.object-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+}
+.object-icon .object-glyph {
+  width: 18px;
+  height: 18px;
+}
+.card[aria-selected="true"] .object-icon {
+  color: var(--accent);
+}

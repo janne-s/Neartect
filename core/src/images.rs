@@ -86,7 +86,7 @@ fn trace(scene: &Scene, sequence: &[usize]) -> Option<Path> {
             } else {
                 2.0 * to_source * to_microphone / (to_source + to_microphone)
             };
-            let area = scene.surfaces[i].polygon.area * scene.surfaces[i].pattern.solid_fraction();
+            let area = scene.surfaces[i].pattern.solid_area(scene.surfaces[i].polygon.area);
             let cutoff_hz = c * characteristic / (2.0 * area * cos_incidence.max(1e-3).powi(2));
             Reflection { surface: i, cutoff_hz }
         })

@@ -1,5 +1,5 @@
 use crate::images::specular_paths;
-use crate::kirchhoff::{scatter, OVERSAMPLING};
+use crate::kirchhoff::{scatter, Histograms, OVERSAMPLING};
 use crate::scene::Scene;
 use crate::spectrum::{angular_frequency, minimum_phase, Fft};
 use rustfft::num_complex::Complex64;
@@ -28,11 +28,35 @@ pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
         .collect();
     let j = Complex64::new(0.0, 1.0);
 
+    let mut groups: Vec<(Vec<u64>, usize, Histograms)> = Vec::new();
     for (index, surface) in scene.surfaces.iter().enumerate() {
         if surface.strength <= 0.0 {
             continue;
         }
         let Some(h) = scatter(scene, index, n_fine) else { continue };
+        let key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
+        let s = surface.strength;
+        match groups.iter_mut().find(|(k, _, _)| *k == key) {
+            Some((_, _, sum)) => {
+                for i in 0..n_fine {
+                    sum.rigid_far[i] += s * h.rigid_far[i];
+                    sum.rigid_near[i] += s * h.rigid_near[i];
+                    sum.soft[i] += s * h.soft[i];
+                }
+            }
+            None => {
+                let scaled = Histograms {
+                    rigid_far: h.rigid_far.iter().map(|x| x * s).collect(),
+                    rigid_near: h.rigid_near.iter().map(|x| x * s).collect(),
+                    soft: h.soft.iter().map(|x| x * s).collect(),
+                };
+                groups.push((key, index, scaled));
+            }
+        }
+    }
+
+    for (_, index, h) in &groups {
+        let surface = &scene.surfaces[*index];
         let mut packed: Vec<Complex64> = h.rigid_far.iter().zip(&h.soft).map(|(&a, &b)| Complex64::new(a, b)).collect();
         let mut near: Vec<Complex64> = h.rigid_near.iter().map(|&a| Complex64::new(a, 0.0)).collect();
         fft.forward(&mut packed);
@@ -45,10 +69,10 @@ pub fn near_spectrum(scene: &Scene) -> Vec<Complex64> {
             let compensation = 1.0 / sinc(k as f64 / n_fine as f64).powi(2);
             let rigid = j * omega_over_c * rigid_far + near[k];
             let pressure_release = -(j * omega_over_c) * soft;
-            let r = reflection[index][k];
+            let r = reflection[*index][k];
             let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
             let grating = surface.pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
-            total[k] += scattered * (surface.strength * compensation * grating);
+            total[k] += scattered * (compensation * grating);
         }
     }
 

@@ -9,7 +9,7 @@ use std::f64::consts::PI;
 
 pub const OVERSAMPLING: usize = 2;
 const SHORTEST_ELEMENT_METRES: f64 = 0.25e-3;
-const LONGEST_ELEMENT_METRES: f64 = 0.1;
+const LONGEST_ELEMENT_METRES: f64 = 0.5;
 const ELEMENT_PER_DISTANCE: f64 = 1.0 / 12.0;
 const CURVATURE_LENGTH_METRES: f64 = 0.016;
 const SHORTEST_EDGE_ELEMENT_METRES: f64 = 2e-3;
@@ -18,7 +18,7 @@ const NEAREST_DISTANCE_METRES: f64 = 0.5e-3;
 const MOST_SUBPOINTS: usize = 16;
 const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
-const LONGEST_EXTENSION_METRES: f64 = 50.0;
+const LONGEST_EXTENSION_METRES: f64 = 5.0;
 
 pub struct Histograms {
     pub rigid_far: Vec<f64>,
@@ -70,9 +70,11 @@ pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms>
     Some(context.histograms)
 }
 
-// An edge shared with another surface is extended past the join, so that a
-// right-angled wedge or corner keeps its exact image solution instead of
-// diffracting from the join (class C for other join angles).
+// An edge shared with another surface at a right angle, where the other
+// surface stands on the microphone's side (a concave join), is extended past
+// the join, so that a right-angled wedge or corner keeps its exact image
+// solution instead of diffracting from the join. Convex joins, such as the
+// outside of a box, and other angles keep their edges (class B diffraction).
 fn domain(scene: &Scene, index: usize, extension: f64) -> Polygon {
     let polygon = &scene.surfaces[index].polygon;
     let distances: Vec<f64> = (0..polygon.points.len())
@@ -81,14 +83,40 @@ fn domain(scene: &Scene, index: usize, extension: f64) -> Polygon {
     polygon.offset(&distances)
 }
 
+const RIGHT_ANGLE_COSINE: f64 = 0.2;
+
+const JOIN_PROBE_METRES: f64 = 5e-3;
+
+pub fn extended_edges(scene: &Scene, index: usize) -> usize {
+    let polygon = &scene.surfaces[index].polygon;
+    (0..polygon.points.len()).filter(|&i| joined(scene, index, polygon.edge(i))).count()
+}
+
 fn joined(scene: &Scene, index: usize, (a, b): (V3, V3)) -> bool {
+    let this = &scene.surfaces[index].polygon;
     let middle = scale(crate::geom::add(a, b), 0.5);
+    let edge = sub(b, a);
+    let microphone_side = this.signed_distance(scene.microphone).signum();
     scene.surfaces.iter().enumerate().any(|(j, other)| {
         let p = &other.polygon;
-        j != index
-            && p.signed_distance(a).abs() < JOIN_TOLERANCE_METRES
-            && p.signed_distance(b).abs() < JOIN_TOLERANCE_METRES
-            && (p.contains(p.to_plane(middle)) || p.boundary_distance(p.to_plane(middle)) < JOIN_TOLERANCE_METRES)
+        if j == index
+            || dot(this.normal, p.normal).abs() >= RIGHT_ANGLE_COSINE
+            || p.signed_distance(a).abs() >= JOIN_TOLERANCE_METRES
+            || p.signed_distance(b).abs() >= JOIN_TOLERANCE_METRES
+        {
+            return false;
+        }
+        let to_edge = sub(middle, scene.microphone);
+        let reach = norm(to_edge);
+        if reach > 1e-6 && scene.occluded(&[index, j], scene.microphone, scale(to_edge, 1.0 / reach), reach) {
+            return false;
+        }
+        let across = crate::geom::normalize(crate::geom::cross(p.normal, edge));
+        [1.0, -1.0].iter().any(|&sign| {
+            let probe = crate::geom::add(middle, scale(across, sign * JOIN_PROBE_METRES));
+            let q = p.to_plane(probe);
+            other.is_solid(q) && this.signed_distance(probe).signum() == microphone_side
+        })
     })
 }
 

@@ -15,6 +15,29 @@ const END_CORRECTION_PER_RADIUS: f64 = 0.85;
 pub enum Pattern {
     Solid,
     Grid { period: [f64; 2], bar: [f64; 2], thickness: f64 },
+    Opening { centre: [f64; 2], half: [f64; 2], round: bool },
+}
+
+fn in_opening(q: [f64; 2], centre: [f64; 2], half: [f64; 2], round: bool) -> bool {
+    let u = (q[0] - centre[0]) / half[0];
+    let v = (q[1] - centre[1]) / half[1];
+    if round { u * u + v * v < 1.0 } else { u.abs() < 1.0 && v.abs() < 1.0 }
+}
+
+fn near_opening_edge(q: [f64; 2], size: f64, centre: [f64; 2], half: [f64; 2], round: bool) -> bool {
+    let reach = size * std::f64::consts::FRAC_1_SQRT_2;
+    let du = (q[0] - centre[0]).abs();
+    let dv = (q[1] - centre[1]).abs();
+    if round {
+        let radius = half[0].min(half[1]);
+        let stretch = half[0].max(half[1]) - radius;
+        let r = ((du * radius / half[0]).powi(2) + (dv * radius / half[1]).powi(2)).sqrt();
+        (r - radius).abs() < reach + stretch
+    } else {
+        let inside_u = du < half[0] + reach;
+        let inside_v = dv < half[1] + reach;
+        (inside_u && inside_v) && ((du - half[0]).abs() < reach || (dv - half[1]).abs() < reach)
+    }
 }
 
 fn on_bar(x: f64, period: f64, bar: f64) -> bool {
@@ -35,6 +58,7 @@ impl Pattern {
         match *self {
             Pattern::Solid => true,
             Pattern::Grid { period, bar, .. } => on_bar(q[0], period[0], bar[0]) || on_bar(q[1], period[1], bar[1]),
+            Pattern::Opening { centre, half, round } => !in_opening(q, centre, half, round),
         }
     }
 
@@ -44,26 +68,41 @@ impl Pattern {
             Pattern::Grid { period, bar, .. } => {
                 crosses(centre[0], size, period[0], bar[0]) || crosses(centre[1], size, period[1], bar[1])
             }
+            Pattern::Opening { centre: c, half, round } => near_opening_edge(centre, size, c, half, round),
         }
     }
 
-    pub fn open_fraction(&self) -> f64 {
+    fn grid_open_fraction(&self) -> f64 {
         match *self {
-            Pattern::Solid => 0.0,
             Pattern::Grid { period, bar, .. } => {
                 let open = |i: usize| if period[i] > 0.0 { 1.0 - bar[i] / period[i] } else { 1.0 };
                 open(0) * open(1)
             }
+            _ => 0.0,
         }
     }
 
-    pub fn solid_fraction(&self) -> f64 {
-        1.0 - self.open_fraction()
+    pub fn solid_area(&self, polygon_area: f64) -> f64 {
+        match *self {
+            Pattern::Solid => polygon_area,
+            Pattern::Grid { .. } => polygon_area * (1.0 - self.grid_open_fraction()),
+            Pattern::Opening { half, round, .. } => {
+                let hole = if round { PI * half[0] * half[1] } else { 4.0 * half[0] * half[1] };
+                (polygon_area - hole).max(polygon_area * 0.01)
+            }
+        }
+    }
+
+    pub fn low_frequency_key(&self) -> [u64; 5] {
+        match *self {
+            Pattern::Grid { period, bar, thickness } => [period[0].to_bits(), period[1].to_bits(), bar[0].to_bits(), bar[1].to_bits(), thickness.to_bits()],
+            _ => [0; 5],
+        }
     }
 
     pub fn low_frequency_factor(&self, frequency_hz: f64, speed_of_sound: f64) -> f64 {
         let Pattern::Grid { period, bar, thickness } = *self else { return 1.0 };
-        let open = self.open_fraction();
+        let open = self.grid_open_fraction();
         let solid = 1.0 - open;
         if open <= 0.0 || solid <= 0.0 {
             return 1.0;
@@ -91,6 +130,11 @@ impl Pattern {
                 let bar = [values[2].clamp(0.0, period[0]), values[3].clamp(0.0, period[1])];
                 Pattern::Grid { period, bar, thickness: values[4].max(0.0) }
             }
+            2 => Pattern::Opening {
+                centre: [values[0], values[1]],
+                half: [values[2].max(1e-4), values[3].max(1e-4)],
+                round: values[4] > 0.5,
+            },
             _ => Pattern::Solid,
         }
     }
@@ -105,14 +149,23 @@ mod tests {
         let p = Pattern::Grid { period: [0.04, 0.04], bar: [0.01, 0.01], thickness: 0.002 };
         assert!(p.is_solid([0.005, 0.02]));
         assert!(!p.is_solid([0.02, 0.02]));
-        assert!((p.open_fraction() - 0.5625).abs() < 1e-12);
+        assert!((p.solid_area(1.0) - 0.4375).abs() < 1e-12);
     }
 
     #[test]
     fn slats_have_bars_along_one_axis() {
         let p = Pattern::Grid { period: [0.04, 0.0], bar: [0.02, 0.0], thickness: 0.01 };
         assert!(!p.is_solid([0.03, 0.0]) && p.is_solid([0.01, 0.5]));
-        assert!((p.solid_fraction() - 0.5).abs() < 1e-12);
+        assert!((p.solid_area(1.0) - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn opening_is_open_inside_its_outline() {
+        let round = Pattern::Opening { centre: [0.5, 0.5], half: [0.1, 0.1], round: true };
+        assert!(!round.is_solid([0.55, 0.55]) && round.is_solid([0.59, 0.59]));
+        let square = Pattern::Opening { centre: [0.5, 0.5], half: [0.1, 0.1], round: false };
+        assert!(!square.is_solid([0.59, 0.59]) && square.is_solid([0.61, 0.5]));
+        assert!(square.may_cross([0.6, 0.5], 0.01) && !square.may_cross([0.5, 0.5], 0.01));
     }
 
     #[test]
