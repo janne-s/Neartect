@@ -46,7 +46,12 @@ WebAssembly and heard live through a crossfading convolver.
   spreads them from left to right, and export writes one channel each. Each
   has a pickup pattern — omni, wide cardioid, cardioid, supercardioid,
   hypercardioid, or figure of eight — aimed on its ring or sliders; a new
-  pattern starts aimed at the source.
+  pattern starts aimed at the source. Directional patterns have the proximity
+  effect: a near source or a near reflection lifts their bass.
+- **Layouts** — XY, Blumlein, mid-side, ORTF, NOS, spaced pair, Decca tree,
+  and a head with two ears; each is one element that binds, moves, and turns
+  as a whole, with its spacing and angle on sliders. Mid-side decodes to left
+  and right in the preview; export writes every capsule, or a stereo mix.
 - **Inside a pipe** — the microphone hears the pipe as a waveguide: its
   resonances at the end-corrected length, the open ends' radiation, and the
   walls' losses.

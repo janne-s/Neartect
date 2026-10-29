@@ -1,9 +1,10 @@
 import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
-import { arrivalVector, defaultMicrophone, defaultObject, defaultSpace, MOST_MICROPHONES, PATTERNS, readSpace, SpaceError } from './domain/space.js';
+import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, readSpace, SpaceError } from './domain/space.js';
+import { RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject } from './domain/objects.js';
-import { BUILD_KINDS, objectIcon, patternIcon, situationIcon } from './ui/icons.js';
+import { BUILD_KINDS, headIcon, objectIcon, patternIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
 import { SMALLEST_GAP_METRES, spaceCentre } from './domain/placement.js';
@@ -11,7 +12,7 @@ import { DISPLAY, PARAMETERS } from './domain/parameters.js';
 import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
-import { createPreview } from './audio/preview.js';
+import { createPreview, stereo } from './audio/preview.js';
 
 const STORAGE_KEY = 'neartect.space';
 const PREFERENCES_KEY = 'neartect.preferences';
@@ -116,8 +117,18 @@ function shownMicrophone() {
   return Math.max(0, index);
 }
 
+function shownChannel() {
+  if (state.selection?.type !== 'rig') return shownMicrophone();
+  let channel = state.space.microphones.length;
+  for (const rig of state.space.rigs) {
+    if (rig.id === state.selection.id) return channel;
+    channel += rigMembers(state.space, rig).length;
+  }
+  return 0;
+}
+
 function drawPlots() {
-  const filter = state.filter && { sampleRateHz: state.filter.sampleRateHz, samples: state.filter.channels[shownMicrophone()] ?? state.filter.channels[0] };
+  const filter = state.filter && { sampleRateHz: state.filter.sampleRateHz, samples: state.filter.channels[shownChannel()] ?? state.filter.channels[0] };
   drawImpulse($('impulse'), filter);
   drawResponse($('response'), filter);
 }
@@ -146,6 +157,7 @@ function undo() {
   if (state.selection?.type === 'object' && !state.space.objects.some(o => o.id === state.selection.id)) state.selection = null;
   if (state.selection?.type === 'microphone' && !state.space.microphones.some(m => m.id === state.selection.id)) state.selection = null;
   if (state.selection?.type === 'group') state.selection = null;
+  if (state.selection?.type === 'rig' && !state.space.rigs.some(r => r.id === state.selection.id)) state.selection = null;
   $('undo').disabled = !history.length;
   writeStored(STORAGE_KEY, state.space);
   view.update(state.space, state.selection);
@@ -346,6 +358,10 @@ function refreshPanel() {
   microphones.replaceChildren();
   state.space.microphones.forEach((microphone, index) => microphoneCard(microphones, microphone, index));
   $('add-microphone').disabled = state.space.microphones.length >= MOST_MICROPHONES;
+  const rigs = $('rig-list');
+  rigs.replaceChildren();
+  state.space.rigs.forEach(rig => rigCard(rigs, rig));
+  document.querySelectorAll('#rig-menu button').forEach(b => { b.disabled = state.space.rigs.length >= MOST_RIGS; });
 
   const source = state.space.source;
   document.querySelectorAll('#source-kind [data-kind]').forEach(button => button.setAttribute('aria-checked', String(button.dataset.kind === source.kind)));
@@ -463,6 +479,7 @@ function removeGroup(group) {
   state.space.objects = state.space.objects.filter(o => !group.objects.includes(o.id));
   const keep = state.space.microphones.filter(m => !group.points.includes(`microphone:${m.id}`));
   if (keep.length) state.space.microphones = keep;
+  state.space.rigs = state.space.rigs.filter(r => !group.points.includes(`rig:${r.id}`));
   state.selection = null;
   changed({ panel: true });
 }
@@ -482,6 +499,74 @@ function towardsSource(microphone) {
   const d = to.map((v, i) => v - from[i]);
   const n = Math.hypot(...d) || 1;
   return d.map(v => v / n);
+}
+
+function rigCard(container, rig) {
+  const selected = state.selection?.type === 'rig' && state.selection.id === rig.id;
+  const card = element('div', 'card');
+  card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(`rig:${rig.id}`))));
+  const header = element('div', 'card-header');
+  header.tabIndex = 0;
+  header.setAttribute('role', 'button');
+  header.setAttribute('aria-expanded', String(selected));
+  const badge = element('span', 'rig-badge');
+  if (rig.kind === 'binaural') badge.innerHTML = headIcon(); else badge.textContent = RIG_KINDS[rig.kind].short;
+  const remove = element('button', 'icon-button');
+  remove.type = 'button';
+  remove.title = 'Remove';
+  remove.setAttribute('aria-label', `Remove ${rig.name}`);
+  remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+  remove.addEventListener('click', event => {
+    event.stopPropagation();
+    removeRig(rig.id);
+  });
+  header.append(badge, element('span', 'name', rig.name), element('span', 'kind', rigMembers(state.space, rig).map(m => m.name).join(' ')), remove);
+  const toggle = () => select(selected ? null : { type: 'rig', id: rig.id });
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); } });
+  card.append(header);
+  if (selected) {
+    const current = () => state.space.rigs.find(r => r.id === rig.id);
+    const macros = element('div', 'macros');
+    card.append(macros);
+    pointControls(macros, current, 0.5);
+    macro(macros, { label: '↻', title: 'Facing', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
+    macro(macros, { label: '⤢', title: 'Facing up', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
+    const defaults = RIG_KINDS[rig.kind];
+    if (defaults.spacingMetres > 0) {
+      const title = rig.kind === 'binaural' ? 'Head width' : 'Spacing';
+      macro(macros, { label: '↔', title, range: rig.kind === 'binaural' ? [0.1, 0.3] : [0.01, 5], log: true, format: formatGap, fallback: defaults.spacingMetres, read: () => current().spacingMetres, write: v => { current().spacingMetres = v; } });
+    }
+    if (defaults.angleDegrees !== undefined && rig.kind !== 'ab' && rig.kind !== 'decca') {
+      macro(macros, { label: '∠', title: 'Angle between', range: RIG_ANGLE_DEGREES, format: degrees, fallback: defaults.angleDegrees, read: () => current().angleDegrees, write: v => { current().angleDegrees = v; } });
+    }
+  }
+  container.append(card);
+}
+
+function removeRig(id) {
+  state.space.rigs = state.space.rigs.filter(r => r.id !== id);
+  if (state.selection?.id === id) state.selection = null;
+  changed({ panel: true });
+}
+
+for (const [kind, { label }] of Object.entries(RIG_KINDS)) {
+  const button = element('button', 'build-button rig-button', kind === 'binaural' ? '' : RIG_KINDS[kind].short);
+  if (kind === 'binaural') button.innerHTML = headIcon();
+  button.type = 'button';
+  button.title = label;
+  button.setAttribute('aria-label', `Add ${label}`);
+  button.addEventListener('click', () => {
+    if (state.space.rigs.length >= MOST_RIGS) return;
+    const model = activeMicrophone();
+    const step = 0.4 * (state.space.rigs.length + 1);
+    const rig = defaultRig(kind, { position: model.position.map((v, i) => v + (i === 0 ? step : 0)) });
+    aimAt(state.space, rig, towardsSource({ ...rig, reference: null }));
+    state.space.rigs.push(rig);
+    state.selection = { type: 'rig', id: rig.id };
+    changed({ panel: true });
+  });
+  $('rig-menu').append(button);
 }
 
 function removeMicrophone(id) {
@@ -638,6 +723,10 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     removeGroup(state.selection);
   }
+  if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.type === 'rig') {
+    event.preventDefault();
+    removeRig(state.selection.id);
+  }
   if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.type === 'microphone') {
     event.preventDefault();
     removeMicrophone(state.selection.id);
@@ -734,14 +823,15 @@ $('open-file').addEventListener('change', async () => {
 
 const exportDialog = $('export-dialog');
 $('export').addEventListener('click', () => {
-  $('export-summary').textContent = `${state.space.render.sampleRateHz / 1000} kHz · 32-bit float · ${state.space.render.lengthMilliseconds} ms filter · ${state.space.microphones.length} ${state.space.microphones.length === 1 ? 'channel' : 'channels'}`;
+  $('export-summary').textContent = `${state.space.render.sampleRateHz / 1000} kHz · 32-bit float · ${state.space.render.lengthMilliseconds} ms filter · ${state.filter?.channels.length ?? 1} ${state.filter?.channels.length === 1 ? 'channel' : 'channels'}`;
   $('export-error').hidden = true;
   exportDialog.showModal();
   exportDialog.focus();
 });
 $('export-filter').addEventListener('click', async () => {
   const result = await computeFilter(clone(state.space));
-  download('neartect-filter.wav', new Blob([encodeFloat32Wav(result.channels, result.sampleRateHz)], { type: 'audio/wav' }));
+  const channels = $('export-mix').checked ? stereo(result.channels, result.pans) : result.channels;
+  download('neartect-filter.wav', new Blob([encodeFloat32Wav(channels, result.sampleRateHz)], { type: 'audio/wav' }));
 });
 $('export-processed').addEventListener('click', async () => {
   try {
@@ -768,7 +858,8 @@ $('export-processed').addEventListener('click', async () => {
     merger.connect(offline.destination);
     source.start();
     const rendered = await offline.startRendering();
-    const out = filter.channels.map((_, index) => rendered.getChannelData(index).slice());
+    const raw = filter.channels.map((_, index) => rendered.getChannelData(index).slice());
+    const out = $('export-mix').checked ? stereo(raw, filter.pans) : raw;
     download('neartect-filtered.wav', new Blob([encodeFloat32Wav(out, sampleRate)], { type: 'audio/wav' }));
   } catch (error) {
     $('export-error').textContent = error.message;

@@ -2,6 +2,7 @@ import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector } from '../domain/space.js';
 import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
 import { nearestSurface } from '../domain/placement.js';
+import { rigMembers } from '../domain/rigs.js';
 
 const FIELD_OF_VIEW = 0.9;
 const CLICK_PIXELS = 4;
@@ -123,6 +124,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   // Microphones and a point source share one kind of marker and handles.
   function points() {
     const list = space.microphones.map((point, index) => ({ key: `microphone:${point.id}`, type: 'microphone', id: point.id, index, point }));
+    (space.rigs ?? []).forEach((point, index) => list.push({ key: `rig:${point.id}`, type: 'rig', id: point.id, index: space.microphones.length + index, point }));
     if (space.source.kind === 'point') list.push({ key: 'source', type: 'source', point: space.source });
     return list;
   }
@@ -131,7 +133,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   const inGroup = key => Boolean(grouped()?.points.includes(key));
   const objectInGroup = id => Boolean(grouped()?.objects.includes(id));
   const isSelected = item => (selection?.type === item.type && (item.type === 'source' || selection.id === item.id)) || inGroup(item.key);
-  const itemKey = item => (item.type === 'source' ? 'source' : item.type === 'microphone' ? `microphone:${item.id}` : null);
+  const itemKey = item => (item.type === 'source' ? 'source' : item.type === 'microphone' || item.type === 'rig' ? `${item.type}:${item.id}` : null);
 
   // A group moves and turns as one; points bound to an object in the group
   // follow it, other points keep their own binding at their new place.
@@ -167,7 +169,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       placePointAt(next, point, map(p.position));
     }
   }
-  const findPoint = (next, key) => (key === 'source' ? next.source : next.microphones.find(m => `microphone:${m.id}` === key));
+  const findPoint = (next, key) => (key === 'source' ? next.source
+    : key.startsWith('rig:') ? next.rigs.find(r => `rig:${r.id}` === key)
+    : next.microphones.find(m => `microphone:${m.id}` === key));
 
   function listeningCentre() {
     const chosen = space.microphones.find(m => selection?.type === 'microphone' && m.id === selection.id) ?? space.microphones[0];
@@ -391,7 +395,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       context.strokeStyle = sourceColor;
       context.globalAlpha = 0.5;
       context.setLineDash([2, 4]);
-      space.microphones.forEach(m => line(context, source, m.position));
+      [...space.microphones, ...(space.rigs ?? [])].forEach(m => line(context, source, m.position));
       context.setLineDash([]);
       context.globalAlpha = 1;
     }
@@ -405,9 +409,15 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       context.globalAlpha = focusing() && !active ? 0.5 : 1;
       context.fillStyle = color;
       context.strokeStyle = color;
-      context.beginPath();
-      context.arc(p[0], p[1], item.type === 'source' ? 6 : 5, 0, 2 * Math.PI);
-      context.fill();
+      if (item.type === 'rig') {
+        drawRig(context, item.point, color);
+        context.fillStyle = color;
+        context.fillRect(p[0] - 4, p[1] - 4, 8, 8);
+      } else {
+        context.beginPath();
+        context.arc(p[0], p[1], item.type === 'source' ? 6 : 5, 0, 2 * Math.PI);
+        context.fill();
+      }
       if (item.type === 'source') {
         for (const radius of [10, 14]) {
           context.beginPath();
@@ -440,7 +450,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       if (active || space.microphones.length === 1 && item.type === 'microphone') gapLabel(context, colors, item.point, p);
       context.globalAlpha = 1;
     }
-    if (selectedPoint?.type === 'microphone' && selectedPoint.point.pattern !== 'omni') {
+    if (selectedPoint?.type === 'rig' || (selectedPoint?.type === 'microphone' && selectedPoint.point.pattern !== 'omni')) {
       const centre = selectedPoint.point.position;
       const ring = { id: 'ring-aim', type: 'aim', key: selectedPoint.key, points: ringPoints(centre, [1, 0, 0], [0, 1, 0], pixelsToMetres(RING_PIXELS * 0.75, centre)) };
       if (!ring.points.some(p => !p)) {
@@ -514,6 +524,27 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     }
   }
 
+  function drawRig(context, rig, color) {
+    const centre = rig.position;
+    for (const member of rigMembers(space, rig)) {
+      context.strokeStyle = color;
+      context.fillStyle = color;
+      line(context, centre, member.position);
+      const m = project(member.position);
+      if (!m) continue;
+      context.beginPath();
+      context.arc(m[0], m[1], 3.5, 0, 2 * Math.PI);
+      context.fill();
+      const reach = pixelsToMetres(AIM_PIXELS * (member.ear ? 0.6 : 0.8), member.position);
+      if (member.ear || member.pattern !== 'omni') {
+        const ends = line(context, member.position, add(member.position, scale(member.facing, reach)));
+        if (ends) arrowHead(context, ends[0], ends[1]);
+      }
+      context.font = '10px system-ui, sans-serif';
+      context.fillText(member.name, m[0] + 5, m[1] - 5);
+    }
+  }
+
   function gapLabel(context, colors, point, p) {
     const reference = referenceObject(space, point);
     context.fillStyle = colors.muted;
@@ -561,7 +592,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
 
   function itemAt(point) {
     const onPoint = pointAt(point);
-    if (onPoint) return onPoint.type === 'source' ? { type: 'source' } : { type: 'microphone', id: onPoint.id };
+    if (onPoint) return onPoint.type === 'source' ? { type: 'source' } : { type: onPoint.type, id: onPoint.id };
     for (let i = faces.length - 1; i >= 0; i -= 1) {
       if (insidePolygon(point, faces[i].corners)) return { type: 'object', id: faces[i].object.id };
     }
@@ -764,7 +795,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (count > 1) return group;
     if (group.objects.length) return { type: 'object', id: group.objects[0] };
     const key = group.points[0];
-    return key === 'source' ? { type: 'source' } : { type: 'microphone', id: key.slice('microphone:'.length) };
+    if (key === 'source') return { type: 'source' };
+    const [type, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    return { type, id };
   }
 
   function toggled(item) {
@@ -959,6 +992,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (item?.type === 'object') camera.target = objectCentre(space.objects.find(o => o.id === item.id));
     if (item?.type === 'microphone') camera.target = [...space.microphones.find(m => m.id === item.id).position];
     if (item?.type === 'source') camera.target = [...space.source.position];
+    if (item?.type === 'rig') camera.target = [...space.rigs.find(r => r.id === item.id).position];
     draw();
   });
   new ResizeObserver(() => draw()).observe(canvas);

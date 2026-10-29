@@ -195,7 +195,7 @@ export function placePointAt(space, point, position) {
 }
 
 export function boundPoints(space) {
-  return [...space.microphones, space.source];
+  return [...space.microphones, ...(space.rigs ?? []), space.source];
 }
 
 export function placePoints(space) {

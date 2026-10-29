@@ -1,7 +1,7 @@
 use neartect_core::filter::{near_filter, near_spectrum, spectrum_size};
 use neartect_core::geom::{normalize, Polygon, V3};
 use neartect_core::pattern::Pattern;
-use neartect_core::scene::{Scene, Surface};
+use neartect_core::scene::{Listener, Scene, Surface};
 use rustfft::num_complex::Complex64;
 
 const FS: f64 = 48000.0;
@@ -26,7 +26,7 @@ fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
-    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0, pattern: 1.0, facing: [0.0, 1.0, 0.0] }
+    Scene { surfaces, microphone, arrival: normalize(arrival), speed_of_sound: C, sample_rate: FS, length, max_order, pipe: None, source: None, gain: 1.0, delay_seconds: 0.0, listener: Listener::omni() }
 }
 
 fn at(spectrum: &[Complex64], length: usize, hz: f64) -> Complex64 {
@@ -336,8 +336,7 @@ fn alignment_delays_and_scales_the_filter() {
 }
 
 fn aimed(mut s: Scene, pattern: f64, facing: V3) -> Scene {
-    s.pattern = pattern;
-    s.facing = normalize(facing);
+    s.listener = Listener::Microphone { pattern, facing: normalize(facing) };
     s
 }
 
@@ -374,4 +373,75 @@ fn figure_eight_across_a_pipe_hears_nothing_inside_it() {
     s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05 });
     let h = near_spectrum(&aimed(s, 0.0, [1.0, 0.0, 0.0]));
     assert!(h.iter().all(|x| x.norm() < 1e-9));
+}
+
+// The proximity term rolls off below 10 Hz in the model (a microphone's own
+// low cut), so the reference does too.
+fn first_order(pattern: f64, cos: f64, k: f64, r: f64) -> Complex64 {
+    let floor = 2.0 * std::f64::consts::PI * 10.0 / C;
+    Complex64::new(pattern, 0.0) + (1.0 - pattern) * cos * (Complex64::new(1.0, 0.0) + Complex64::new(1.0 / r, 0.0) / Complex64::new(floor, k))
+}
+
+#[test]
+fn cardioid_close_to_a_point_source_lifts_its_bass() {
+    let length = 4096;
+    let r = 0.05;
+    let s = aimed(from_point(vec![], [0.0, 0.0, 1.0], [0.0, r, 1.0], length, 1), 0.5, [0.0, 1.0, 0.0]);
+    let h = near_spectrum(&s);
+    for hz in [100.0, 300.0, 1000.0, 5000.0] {
+        let k = 2.0 * std::f64::consts::PI * hz / C;
+        let exact = first_order(0.5, 1.0, k, r).norm();
+        let got = at(&h, length, hz).norm();
+        assert!((got / exact - 1.0).abs() < 0.05, "{hz} Hz: {got} against {exact}");
+    }
+    assert!(at(&h, length, 100.0).norm() > 3.0);
+}
+
+#[test]
+fn cardioid_over_a_floor_matches_its_image_with_proximity() {
+    let length = 4096;
+    let (microphone, source) = ([1.0, 0.0, 0.5], [0.0, 0.0, 1.0]);
+    let facing = normalize([-1.0, 0.0, 0.0]);
+    let s = aimed(from_point(vec![floor(20.0)], microphone, source, length, 1), 0.5, facing);
+    let h = near_spectrum(&s);
+    let direct = distance(source, microphone);
+    let image_point = [0.0, 0.0, -1.0];
+    let image = distance(image_point, microphone);
+    let towards = |p: V3| normalize([p[0] - microphone[0], p[1] - microphone[1], p[2] - microphone[2]]);
+    let cos = |p: V3| { let d = towards(p); d[0] * facing[0] + d[1] * facing[1] + d[2] * facing[2] };
+    let n = spectrum_size(length);
+    let mut worst: f64 = 0.0;
+    for hz in [60.0, 125.0, 250.0, 500.0, 1000.0, 2000.0] {
+        let bin = (hz * n as f64 / FS).round() as usize;
+        let f = bin as f64 * FS / n as f64;
+        let k = 2.0 * std::f64::consts::PI * f / C;
+        let exact = first_order(0.5, cos(source), k, direct)
+            + first_order(0.5, cos(image_point), k, image) * Complex64::from_polar(direct / image, -k * (image - direct));
+        worst = worst.max((h[bin] - exact).norm());
+    }
+    // Each surface element's gradient is taken as a spherical wave's; a rigid
+    // element is a dipole, which leaves about 0.12 at 60 Hz here (class B).
+    assert!(worst < 0.13, "largest error {worst}");
+}
+
+#[test]
+fn ears_hear_a_source_on_the_left_earlier_and_brighter_on_the_left() {
+    let length = 2048;
+    let ear = |axis: V3| {
+        let mut s = scene(vec![], [0.0, 0.0, 1.5], [-1.0, 0.0, 0.0], length, 1);
+        s.listener = Listener::Ear { axis, radius: 0.0875 };
+        s
+    };
+    let left = near_filter(&ear([-1.0, 0.0, 0.0]));
+    let right = near_filter(&ear([1.0, 0.0, 0.0]));
+    let peak = |h: &[f32]| h.iter().enumerate().max_by(|a, b| a.1.abs().partial_cmp(&b.1.abs()).unwrap()).unwrap().0 as f64;
+    let itd = (peak(&right) - peak(&left)) / FS;
+    let expected = 0.0875 / C * (1.0 + std::f64::consts::FRAC_PI_2);
+    assert!((itd - expected).abs() < 2.0 / FS, "itd {itd} against {expected}");
+    let lh = near_spectrum(&ear([-1.0, 0.0, 0.0]));
+    let rh = near_spectrum(&ear([1.0, 0.0, 0.0]));
+    let level = |h: &[Complex64], hz: f64| 20.0 * at(h, length, hz).norm().log10();
+    assert!(level(&lh, 100.0).abs() < 0.5 && level(&rh, 100.0).abs() < 0.5);
+    assert!(level(&lh, 10000.0) > 5.0, "left {}", level(&lh, 10000.0));
+    assert!(level(&rh, 10000.0) < -8.0, "right {}", level(&rh, 10000.0));
 }

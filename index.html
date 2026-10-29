@@ -76,6 +76,8 @@
           <h2><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphones</h2>
           <div class="list" id="microphone-list"></div>
           <div class="build-menu"><button type="button" class="build-button" id="add-microphone" title="Add a microphone" aria-label="Add a microphone"><i class="fa-solid fa-plus" aria-hidden="true"></i></button></div>
+          <div class="list" id="rig-list"></div>
+          <div class="build-menu rig-menu" id="rig-menu" role="toolbar" aria-label="Add a microphone layout"></div>
           <h2 class="subheading"><i class="fa-solid fa-volume-low" aria-hidden="true"></i>Source</h2>
           <div class="build-menu" id="source-kind" role="radiogroup" aria-label="Source">
             <button type="button" class="build-button" data-kind="far" role="radio" title="Far away: a plane wave from a direction" aria-label="Far away"><i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i></button>
@@ -128,6 +130,7 @@
             <button type="button" id="export-filter">Near filter WAV</button>
             <button type="button" id="export-processed">Filtered signal WAV</button>
           </div>
+          <label class="export-mix"><input type="checkbox" id="export-mix" /> Stereo mix, as heard in the preview</label>
           <p class="export-summary" id="export-summary"></p>
           <p class="export-error" id="export-error" role="alert" hidden></p>
         </div>

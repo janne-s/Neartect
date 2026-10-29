@@ -15,6 +15,8 @@ pub struct Reflection {
 pub struct Path {
     pub delay_seconds: f64,
     pub gain: f64,
+    pub from: V3,
+    pub distance: f64,
     pub reflections: Vec<Reflection>,
 }
 
@@ -91,7 +93,9 @@ fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
     let c = scene.speed_of_sound;
     Some(Path {
         delay_seconds: (path_length - direct) / c,
-        gain: direct / path_length * scene.pickup(from),
+        gain: direct / path_length,
+        from,
+        distance: path_length,
         reflections: rindel(scene, sequence, &hits, Some(source)),
     })
 }
@@ -130,7 +134,7 @@ fn trace_plane(scene: &Scene, sequence: &[usize]) -> Option<Path> {
     }
     let c = scene.speed_of_sound;
     let delay_seconds = (dot(scene.arrival, sub(scene.microphone, point)) + travelled) / c;
-    Some(Path { delay_seconds, gain: scene.pickup(from), reflections: rindel(scene, sequence, &hits, None) })
+    Some(Path { delay_seconds, gain: 1.0, from, distance: f64::INFINITY, reflections: rindel(scene, sequence, &hits, None) })
 }
 
 fn rindel(scene: &Scene, sequence: &[usize], hits: &[(V3, f64, f64)], source: Option<V3>) -> Vec<Reflection> {

@@ -41,3 +41,7 @@ export function patternIcon(a) {
   });
   return stroke(`<circle cx="12" cy="12" r="1" fill="currentColor"/><polyline points="${points.join(' ')}"/>`);
 }
+
+export function headIcon() {
+  return stroke('<path d="M9 20v-3.2c-2.4-1.3-4-3.7-4-6.6C5 6.2 8.1 3.5 12 3.5s7 2.7 7 6.4l1.6 3.3-1.6.5V16a1.5 1.5 0 0 1-1.5 1.5H16V20"/><path d="M15 9.5h.01"/>');
+}

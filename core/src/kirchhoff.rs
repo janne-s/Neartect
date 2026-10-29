@@ -23,11 +23,30 @@ const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
 
+// One group of four histograms per listener set (rigid far and near, soft far
+// and near), each element weighted by the set's weight for its arrival.
 pub struct Histograms {
-    pub rigid_far: Vec<f64>,
-    pub rigid_near: Vec<f64>,
-    pub soft: Vec<f64>,
-    pub soft_near: Vec<f64>,
+    pub sets: Vec<[Vec<f64>; 4]>,
+}
+
+impl Histograms {
+    pub fn new(sets: usize, length: usize) -> Histograms {
+        Histograms { sets: (0..sets).map(|_| std::array::from_fn(|_| vec![0.0; length])).collect() }
+    }
+
+    pub fn len(&self) -> usize {
+        self.sets[0][0].len()
+    }
+
+    pub fn add_scaled(&mut self, other: &Histograms, scale: f64) {
+        for (mine, theirs) in self.sets.iter_mut().zip(&other.sets) {
+            for (a, b) in mine.iter_mut().zip(theirs) {
+                for (x, y) in a.iter_mut().zip(b) {
+                    *x += scale * y;
+                }
+            }
+        }
+    }
 }
 
 struct Context<'a> {
@@ -64,12 +83,7 @@ pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms>
         domain: domain(scene, index, extension),
         lit_normal,
         rate,
-        histograms: Histograms {
-            rigid_far: vec![0.0; length],
-            rigid_near: vec![0.0; length],
-            soft: vec![0.0; length],
-            soft_near: vec![0.0; length],
-        },
+        histograms: Histograms::new(scene.sets(), length),
     };
     let (lo, hi) = context.domain.bounds();
     let size = (hi[0] - lo[0]).max(hi[1] - lo[1]);
@@ -147,7 +161,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32) {
     let c = context.scene.speed_of_sound;
     let incident = context.scene.incident(x);
     let earliest = (incident.extra_metres + distance - size * std::f64::consts::SQRT_2) / c;
-    if earliest * context.rate > context.histograms.soft.len() as f64 {
+    if earliest * context.rate > context.histograms.len() as f64 {
         return;
     }
     let pattern_edge = surface.pattern.may_cross(centre, size);
@@ -190,11 +204,13 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     }
     let c = scene.speed_of_sound;
     let delay = (incident.extra_metres + distance) / c * context.rate;
-    let length = context.histograms.soft.len();
+    let (listener_delay, weights) = scene.split(scale(direction, -1.0), distance);
+    let listener_shift = listener_delay * context.rate;
+    let length = context.histograms.len();
     if delay >= (length - 2) as f64 {
         return;
     }
-    let area = size * size * incident.amplitude * scene.pickup(scale(direction, -1.0));
+    let area = size * size * incident.amplitude;
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
     let cos_incidence = dot(context.lit_normal, incident.towards_source).max(0.0);
@@ -215,20 +231,22 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         let offset_u = ((i as f64 + 0.5) / count_u as f64 - 0.5) * spread_u;
         for j in 0..count_v {
             let offset_v = ((j as f64 + 0.5) / count_v as f64 - 0.5) * spread_v;
-            let t = (delay + offset_u + offset_v).max(0.0);
-            deposit(&mut context.histograms, t, [rigid_far * share, rigid_near * share, soft * share, soft_near * share]);
+            let t = (delay + listener_shift + offset_u + offset_v).max(0.0);
+            for (set, weight) in weights.iter().enumerate().take(context.histograms.sets.len()) {
+                let w = share * weight;
+                deposit(&mut context.histograms.sets[set], t, [rigid_far * w, rigid_near * w, soft * w, soft_near * w]);
+            }
         }
     }
 }
 
-fn deposit(histograms: &mut Histograms, t: f64, values: [f64; 4]) {
+fn deposit(lists: &mut [Vec<f64>; 4], t: f64, values: [f64; 4]) {
     let i = t.floor() as usize;
-    if i + 1 >= histograms.soft.len() {
+    if i + 1 >= lists[0].len() {
         return;
     }
     let f = t - i as f64;
-    let lists = [&mut histograms.rigid_far, &mut histograms.rigid_near, &mut histograms.soft, &mut histograms.soft_near];
-    for (list, value) in lists.into_iter().zip(values) {
+    for (list, value) in lists.iter_mut().zip(values) {
         list[i] += value * (1.0 - f);
         list[i + 1] += value * f;
     }

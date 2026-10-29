@@ -131,3 +131,42 @@ test('a point source over a large floor matches its image source', async () => {
     assert.ok(Math.abs(magnitudeAt(samples, sampleRateHz, hz) - exact) < 0.03, `${hz} Hz`);
   }
 });
+
+test('an ORTF pair is 17 cm apart and its capsules turn 55° from its front', async () => {
+  const { rigMembers } = await import('../src/domain/rigs.js');
+  const space = readSpace({ kind: 'neartect.space', rigs: [{ kind: 'ortf', position: [0, 0, 1] }] });
+  const [left, right] = rigMembers(space, space.rigs[0]);
+  assert.ok(Math.abs(Math.hypot(...left.position.map((v, i) => v - right.position[i])) - 0.17) < 1e-9);
+  const angle = Math.acos(left.facing[0] * right.facing[0] + left.facing[1] * right.facing[1] + left.facing[2] * right.facing[2]) * 180 / Math.PI;
+  assert.ok(Math.abs(angle - 110) < 1e-6);
+});
+
+test('a head hears a source on its right earlier and louder in the right ear', async () => {
+  const space = readSpace({
+    kind: 'neartect.space',
+    render: { lengthMilliseconds: 20 },
+    microphones: [{ position: [0, 0, 1] }],
+    arrival: { azimuthDegrees: 90, elevationDegrees: 0 },
+    rigs: [{ kind: 'binaural', position: [0, 0, 1], aim: { azimuthDegrees: 0 } }]
+  });
+  const { channels, names } = await nearFilter(space);
+  assert.deepEqual(names.slice(1), ['Head L', 'Head R']);
+  const peak = channel => channel.reduce((best, x, i) => (Math.abs(x) > Math.abs(channel[best]) ? i : best), 0);
+  assert.ok(peak(channels[2]) < peak(channels[1]));
+  const energy = channel => channel.reduce((sum, x) => sum + x * x, 0);
+  assert.ok(energy(channels[2]) > energy(channels[1]));
+});
+
+test('a mid-side pair decodes to a left and right that favour the source side', async () => {
+  const { stereo } = await import('../src/audio/preview.js');
+  const space = readSpace({
+    kind: 'neartect.space',
+    render: { lengthMilliseconds: 20 },
+    arrival: { azimuthDegrees: 300, elevationDegrees: 0 },
+    rigs: [{ kind: 'ms', position: [0, 0, 1], aim: { azimuthDegrees: 0 } }]
+  });
+  const { channels, pans } = await nearFilter(space);
+  const [left, right] = stereo(channels, pans);
+  const energy = channel => channel.reduce((sum, x) => sum + x * x, 0);
+  assert.ok(energy(left) > 2 * energy(right));
+});

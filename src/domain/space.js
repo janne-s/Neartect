@@ -1,11 +1,13 @@
 import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
 import { OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo } from './objects.js';
+import { RIG_ANGLE_DEGREES, RIG_KINDS, RIG_SPACING_METRES } from './rigs.js';
 
 export const SPACE_KIND = 'neartect.space';
 export const SPACE_VERSION = 1;
 export const OPENING_SHAPES = Object.freeze(['round', 'rectangle']);
 export const SOURCE_KINDS = Object.freeze(['far', 'point']);
 export const MOST_MICROPHONES = 8;
+export const MOST_RIGS = 4;
 export const PATTERNS = Object.freeze({ omni: 1, wide: 0.75, cardioid: 0.5, supercardioid: 0.37, hypercardioid: 0.25, figure8: 0 });
 
 export const RANGES = Object.freeze({
@@ -97,15 +99,38 @@ function readMicrophone(value, index) {
     name: typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 60) : `Mic ${index + 1}`,
     ...readPoint(m, [0, 0, 1]),
     pattern: Object.hasOwn(PATTERNS, m.pattern) ? m.pattern : 'omni',
-    aim: {
-      azimuthDegrees: angle(m.aim?.azimuthDegrees, 0),
-      elevationDegrees: number(m.aim?.elevationDegrees, RANGES.elevationDegrees, 0)
-    }
+    aim: readAim(m.aim)
   };
 }
 
 export function defaultMicrophone(index, overrides = {}) {
   return readMicrophone(overrides, index);
+}
+
+function readAim(value) {
+  return {
+    azimuthDegrees: angle(value?.azimuthDegrees, 0),
+    elevationDegrees: number(value?.elevationDegrees, RANGES.elevationDegrees, 0)
+  };
+}
+
+function readRig(value) {
+  const r = isRecord(value) ? value : {};
+  const kind = Object.hasOwn(RIG_KINDS, r.kind) ? r.kind : 'xy';
+  const defaults = RIG_KINDS[kind];
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id.slice(0, 40) : freshId(),
+    kind,
+    name: typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 60) : defaults.label,
+    ...readPoint(r, [0, 0, 1]),
+    aim: readAim(r.aim),
+    spacingMetres: number(r.spacingMetres, RIG_SPACING_METRES, defaults.spacingMetres),
+    angleDegrees: number(r.angleDegrees, RIG_ANGLE_DEGREES, defaults.angleDegrees ?? 0)
+  };
+}
+
+export function defaultRig(kind, overrides = {}) {
+  return readRig({ kind, ...overrides });
 }
 
 function readSource(value) {
@@ -161,6 +186,7 @@ export function readSpace(value, referenceIndex = null) {
     version: SPACE_VERSION,
     air: { temperatureCelsius: number(air.temperatureCelsius, RANGES.temperatureCelsius, 20) },
     microphones: microphones.map(readMicrophone),
+    rigs: (Array.isArray(value.rigs) ? value.rigs.slice(0, MOST_RIGS) : []).map(readRig),
     source: readSource(value.source),
     arrival: {
       azimuthDegrees: angle(arrival.azimuthDegrees, 0),
@@ -174,18 +200,18 @@ export function readSpace(value, referenceIndex = null) {
     objects: (value.objects ?? []).map(readObject)
   };
   const ids = new Set();
-  space.microphones.forEach(m => {
+  [...space.microphones, ...space.rigs].forEach(m => {
     if (ids.has(m.id)) m.id = freshId();
     ids.add(m.id);
   });
-  for (const point of [...space.microphones, space.source]) {
+  for (const point of [...space.microphones, ...space.rigs, space.source]) {
     if (!space.objects.some(o => o.id === point.reference)) {
       point.reference = null;
       point.offset = [0, 0, 0];
     }
   }
   if (referenceIndex !== null && space.objects[referenceIndex]) {
-    space.microphones.forEach(m => {
+    [...space.microphones, ...space.rigs].forEach(m => {
       m.reference = null;
       referTo(space, m, space.objects[referenceIndex].id);
     });
