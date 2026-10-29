@@ -8,6 +8,21 @@ const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1, opening: 2 });
 const DISTANCE_REFERENCE_METRES = 1;
 const NEAREST_LEVEL_METRES = 0.1;
 
+// The core's settings record, in its order (`settingNames` in the core).
+export const SETTING_NAMES = Object.freeze([
+  'sampleRateHz', 'speedOfSoundMetresPerSecond', 'lengthSamples', 'order',
+  'microphoneX', 'microphoneY', 'microphoneZ',
+  'arrivalX', 'arrivalY', 'arrivalZ',
+  'pointSource', 'sourceX', 'sourceY', 'sourceZ',
+  'gain', 'delaySeconds',
+  'pipeRadiusMetres', 'pipeMouthAX', 'pipeMouthAY', 'pipeMouthAZ', 'pipeMouthBX', 'pipeMouthBY', 'pipeMouthBZ',
+  'pattern', 'facingX', 'facingY', 'facingZ',
+  'listenerKind', 'headRadiusMetres',
+  'reliefDetail', 'elementLimit',
+  'headFrontX', 'headFrontY', 'headFrontZ', 'headUpX', 'headUpY', 'headUpZ'
+]);
+
+const vector = (name, v) => ({ [`${name}X`]: v[0], [`${name}Y`]: v[1], [`${name}Z`]: v[2] });
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
@@ -54,27 +69,30 @@ export function packSpace(space, listener, aligned, longest) {
   const pipe = pipeAround(space, microphone);
   const point = space.source.kind === 'point';
   const rate = space.render.sampleRateHz;
-  const settings = new Float64Array([
-    rate,
-    speedOfSound(space.air.temperatureCelsius),
-    Math.round((space.render.lengthMilliseconds / 1000 + longest) * rate),
-    space.render.order,
-    ...microphone,
-    ...arrivalVector(space.arrival),
-    point ? 1 : 0,
-    ...(point ? pointPosition(space, space.source) : [0, 0, 0]),
-    aligned.gain,
-    aligned.delaySeconds,
-    ...(pipe ? [pipe.radius, ...pipe.mouthA, ...pipe.mouthB] : [0, 0, 0, 0, 0, 0, 0]),
-    listener.ear ? 1 : PATTERNS[listener.pattern],
-    ...(listener.ear ? listener.ear.axis : listener.facing),
-    listener.ear ? (listener.ear.head === 'measured' ? 2 : 1) : 0,
-    listener.ear ? listener.ear.radius : 0,
-    space.render.quality.reliefDetail,
-    space.render.quality.elementLimit,
-    ...(listener.ear?.front ?? [0, 1, 0]),
-    ...(listener.ear?.up ?? [0, 0, 1])
-  ]);
+  const values = {
+    sampleRateHz: rate,
+    speedOfSoundMetresPerSecond: speedOfSound(space.air.temperatureCelsius),
+    lengthSamples: Math.round((space.render.lengthMilliseconds / 1000 + longest) * rate),
+    order: space.render.order,
+    ...vector('microphone', microphone),
+    ...vector('arrival', arrivalVector(space.arrival)),
+    pointSource: point ? 1 : 0,
+    ...vector('source', point ? pointPosition(space, space.source) : [0, 0, 0]),
+    gain: aligned.gain,
+    delaySeconds: aligned.delaySeconds,
+    pipeRadiusMetres: pipe ? pipe.radius : 0,
+    ...vector('pipeMouthA', pipe ? pipe.mouthA : [0, 0, 0]),
+    ...vector('pipeMouthB', pipe ? pipe.mouthB : [0, 0, 0]),
+    pattern: listener.ear ? 1 : PATTERNS[listener.pattern],
+    ...vector('facing', listener.ear ? listener.ear.axis : listener.facing),
+    listenerKind: listener.ear ? (listener.ear.head === 'measured' ? 2 : 1) : 0,
+    headRadiusMetres: listener.ear ? listener.ear.radius : 0,
+    reliefDetail: space.render.quality.reliefDetail,
+    elementLimit: space.render.quality.elementLimit,
+    ...vector('headFront', listener.ear?.front ?? [0, 1, 0]),
+    ...vector('headUp', listener.ear?.up ?? [0, 0, 1])
+  };
+  const settings = Float64Array.from(SETTING_NAMES, name => values[name]);
   const surfaces = space.objects.filter(object => object !== pipe?.object).flatMap(expandObject);
   const records = surfaces.flatMap(surface => {
     const body = [

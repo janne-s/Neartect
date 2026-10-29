@@ -20,22 +20,34 @@ pub const PATTERN_VALUES: usize = 6;
 // Relief: shape, height, period, direction xyz, anchor xyz, offset, rough
 // height, grain, seed.
 pub const RELIEF_VALUES: usize = 13;
-// Settings: rate, speed of sound, length, order, microphone xyz, arrival xyz,
-// point source flag and xyz, gain, delay seconds, pipe radius (0 = none),
-// pipe mouths xyz, pickup pattern (1 omni … 0 figure of eight), facing xyz
-// (an ear's outward axis), listener kind (0 microphone, 1 ear), head radius,
-// relief detail, element limit, head front xyz and up xyz (kind 2, an ear on
-// the measured head).
-pub const SETTINGS_LENGTH: usize = 37;
+// The settings record, by name. A pipe radius of 0 means no pipe; the
+// pattern runs from 1 (omni) to 0 (figure of eight); `facing` is an ear's
+// outward axis; the listener kind is 0 for a microphone, 1 for an ear on the
+// spherical head, and 2 for an ear on the measured head, which also takes
+// the head's front and up.
+pub const SETTINGS: [&str; 37] = [
+    "sampleRateHz", "speedOfSoundMetresPerSecond", "lengthSamples", "order",
+    "microphoneX", "microphoneY", "microphoneZ",
+    "arrivalX", "arrivalY", "arrivalZ",
+    "pointSource", "sourceX", "sourceY", "sourceZ",
+    "gain", "delaySeconds",
+    "pipeRadiusMetres", "pipeMouthAX", "pipeMouthAY", "pipeMouthAZ", "pipeMouthBX", "pipeMouthBY", "pipeMouthBZ",
+    "pattern", "facingX", "facingY", "facingZ",
+    "listenerKind", "headRadiusMetres",
+    "reliefDetail", "elementLimit",
+    "headFrontX", "headFrontY", "headFrontZ", "headUpX", "headUpY", "headUpZ",
+];
 const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
 const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
 const FEWEST_ELEMENTS: f64 = 1000.0;
 const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES + RELIEF_VALUES;
 
 pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
-    if settings.len() < SETTINGS_LENGTH {
-        return Err(format!("settings need {SETTINGS_LENGTH} numbers"));
+    if settings.len() != SETTINGS.len() {
+        return Err(format!("settings need {} numbers", SETTINGS.len()));
     }
+    let get = |name: &str| settings[SETTINGS.iter().position(|&n| n == name).expect("a named setting")];
+    let vector = |name: &str| [get(&format!("{name}X")), get(&format!("{name}Y")), get(&format!("{name}Z"))];
     let mut list = Vec::new();
     let mut at = 0;
     while at < surfaces.len() {
@@ -64,34 +76,28 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
     }
     Ok(Scene {
         surfaces: list,
-        sample_rate: settings[0],
-        speed_of_sound: settings[1],
-        length: settings[2] as usize,
-        max_order: settings[3] as usize,
-        microphone: [settings[4], settings[5], settings[6]],
-        arrival: normalize([settings[7], settings[8], settings[9]]),
-        source: (settings[10] > 0.0).then(|| [settings[11], settings[12], settings[13]]),
-        gain: settings[14],
-        delay_seconds: settings[15],
-        pipe: (settings[16] > 0.0).then(|| pipe::PipeInside {
-            radius: settings[16],
-            mouth_a: [settings[17], settings[18], settings[19]],
-            mouth_b: [settings[20], settings[21], settings[22]],
+        sample_rate: get("sampleRateHz"),
+        speed_of_sound: get("speedOfSoundMetresPerSecond"),
+        length: get("lengthSamples") as usize,
+        max_order: get("order") as usize,
+        microphone: vector("microphone"),
+        arrival: normalize(vector("arrival")),
+        source: (get("pointSource") > 0.0).then(|| vector("source")),
+        gain: get("gain"),
+        delay_seconds: get("delaySeconds"),
+        pipe: (get("pipeRadiusMetres") > 0.0).then(|| pipe::PipeInside {
+            radius: get("pipeRadiusMetres"),
+            mouth_a: vector("pipeMouthA"),
+            mouth_b: vector("pipeMouthB"),
         }),
-        listener: if settings[27] > 1.5 {
-            scene::Listener::MeasuredEar {
-                front: normalize([settings[31], settings[32], settings[33]]),
-                outward: normalize([settings[24], settings[25], settings[26]]),
-                up: normalize([settings[34], settings[35], settings[36]]),
-            }
-        } else if settings[27] > 0.5 {
-            scene::Listener::Ear { axis: normalize([settings[24], settings[25], settings[26]]), radius: settings[28] }
-        } else {
-            scene::Listener::Microphone { pattern: settings[23], facing: normalize([settings[24], settings[25], settings[26]]) }
+        listener: match get("listenerKind").round() as i64 {
+            2 => scene::Listener::MeasuredEar { front: normalize(vector("headFront")), outward: normalize(vector("facing")), up: normalize(vector("headUp")) },
+            1 => scene::Listener::Ear { axis: normalize(vector("facing")), radius: get("headRadiusMetres") },
+            _ => scene::Listener::Microphone { pattern: get("pattern"), facing: normalize(vector("facing")) },
         },
         quality: scene::Quality {
-            relief_detail: settings[29].clamp(MOST_COARSE_RELIEF_DETAIL, MOST_FINE_RELIEF_DETAIL),
-            element_limit: settings[30].max(FEWEST_ELEMENTS),
+            relief_detail: get("reliefDetail").clamp(MOST_COARSE_RELIEF_DETAIL, MOST_FINE_RELIEF_DETAIL),
+            element_limit: get("elementLimit").max(FEWEST_ELEMENTS),
         },
     })
 }
@@ -150,6 +156,11 @@ pub fn near_filter_from_parts(settings: &[f64], spectra: &[f64]) -> Result<Vec<f
         }
     }
     Ok(filter::filter_from_spectrum(&scene, &sum))
+}
+
+#[wasm_bindgen(js_name = settingNames)]
+pub fn setting_names() -> Vec<String> {
+    SETTINGS.iter().map(|name| name.to_string()).collect()
 }
 
 #[wasm_bindgen(js_name = coreVersion)]

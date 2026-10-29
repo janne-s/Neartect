@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nearFilter } from '../src/domain/near-filter.js';
+import { nearFilter, packSpace, listeners, alignment, SETTING_NAMES } from '../src/domain/near-filter.js';
+import { loadCore } from '../src/domain/core.js';
 import { defaultSpace, readSpace } from '../src/domain/space.js';
 
 function magnitudeAt(samples, sampleRate, hz) {
@@ -194,4 +195,14 @@ test('a measured head and a spherical head both hear a source on the left louder
     const energy = c => c.reduce((sum, x) => sum + x * x, 0);
     assert.ok(energy(channels[0]) > 2 * energy(channels[1]), head);
   }
+});
+
+test('the settings record names every field the core reads, in its order', async () => {
+  const core = await loadCore();
+  assert.deepEqual(core.settingNames(), [...SETTING_NAMES]);
+  const space = defaultSpace();
+  const list = listeners(space);
+  const { settings } = packSpace(space, list[0], alignment(space, list.map(l => l.position))[0], 0);
+  assert.equal(settings.length, SETTING_NAMES.length);
+  assert.ok(settings.every(Number.isFinite));
 });
