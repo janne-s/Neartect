@@ -30,8 +30,92 @@ pub fn specular_paths(scene: &Scene) -> Vec<Path> {
     let mut paths = Vec::new();
     let mut sequence = Vec::new();
     let covered = covered_pairs(scene);
-    extend(scene, &covered, &mut sequence, &mut paths);
+    let reach = Reach::new(scene);
+    extend(scene, &covered, &reach, &mut sequence, scene.microphone, &mut paths);
     paths
+}
+
+const FRONT: u8 = 1;
+const BACK: u8 = 2;
+const SIDE_TOLERANCE_METRES: f64 = 1e-9;
+
+fn side(distance: f64) -> u8 {
+    if distance > SIDE_TOLERANCE_METRES {
+        FRONT
+    } else if distance < -SIDE_TOLERANCE_METRES {
+        BACK
+    } else {
+        0
+    }
+}
+
+// What a sequence of reflections, nearest the microphone first, can be
+// continued by. A reflection on b arrives from and leaves to the same side
+// of b, so the surfaces before and after b (the microphone before the first)
+// must share a side of b's plane. And a path leaving the last surface lies on
+// a ray from the microphone's image in the sequence through that surface, so
+// the next surface must reach into that beam (tested against the last
+// surface only, and only where it is convex). Neither test drops a path;
+// both cut whole subtrees that cannot hold one.
+struct Reach {
+    count: usize,
+    sides: Vec<u8>,
+    microphone: Vec<u8>,
+    corners: Vec<Vec<V3>>,
+    centres: Vec<V3>,
+    convex: Vec<bool>,
+}
+
+impl Reach {
+    fn new(scene: &Scene) -> Reach {
+        let count = scene.surfaces.len();
+        let corners: Vec<Vec<V3>> = scene.surfaces.iter().map(|s| s.polygon.points.iter().map(|&q| s.polygon.to_space(q)).collect()).collect();
+        let mut sides = vec![0; count * count];
+        for (a, here) in scene.surfaces.iter().enumerate() {
+            for (b, points) in corners.iter().enumerate() {
+                sides[a * count + b] = points.iter().fold(0, |mask, &p| mask | side(here.polygon.signed_distance(p)));
+            }
+        }
+        let microphone = scene.surfaces.iter().map(|s| side(s.polygon.signed_distance(scene.microphone))).collect();
+        let centres = corners.iter().map(|points| scale(points.iter().fold([0.0; 3], |sum, &p| add(sum, p)), 1.0 / points.len() as f64)).collect();
+        let convex = scene.surfaces.iter().map(|s| is_convex(&s.polygon.points)).collect();
+        Reach { count, sides, microphone, corners, centres, convex }
+    }
+
+    fn can_follow(&self, sequence: &[usize], image: V3, next: usize) -> bool {
+        let Some((&last, before)) = sequence.split_last() else { return true };
+        let arriving = match before.last() {
+            Some(&previous) => self.sides[last * self.count + previous],
+            None => self.microphone[last],
+        };
+        arriving & self.sides[last * self.count + next] != 0 && (!self.convex[last] || self.in_beam(image, last, next))
+    }
+
+    fn in_beam(&self, apex: V3, window: usize, next: usize) -> bool {
+        let edges = &self.corners[window];
+        let inside = sub(self.centres[window], apex);
+        (0..edges.len()).all(|e| {
+            let normal = crate::geom::cross(sub(edges[e], apex), sub(edges[(e + 1) % edges.len()], apex));
+            let orientation = dot(normal, inside);
+            if orientation.abs() < BEAM_TOLERANCE * norm(normal) * norm(inside) {
+                return true;
+            }
+            self.corners[next].iter().any(|&p| dot(normal, sub(p, apex)) * orientation.signum() > -BEAM_TOLERANCE * norm(normal) * norm(sub(p, apex)))
+        })
+    }
+}
+
+const BEAM_TOLERANCE: f64 = 1e-9;
+
+fn is_convex(points: &[[f64; 2]]) -> bool {
+    let n = points.len();
+    let turns: Vec<f64> = (0..n)
+        .map(|i| {
+            let (a, b, c) = (points[i], points[(i + 1) % n], points[(i + 2) % n]);
+            (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+        })
+        .collect();
+    turns.iter().all(|&t| t >= 0.0) || turns.iter().all(|&t| t <= 0.0)
 }
 
 // Second-order sequences, nearest the microphone first, that the Kirchhoff sum
@@ -40,7 +124,7 @@ fn covered_pairs(scene: &Scene) -> Vec<[usize; 2]> {
     crate::kirchhoff::via_pairs(scene).into_iter().flat_map(|(i, j)| [[i, j], [j, i]]).collect()
 }
 
-fn extend(scene: &Scene, covered: &[[usize; 2]], sequence: &mut Vec<usize>, paths: &mut Vec<Path>) {
+fn extend(scene: &Scene, covered: &[[usize; 2]], reach: &Reach, sequence: &mut Vec<usize>, image: V3, paths: &mut Vec<Path>) {
     let held = sequence.len() == 2 && covered.contains(&[sequence[0], sequence[1]]);
     if sequence.len() >= 2 && !held {
         if let Some(path) = trace(scene, sequence) {
@@ -51,11 +135,11 @@ fn extend(scene: &Scene, covered: &[[usize; 2]], sequence: &mut Vec<usize>, path
         return;
     }
     for i in 0..scene.surfaces.len() {
-        if sequence.last() == Some(&i) || scene.surfaces[i].strength <= 0.0 {
+        if sequence.last() == Some(&i) || scene.surfaces[i].strength <= 0.0 || !reach.can_follow(sequence, image, i) {
             continue;
         }
         sequence.push(i);
-        extend(scene, covered, sequence, paths);
+        extend(scene, covered, reach, sequence, scene.surfaces[i].polygon.mirror_point(image), paths);
         sequence.pop();
     }
 }

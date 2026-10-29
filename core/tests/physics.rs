@@ -725,3 +725,23 @@ fn relief_takes_no_more_elements_than_the_limit() {
         assert!(elements as f64 >= limit * 0.25, "limit {limit}: {elements} elements");
     }
 }
+
+#[test]
+fn pruned_image_search_keeps_every_image_of_a_closed_box() {
+    let (w, d, h) = (3.1, 2.3, 1.7);
+    let walls = vec![
+        surface(rectangle([0.0, d / 2.0, h / 2.0], [0.0, d / 2.0, 0.0], [0.0, 0.0, h / 2.0]), RIGID),
+        surface(rectangle([w, d / 2.0, h / 2.0], [0.0, d / 2.0, 0.0], [0.0, 0.0, h / 2.0]), RIGID),
+        surface(rectangle([w / 2.0, 0.0, h / 2.0], [w / 2.0, 0.0, 0.0], [0.0, 0.0, h / 2.0]), RIGID),
+        surface(rectangle([w / 2.0, d, h / 2.0], [w / 2.0, 0.0, 0.0], [0.0, 0.0, h / 2.0]), RIGID),
+        surface(rectangle([w / 2.0, d / 2.0, 0.0], [w / 2.0, 0.0, 0.0], [0.0, d / 2.0, 0.0]), RIGID),
+        surface(rectangle([w / 2.0, d / 2.0, h], [w / 2.0, 0.0, 0.0], [0.0, d / 2.0, 0.0]), RIGID),
+    ];
+    let order = 5;
+    let s = from_point(walls, [0.71, 0.93, 0.52], [2.27, 1.41, 1.13], 4096, order);
+    let paths = neartect_core::images::specular_paths(&s);
+    for k in 2..=order {
+        let found = paths.iter().filter(|p| p.reflections.len() == k).count();
+        assert_eq!(found, 4 * k * k + 2, "order {k}");
+    }
+}
