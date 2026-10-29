@@ -62,3 +62,6 @@
 .card[aria-selected="true"] .object-icon {
   color: var(--accent);
 }
+.situations .build-button {
+  border-style: dashed;
+}

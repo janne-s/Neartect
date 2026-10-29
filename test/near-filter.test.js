@@ -69,3 +69,13 @@ test('every object kind gives a finite filter', async () => {
     assert.ok(samples.every(Number.isFinite), kind);
   }
 });
+
+test('every situation gives a finite filter that differs from the free field', async () => {
+  const { SITUATIONS, situationSpace } = await import('../src/domain/situations.js');
+  const { defaultSpace } = await import('../src/domain/space.js');
+  for (const id of Object.keys(SITUATIONS)) {
+    const { samples } = await nearFilter(situationSpace(id, defaultSpace()));
+    assert.ok(samples.every(Number.isFinite), id);
+    assert.ok(samples.slice(1).some(x => Math.abs(x) > 1e-3), `${id} adds nothing`);
+  }
+});

@@ -3,7 +3,8 @@ import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { defaultObject, defaultSpace, readSpace, SpaceError } from './domain/space.js';
 import { FLAT_KINDS } from './domain/objects.js';
-import { BUILD_KINDS, objectIcon } from './ui/icons.js';
+import { BUILD_KINDS, objectIcon, situationIcon } from './ui/icons.js';
+import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
 import { nearestSurface, SMALLEST_GAP_METRES, spaceCentre, withGap } from './domain/placement.js';
 import { DISPLAY, PARAMETERS } from './domain/parameters.js';
@@ -113,8 +114,36 @@ function drawPlots() {
   drawResponse($('response'), state.filter);
 }
 
+const UNDO_DEPTH = 50;
+const history = [];
+let committed = JSON.stringify(state.space);
+
+function remember() {
+  const now = JSON.stringify(state.space);
+  if (now === committed) return;
+  history.push(committed);
+  if (history.length > UNDO_DEPTH) history.shift();
+  committed = now;
+  $('undo').disabled = false;
+}
+
+function undo() {
+  if (!history.length) return;
+  committed = history.pop();
+  state.space = readSpace(JSON.parse(committed));
+  if (state.selection?.type === 'object' && !state.space.objects.some(o => o.id === state.selection.id)) state.selection = null;
+  $('undo').disabled = !history.length;
+  writeStored(STORAGE_KEY, state.space);
+  view.update(state.space, state.selection);
+  refreshPanel();
+  refreshFilter();
+}
+
 function changed({ save = true, panel = false } = {}) {
-  if (save) writeStored(STORAGE_KEY, state.space);
+  if (save) {
+    writeStored(STORAGE_KEY, state.space);
+    remember();
+  }
   view.update(state.space, state.selection);
   if (panel) refreshPanel(); else syncLive();
   refreshFilter();
@@ -404,7 +433,28 @@ for (const [kind, label] of BUILD_KINDS) {
   $('build-menu').append(button);
 }
 
+for (const [id, { label }] of Object.entries(SITUATIONS)) {
+  const button = element('button', 'build-button');
+  button.type = 'button';
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.innerHTML = situationIcon(id);
+  button.addEventListener('click', () => {
+    state.space = situationSpace(id, state.space);
+    state.selection = null;
+    view.centre(state.space.microphone.position);
+    changed({ panel: true });
+  });
+  $('situations').append(button);
+}
+$('undo').addEventListener('click', undo);
+
 document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.target.closest('input, textarea')) {
+    event.preventDefault();
+    undo();
+    return;
+  }
   if (event.target.closest('input, select, textarea, dialog')) return;
   if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.type === 'object') {
     event.preventDefault();

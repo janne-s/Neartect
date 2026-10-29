@@ -24,9 +24,12 @@ WebAssembly and heard live through a crossfading convolver.
   boxes, corners, niches, and pipes, added from a menu of shapes. Each has a
   material from published absorption tables or a porous ground model, and a
   creative strength (1 is physical).
+- **Situations** — start from a microphone by a wall, in a corner, in a niche,
+  under a grating, at a pipe mouth, in a doorway, or over water.
 - **Handles** — hover or select an object to move it along east, north, and
   up, resize it from its faces, and turn or tilt it on its rings; values snap
-  to the grid and to 5°, and Shift moves freely. Exact values sit in Details.
+  to the grid and to 5°, and Shift moves freely. Exact values sit in Details,
+  and Undo steps back.
 - **Gratings** — bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
 - **Microphone** — free placement, with the gap to the nearest surface on a

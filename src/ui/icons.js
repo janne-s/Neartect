@@ -17,3 +17,17 @@ export const BUILD_KINDS = Object.freeze([
 ]);
 
 export const objectIcon = kind => ICONS[kind] ?? ICONS.plane;
+
+const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="2" fill="currentColor" stroke="none"/>`;
+
+const SITUATION_ICONS = Object.freeze({
+  wallside: stroke(`<path d="M6 3v18M6 21h14"/>${dot(9, 12)}`),
+  corner: stroke(`<path d="M4 20h16M4 20V4M4 20l6-6" opacity=".9"/>${dot(7, 17)}`),
+  niche: stroke(`<path d="M4 4h16v16H4Z"/><path d="M8 7h8v10H8Z"/>${dot(12, 12)}`),
+  grating: stroke(`<path d="M3 9h18M6 9v-2M10 9v-2M14 9v-2M18 9v-2M3 20h18"/>${dot(12, 15)}`),
+  pipe: stroke(`<path d="M3 8h11M3 16h11"/><ellipse cx="14" cy="12" rx="2" ry="4"/>${dot(19, 12)}`),
+  doorway: stroke(`<path d="M3 21V4h18v17M9 21V9h6v12"/>${dot(12, 15)}`),
+  water: stroke(`<path d="M3 17c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>${dot(12, 10)}`)
+});
+
+export const situationIcon = id => SITUATION_ICONS[id];
