@@ -1,5 +1,5 @@
 use crate::images::specular_paths;
-use crate::kirchhoff::{scatter_via, via_pairs, Histograms, OVERSAMPLING};
+use crate::kirchhoff::{scatter_into, via_pairs, Histograms, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
 use crate::geom::{dot, scale, sub, V3};
 use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
@@ -112,29 +112,27 @@ fn outside_spectrum(scene: &Scene) -> Vec<Complex64> {
     let second = via_pairs(scene).into_iter().map(|(i, j)| (i, Some(j)));
     for (index, also) in single.chain(second) {
         let surface = &scene.surfaces[index];
-        let Some(h) = scatter_via(scene, index, n_fine, also) else { continue };
         let mut key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
         if let Some(j) = also {
             key.push(u64::MAX);
             key.extend(scene.surfaces[j].reflection.iter().map(|r| r.to_bits()).chain(scene.surfaces[j].pattern.low_frequency_key()));
         }
         let s = surface.strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
-        match groups.iter_mut().find(|(k, _, _, _)| *k == key) {
-            Some((_, _, _, sum)) => sum.add_scaled(&h, s),
-            None => {
-                let mut scaled = Histograms::new(h.sets.len(), n_fine);
-                scaled.add_scaled(&h, s);
-                groups.push((key, index, also, scaled));
-            }
+        let existing = groups.iter().position(|(k, _, _, _)| *k == key);
+        let at = existing.unwrap_or_else(|| {
+            groups.push((key, index, also, Histograms::new(scene.sets(), n_fine)));
+            groups.len() - 1
+        });
+        if !scatter_into(scene, index, also, s, &mut groups[at].3) && existing.is_none() {
+            groups.pop();
         }
     }
 
     for (_, index, also, h) in &groups {
         let surface = &scene.surfaces[*index];
-        for (set, lists) in h.sets.iter().enumerate() {
-            let [rigid_far_list, rigid_near_list, soft_list, soft_near_list] = lists;
-            let mut packed: Vec<Complex64> = rigid_far_list.iter().zip(soft_list).map(|(&a, &b)| Complex64::new(a, b)).collect();
-            let mut near: Vec<Complex64> = rigid_near_list.iter().zip(soft_near_list).map(|(&a, &b)| Complex64::new(a, b)).collect();
+        for set in 0..h.sets() {
+            let mut packed: Vec<Complex64> = h.list(set, RIGID_FAR).zip(h.list(set, SOFT_FAR)).map(|(a, b)| Complex64::new(a, b)).collect();
+            let mut near: Vec<Complex64> = h.list(set, RIGID_NEAR).zip(h.list(set, SOFT_NEAR)).map(|(a, b)| Complex64::new(a, b)).collect();
             fft.forward(&mut packed);
             fft.forward(&mut near);
             for k in 0..=half {

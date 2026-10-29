@@ -23,29 +23,40 @@ const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
 
-// One group of four histograms per listener set (rigid far and near, soft far
-// and near), each element weighted by the set's weight for its arrival.
+pub const RIGID_FAR: usize = 0;
+pub const RIGID_NEAR: usize = 1;
+pub const SOFT_FAR: usize = 2;
+pub const SOFT_NEAR: usize = 3;
+pub const LISTS: usize = 4;
+
+// Four histograms per listener set (rigid far and near, soft far and near),
+// each element weighted by the set's weight for its arrival, stored bin by
+// bin so that one element's deposit into every set is contiguous.
 pub struct Histograms {
-    pub sets: Vec<[Vec<f64>; 4]>,
+    sets: usize,
+    bins: usize,
+    values: Vec<f64>,
 }
 
 impl Histograms {
-    pub fn new(sets: usize, length: usize) -> Histograms {
-        Histograms { sets: (0..sets).map(|_| std::array::from_fn(|_| vec![0.0; length])).collect() }
+    pub fn new(sets: usize, bins: usize) -> Histograms {
+        Histograms { sets, bins, values: vec![0.0; bins * sets * LISTS] }
     }
 
     pub fn len(&self) -> usize {
-        self.sets[0][0].len()
+        self.bins
     }
 
-    pub fn add_scaled(&mut self, other: &Histograms, scale: f64) {
-        for (mine, theirs) in self.sets.iter_mut().zip(&other.sets) {
-            for (a, b) in mine.iter_mut().zip(theirs) {
-                for (x, y) in a.iter_mut().zip(b) {
-                    *x += scale * y;
-                }
-            }
-        }
+    pub fn sets(&self) -> usize {
+        self.sets
+    }
+
+    fn width(&self) -> usize {
+        self.sets * LISTS
+    }
+
+    pub fn list(&self, set: usize, list: usize) -> impl Iterator<Item = f64> + '_ {
+        self.values[set * LISTS + list..].iter().step_by(self.width()).copied()
     }
 }
 
@@ -89,7 +100,9 @@ struct Context<'a> {
     lit_normal: V3,
     relief_element: f64,
     rate: f64,
-    histograms: Histograms,
+    scale: f64,
+    histograms: &'a mut Histograms,
+    kernel: Vec<f64>,
 }
 
 fn element_size(distance: f64) -> f64 {
@@ -129,11 +142,9 @@ impl Context<'_> {
     }
 }
 
-pub fn scatter(scene: &Scene, index: usize, length: usize) -> Option<Histograms> {
-    scatter_via(scene, index, length, None)
-}
-
-pub fn scatter_via(scene: &Scene, index: usize, length: usize, via: Option<usize>) -> Option<Histograms> {
+// Adds surface `index`'s scattering, times `strength`, to `histograms`; false
+// when the surface is seen edge-on from the source and adds nothing.
+pub fn scatter_into(scene: &Scene, index: usize, via: Option<usize>, strength: f64, histograms: &mut Histograms) -> bool {
     let surface = &scene.surfaces[index];
     let facing = match via {
         Some(j) => {
@@ -146,11 +157,11 @@ pub fn scatter_via(scene: &Scene, index: usize, length: usize, via: Option<usize
         None => scene.source_side(&surface.polygon),
     };
     if facing.abs() < 1e-9 {
-        return None;
+        return false;
     }
     let lit_normal = if facing > 0.0 { surface.polygon.normal } else { scale(surface.polygon.normal, -1.0) };
     let rate = scene.sample_rate * OVERSAMPLING as f64;
-    let extension = (scene.speed_of_sound * length as f64 / rate).min(LONGEST_EXTENSION_METRES);
+    let extension = (scene.speed_of_sound * histograms.len() as f64 / rate).min(LONGEST_EXTENSION_METRES);
     let relief = &surface.relief;
     let relief_element = if relief.is_flat() {
         0.0
@@ -165,12 +176,14 @@ pub fn scatter_via(scene: &Scene, index: usize, length: usize, via: Option<usize
         lit_normal,
         relief_element,
         rate,
-        histograms: Histograms::new(scene.sets(), length),
+        scale: strength,
+        histograms,
+        kernel: Vec::new(),
     };
     let (lo, hi) = context.domain.bounds();
     let size = (hi[0] - lo[0]).max(hi[1] - lo[1]);
     visit(&mut context, [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0], size, 0);
-    Some(context.histograms)
+    true
 }
 
 // An edge shared with another surface at a right angle, where the other
@@ -342,8 +355,9 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let cos_incidence = dot(tilted, incident.towards_source).max(0.0);
     let soft = cos_incidence * area / (2.0 * PI * distance);
     let soft_near = soft / incident.source_distance;
-    let mut values = [[0.0; 4]; crate::scene::MOST_SETS];
-    for (set, weight) in weights.iter().enumerate().take(context.histograms.sets.len()) {
+    let sets = context.histograms.sets();
+    let mut values = [[0.0; LISTS]; crate::scene::MOST_SETS];
+    for (set, weight) in weights.iter().enumerate().take(sets) {
         values[set] = [rigid_far * weight, rigid_near * weight, soft * weight, soft_near * weight];
     }
     // A first-order microphone's gradient part hears the rigid element's
@@ -355,8 +369,8 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
             let toward_facing = -dot(direction, facing);
             let across = (dot(tilted, facing) + cos_scatter * toward_facing) * area / (2.0 * PI * distance * distance);
             let radial = toward_facing * rigid_near;
-            values[1][0] = (1.0 - pattern) * (radial + across);
-            values[1][1] = (1.0 - pattern) * (2.0 * radial + across) / distance;
+            values[1][RIGID_FAR] = (1.0 - pattern) * (radial + across);
+            values[1][RIGID_NEAR] = (1.0 - pattern) * (2.0 * radial + across) / distance;
         }
     }
     let towards = incident.towards_source;
@@ -370,26 +384,39 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let count_u = ((spread_u.abs().ceil() as usize) + 1).min(MOST_SUBPOINTS);
     let count_v = ((spread_v.abs().ceil() as usize) + 1).min(MOST_SUBPOINTS);
     let share = 1.0 / (count_u * count_v) as f64;
+    let centre_time = delay + listener_shift;
+    let reach = (spread_u.abs() + spread_v.abs()) / 2.0;
+    let first = (centre_time - reach).max(0.0).floor() as usize;
+    let last = (centre_time + reach).max(0.0).floor() as usize + 1;
+    let kernel = &mut context.kernel;
+    kernel.clear();
+    kernel.resize(last - first + 1, 0.0);
     for i in 0..count_u {
         let offset_u = ((i as f64 + 0.5) / count_u as f64 - 0.5) * spread_u;
         for j in 0..count_v {
             let offset_v = ((j as f64 + 0.5) / count_v as f64 - 0.5) * spread_v;
-            let t = (delay + listener_shift + offset_u + offset_v).max(0.0);
-            for (set, v) in values.iter().enumerate().take(context.histograms.sets.len()) {
-                deposit(&mut context.histograms.sets[set], t, v.map(|x| x * share));
+            let t = (centre_time + offset_u + offset_v).max(0.0);
+            let bin = t.floor() as usize;
+            if bin + 1 >= length {
+                continue;
             }
+            let f = t - bin as f64;
+            kernel[bin - first] += share * (1.0 - f);
+            kernel[bin + 1 - first] += share * f;
         }
     }
-}
-
-fn deposit(lists: &mut [Vec<f64>; 4], t: f64, values: [f64; 4]) {
-    let i = t.floor() as usize;
-    if i + 1 >= lists[0].len() {
-        return;
+    let width = context.histograms.width();
+    let mut scaled = [0.0; LISTS * crate::scene::MOST_SETS];
+    for (cell, value) in scaled.iter_mut().zip(values[..sets].iter().flatten()) {
+        *cell = value * context.scale;
     }
-    let f = t - i as f64;
-    for (list, value) in lists.iter_mut().zip(values) {
-        list[i] += value * (1.0 - f);
-        list[i + 1] += value * f;
+    for (offset, &weight) in kernel.iter().enumerate() {
+        if weight == 0.0 {
+            continue;
+        }
+        let row = (first + offset) * width;
+        for (cell, value) in context.histograms.values[row..row + width].iter_mut().zip(&scaled[..width]) {
+            *cell += weight * value;
+        }
     }
 }
