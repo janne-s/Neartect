@@ -9,6 +9,7 @@
 // fixed by a seed. The offset slides the whole field along its direction, so
 // moving it in time moves the sound.
 
+use crate::trig::{sin, sin_cos};
 use std::f64::consts::PI;
 
 const ROUGH_COMPONENTS: usize = 32;
@@ -35,6 +36,7 @@ pub struct Relief {
     pub rough_height: f64,
     pub grain: f64,
     components: Vec<([f64; 2], f64)>,
+    rough_slope: f64,
 }
 
 fn random(seed: &mut u64) -> f64 {
@@ -44,7 +46,7 @@ fn random(seed: &mut u64) -> f64 {
 
 impl Relief {
     pub fn flat() -> Relief {
-        Relief { shape: Shape::Flat, height: 0.0, period: 1.0, direction: [1.0, 0.0], start: [0.0, 0.0], offset: 0.0, rough_height: 0.0, grain: 1.0, components: Vec::new() }
+        Relief { shape: Shape::Flat, height: 0.0, period: 1.0, direction: [1.0, 0.0], start: [0.0, 0.0], offset: 0.0, rough_height: 0.0, grain: 1.0, components: Vec::new(), rough_slope: 0.0 }
     }
 
     // [shape, height, period, direction radians, offset, rough height, grain,
@@ -80,6 +82,7 @@ impl Relief {
         } else {
             Vec::new()
         };
+        let mean_square_k = components.iter().map(|(k, _): &([f64; 2], f64)| k[0] * k[0] + k[1] * k[1]).sum::<f64>() / ROUGH_COMPONENTS as f64;
         Relief {
             shape: if height == 0.0 { Shape::Flat } else { shape_kind },
             height: height.abs(),
@@ -90,6 +93,7 @@ impl Relief {
             rough_height,
             grain,
             components,
+            rough_slope: rough_height * (mean_square_k / 2.0).sqrt(),
         }
     }
 
@@ -125,10 +129,10 @@ impl Relief {
         let w = 2.0 * PI / self.period;
         match self.shape {
             Shape::Flat => 0.0,
-            Shape::Waves => self.height * (w * s).sin(),
-            Shape::Arches => self.height * (PI * s / self.period).sin().abs(),
-            Shape::Scallops => -self.height * (PI * s / self.period).sin().abs(),
-            Shape::Egg => self.height * (w * s).sin() * (w * t).sin(),
+            Shape::Waves => self.height * sin(w * s),
+            Shape::Arches => self.height * sin(PI * s / self.period).abs(),
+            Shape::Scallops => -self.height * sin(PI * s / self.period).abs(),
+            Shape::Egg => self.height * sin(w * s) * sin(w * t),
         }
     }
 
@@ -177,8 +181,7 @@ impl Relief {
         if self.components.is_empty() || cos_angle >= 1.0 {
             return 1.0;
         }
-        let mean_square_k = self.components.iter().map(|(k, _)| k[0] * k[0] + k[1] * k[1]).sum::<f64>() / ROUGH_COMPONENTS as f64;
-        let slope = self.rough_height * (mean_square_k / 2.0).sqrt();
+        let slope = self.rough_slope;
         let mu = cos_angle.max(1e-6) / (1.0 - cos_angle * cos_angle).sqrt();
         let x = mu / (std::f64::consts::SQRT_2 * slope);
         let lambda = ((-x * x).exp() / (x * PI.sqrt()) - erfc(x)) / 2.0;
@@ -195,27 +198,30 @@ impl Relief {
         let w = 2.0 * PI / self.period;
         let (h, ds, dt) = match self.shape {
             Shape::Flat => (0.0, 0.0, 0.0),
-            Shape::Waves => (a * (w * s).sin(), a * w * (w * s).cos(), 0.0),
-            Shape::Arches | Shape::Scallops => {
-                let phase = PI * s / self.period;
-                let sign = if phase.sin() >= 0.0 { 1.0 } else { -1.0 };
-                let flip = if self.shape == Shape::Scallops { -1.0 } else { 1.0 };
-                (flip * a * phase.sin().abs(), flip * a * PI / self.period * phase.cos() * sign, 0.0)
+            Shape::Waves => {
+                let (sin_s, cos_s) = sin_cos(w * s);
+                (a * sin_s, a * w * cos_s, 0.0)
             }
-            Shape::Egg => (
-                a * (w * s).sin() * (w * t).sin(),
-                a * w * (w * s).cos() * (w * t).sin(),
-                a * w * (w * s).sin() * (w * t).cos(),
-            ),
+            Shape::Arches | Shape::Scallops => {
+                let (sin_phase, cos_phase) = sin_cos(PI * s / self.period);
+                let sign = if sin_phase >= 0.0 { 1.0 } else { -1.0 };
+                let flip = if self.shape == Shape::Scallops { -1.0 } else { 1.0 };
+                (flip * a * sin_phase.abs(), flip * a * PI / self.period * cos_phase * sign, 0.0)
+            }
+            Shape::Egg => {
+                let (sin_s, cos_s) = sin_cos(w * s);
+                let (sin_t, cos_t) = sin_cos(w * t);
+                (a * sin_s * sin_t, a * w * cos_s * sin_t, a * w * sin_s * cos_t)
+            }
         };
         let mut height = h;
         let mut gradient = [ds * d[0] + dt * across[0], ds * d[1] + dt * across[1]];
         if !self.components.is_empty() {
             let amplitude = self.rough_height * (2.0 / ROUGH_COMPONENTS as f64).sqrt();
             for (k, phase) in &self.components {
-                let arg = k[0] * s + k[1] * t + phase;
-                let slope = -amplitude * arg.sin();
-                height += amplitude * arg.cos();
+                let (sin, cos) = sin_cos(k[0] * s + k[1] * t + phase);
+                let slope = -amplitude * sin;
+                height += amplitude * cos;
                 gradient[0] += slope * (k[0] * d[0] + k[1] * across[0]);
                 gradient[1] += slope * (k[0] * d[1] + k[1] * across[1]);
             }

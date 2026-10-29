@@ -8,6 +8,7 @@ pub mod pipe;
 pub mod relief;
 pub mod scene;
 pub mod spectrum;
+pub mod trig;
 
 use geom::{normalize, Polygon};
 use pattern::Pattern;
