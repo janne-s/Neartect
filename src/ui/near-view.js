@@ -3,7 +3,7 @@ import { arrivalVector } from '../domain/space.js';
 import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
 import { faceNormal, nearestSurface } from '../domain/placement.js';
 import { faceRelief, hasRelief } from '../domain/relief.js';
-import { rigFrame, rigMembers } from '../domain/rigs.js';
+import { headWidth, rigFrame, rigMembers } from '../domain/rigs.js';
 
 const FIELD_OF_VIEW = 0.9;
 const CLICK_PIXELS = 4;
@@ -683,7 +683,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       context.fillText(text, at[0] + dx / n * 6 - 3, at[1] + dy / n * 6 + 3);
     };
     if (rig.kind === 'binaural') {
-      const radius = Math.max(HEAD_LEAST_PIXELS, rig.spacingMetres / 2 / pixelsToMetres(1, centre));
+      const radius = Math.max(HEAD_LEAST_PIXELS, headWidth(rig) / 2 / pixelsToMetres(1, centre));
       context.lineWidth = 1.5;
       context.beginPath();
       context.arc(c[0], c[1], radius, 0, 2 * Math.PI);

@@ -21,6 +21,12 @@ export const RIG_KINDS = Object.freeze({
 // width, or the measured KU100 (SADIE II, B2), whose size is fixed.
 export const HEADS = Object.freeze({ measured: 'KU100', sphere: 'Sphere' });
 
+// The measured head's width for drawing and its ears' radius: Woodworth's
+// radius for the table's largest interaural delay, 687 µs at 343 m/s.
+const MEASURED_HEAD_WIDTH_METRES = 0.183;
+
+export const headWidth = rig => (rig.head === 'measured' ? MEASURED_HEAD_WIDTH_METRES : rig.spacingMetres);
+
 export const HEAD_ATTRIBUTION = 'Measured head: SADIE II, KU100, © 2018 University of York, Apache 2.0 (Armstrong et al. 2018, Applied Sciences 8, 2029).';
 
 export const RIG_SPACING_METRES = Object.freeze([0, 5]);
@@ -45,7 +51,7 @@ export function rigMembers(space, rig) {
   const centre = pointPosition(space, rig);
   const { front, right, up } = rigFrame(space, rig);
   const left = right.map(v => -v);
-  const half = rig.spacingMetres / 2;
+  const half = (rig.kind === 'binaural' ? headWidth(rig) : rig.spacingMetres) / 2;
   const kind = RIG_KINDS[rig.kind];
   const pair = (pattern, angle) => [
     { name: 'L', position: along(centre, right, front, -half, 0), pattern, facing: turn(front, right, -angle / 2), pan: [1, 0] },
