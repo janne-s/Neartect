@@ -837,3 +837,28 @@ fn a_small_disc_scatters_rayleighs_dipole_from_afar() {
         assert!((scattered / exact - 1.0).abs() < 0.25, "ka {ka}: {scattered} vs {exact}");
     }
 }
+
+// A free panel's own finite size enters as a factor while the Kirchhoff sum
+// still sees where the reflected field ends, which images do not; the two
+// agree within a fifth of the second-order field (about 1.5 dB).
+#[test]
+fn second_order_through_a_barely_relieved_wall_and_a_free_panel_follows_the_images() {
+    let length = 4096;
+    let arrival = [-0.6, 1.0, 0.3];
+    let panel = surface(rectangle([1.0, 1.5, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.5]), RIGID);
+    let barely = relieved(wall(4.0, 2.0), [1.0, 1e-9, 1.0, 0.0, 0.0, 0.0, 0.05, 1.0]);
+    for (microphone, receiver) in [([0.2, 0.6, 2.0], false), ([0.7, 2.2, 2.0], true)] {
+        let with = |surfaces: Vec<Surface>, order| near_spectrum(&scene(surfaces, microphone, arrival, length, order));
+        let vias = neartect_core::kirchhoff::via_pairs(&scene(vec![panel.clone(), barely.clone()], microphone, arrival, length, 2));
+        assert!(vias.len() == 1 && vias[0].1.receiver == receiver && vias[0].1.cutoff_hz.is_some(), "{vias:?}");
+        let images = with(vec![panel.clone(), wall(4.0, 2.0)], 2);
+        let summed = with(vec![panel.clone(), barely.clone()], 2);
+        let first = with(vec![panel.clone(), wall(4.0, 2.0)], 1);
+        let n = spectrum_size(length);
+        let (a, b) = ((100.0 * n as f64 / FS) as usize, (3000.0 * n as f64 / FS) as usize);
+        let mean = |f: &dyn Fn(usize) -> f64| (a..=b).map(f).sum::<f64>() / (b - a + 1) as f64;
+        let error = mean(&|k| (images[k] - summed[k]).norm());
+        let second = mean(&|k| (images[k] - first[k]).norm());
+        assert!(error < 0.2 * second, "receiver {receiver}: error {error} of {second}");
+    }
+}

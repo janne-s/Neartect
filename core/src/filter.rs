@@ -143,14 +143,16 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
     // the next, so only one is held at a time.
     let traversals = traversals(scene);
     let floor = relief_floor(scene, &traversals, horizon);
-    let depths: Vec<(f64, f64)> = traversals.iter().map(|&(index, also)| edge_depth(scene, index, also, horizon)).collect();
+    let depths: Vec<(f64, f64)> = traversals.iter().map(|&(index, also)| edge_depth(scene, index, also.map(|v| v.surface), horizon)).collect();
     let mut groups: Vec<(Vec<u64>, Vec<usize>)> = Vec::new();
     for (traversal, &(index, also)) in traversals.iter().enumerate() {
         let surface = &scene.surfaces[index];
         let mut key: Vec<u64> = surface.reflection.iter().map(|r| r.to_bits()).chain(surface.pattern.low_frequency_key()).collect();
-        if let Some(j) = also {
+        if let Some(via) = also {
+            let j = via.surface;
             key.push(u64::MAX);
             key.extend(scene.surfaces[j].reflection.iter().map(|r| r.to_bits()).chain(scene.surfaces[j].pattern.low_frequency_key()));
+            key.extend(via.cutoff_hz.map(|cutoff| [j as u64, cutoff.to_bits()]).into_iter().flatten());
         }
         key.push((depths[traversal].0.log2() * DEPTH_CLASSES_PER_OCTAVE).round().to_bits());
         match groups.iter_mut().find(|(k, _)| *k == key) {
@@ -165,7 +167,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
         let (mut depth_sum, mut weight_sum) = (0.0, 0.0);
         for &traversal in members {
             let (index, also) = traversals[traversal];
-            let s = scene.surfaces[index].strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
+            let s = scene.surfaces[index].strength * also.map_or(1.0, |v| scene.surfaces[v.surface].strength);
             if scatter_into(scene, traversal, index, also, s, floor, part, &mut h).is_none() {
                 continue;
             }
@@ -181,6 +183,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
         }
         let Some((index, also)) = heard_from else { continue };
         let surface = &scene.surfaces[index];
+        let unbounded = also.and_then(|via| via.cutoff_hz.map(|cutoff| (2.0 * PI * cutoff, plain_depth(scene, via.surface, horizon))));
         for (set, factor) in factors.iter().enumerate().take(h.sets()) {
             let total = &mut total[scene.capsule_of(set)];
             let mut packed: Vec<Complex64> = h.list(set, RIGID_FAR).zip(h.list(set, SOFT_FAR)).map(|(a, b)| Complex64::new(a, b)).collect();
@@ -205,7 +208,11 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
                 let scattered = (Complex64::new(1.0, 0.0) + r) * 0.5 * rigid + (Complex64::new(1.0, 0.0) - r) * 0.5 * pressure_release;
                 let hz = k as f64 * fs / n as f64;
                 let grating = surface.pattern.low_frequency_factor(hz, c);
-                let second = also.map_or(Complex64::new(1.0, 0.0), |j| reflection[j][k] * scene.surfaces[j].pattern.low_frequency_factor(hz, c));
+                let second = also.map_or(Complex64::new(1.0, 0.0), |via| {
+                    let other = via.surface;
+                    let finite = unbounded.map_or(Complex64::new(1.0, 0.0), |(cutoff, depth)| (j * omega) / (j * omega + cutoff) * crate::edge::response(omega, depth, c));
+                    reflection[other][k] * scene.surfaces[other].pattern.low_frequency_factor(hz, c) * finite
+                });
                 total[k] += scattered * second * factor[k] * (compensation * grating);
             }
         }

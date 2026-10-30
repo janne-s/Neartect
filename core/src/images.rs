@@ -119,9 +119,25 @@ fn is_convex(points: &[[f64; 2]]) -> bool {
 }
 
 // Second-order sequences, nearest the microphone first, that the Kirchhoff sum
-// via a joined flat surface already holds (both orders).
+// via a flat surface already holds: both orders at a join, else the one taken.
 fn covered_pairs(scene: &Scene) -> Vec<[usize; 2]> {
-    crate::kirchhoff::via_pairs(scene).into_iter().flat_map(|(i, j)| [[i, j], [j, i]]).collect()
+    crate::kirchhoff::via_pairs(scene)
+        .into_iter()
+        .flat_map(|(i, via)| {
+            let j = via.surface;
+            match (via.cutoff_hz, via.receiver) {
+                (None, _) => vec![[i, j], [j, i]],
+                (Some(_), false) => vec![[i, j]],
+                (Some(_), true) => vec![[j, i]],
+            }
+        })
+        .collect()
+}
+
+// The specular path through `sequence`, nearest the microphone first, over
+// the flat polygons.
+pub fn path_through(scene: &Scene, sequence: &[usize]) -> Option<Path> {
+    trace(scene, sequence)
 }
 
 fn extend(scene: &Scene, covered: &[[usize; 2]], reach: &Reach, sequence: &mut Vec<usize>, image: V3, paths: &mut Vec<Path>) {

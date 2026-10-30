@@ -17,7 +17,8 @@ as a sum of small surface elements in the Kirchhoff approximation, so a
 surface's size, its free edges, and the shadow behind it come from the same
 sum. Where two surfaces meet at a right angle in a corner the microphone can
 see, the edge is continued, so the corner keeps its exact image solution. Higher orders are specular images with a
-finite-size high-pass. The filter is computed by a Rust core compiled to
+finite-size high-pass; a surface with relief keeps its lobes in the second
+order through a flat surface, joined or free. The filter is computed by a Rust core compiled to
 WebAssembly and heard live through a crossfading convolver.
 
 - **Objects** — planes, discs, walls with a round or square opening, gratings,

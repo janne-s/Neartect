@@ -97,13 +97,26 @@ impl Histograms {
     }
 }
 
-// A second reflection on a flat surface `j` joined at a right angle to a
-// surface with relief: the relief is lit from the source's image in `j`, and
-// its extension across the join (the relief mirrored) holds the other order,
-// so both second-order paths take the relief's lobes, exactly so as the relief
-// flattens. Other pairs and higher orders keep the images with Eckart's factor
-// (a finite unjoined `j` would need its own diffraction).
-pub fn via_pairs(scene: &Scene) -> Vec<(usize, usize)> {
+// A second reflection on a flat surface on the way to or from a surface with
+// relief. `receiver` puts it between the relief and the microphone (the
+// relief heard from the microphone's image), otherwise between the source
+// and the relief (the relief lit from the source's image). A joined surface
+// has no `cutoff_hz`: it is held by the join's extension; an unjoined one is
+// an unbounded mirror times its own finite-size factor, the design frequency
+// of the flat image path and its edge correction, which gives the images
+// again as the relief flattens.
+#[derive(Clone, Copy, Debug)]
+pub struct Via {
+    pub surface: usize,
+    pub receiver: bool,
+    pub cutoff_hz: Option<f64>,
+}
+
+// At a right-angled join the relief is lit from the source's image in the
+// flat surface, and its extension across the join (the relief mirrored) holds
+// the other order. A flat surface elsewhere takes each order whose flat image
+// path exists. Higher orders keep the images with Eckart's factor.
+pub fn via_pairs(scene: &Scene) -> Vec<(usize, Via)> {
     if scene.max_order < 2 || scene.pipe.is_some() {
         return Vec::new();
     }
@@ -117,7 +130,13 @@ pub fn via_pairs(scene: &Scene) -> Vec<(usize, usize)> {
                 continue;
             }
             if joined_with(scene, i, j) {
-                list.push((i, j));
+                list.push((i, Via { surface: j, receiver: false, cutoff_hz: None }));
+                continue;
+            }
+            for (receiver, sequence) in [(false, [i, j]), (true, [j, i])] {
+                let Some(path) = crate::images::path_through(scene, &sequence) else { continue };
+                let cutoff_hz = path.reflections.iter().find(|r| r.surface == j).map(|r| r.cutoff_hz);
+                list.push((i, Via { surface: j, receiver, cutoff_hz }));
             }
         }
     }
@@ -132,7 +151,8 @@ fn joined_with(scene: &Scene, index: usize, other: usize) -> bool {
 struct Context<'a> {
     scene: &'a Scene,
     index: usize,
-    via: Option<usize>,
+    via: Option<Via>,
+    microphone: V3,
     domain: Polygon,
     lit_normal: V3,
     relief_element: f64,
@@ -162,23 +182,40 @@ impl Context<'_> {
 
     fn incident(&self, x: V3) -> crate::scene::Incident {
         match self.via {
-            Some(j) => {
-                let mirror = &self.scene.surfaces[j].polygon;
+            Some(via) if !via.receiver => {
+                let mirror = &self.scene.surfaces[via.surface].polygon;
                 let mut incident = self.scene.incident(mirror.mirror_point(x));
                 incident.towards_source = mirror.mirror_direction(incident.towards_source);
                 incident
             }
-            None => self.scene.incident(x),
+            _ => self.scene.incident(x),
         }
     }
 
-    // Whether the leg from `x` towards the source's image passes the via
-    // surface where it is solid and is otherwise clear on both sides.
-    fn through_via(&self, j: usize, x: V3, direction: V3, length: f64) -> bool {
+    // Whether the leg from `x` towards an image in the via surface passes the
+    // surface (where it is solid, for a joined one; anywhere on its plane for
+    // an unjoined one, whose size is its own factor) and is otherwise clear on
+    // both sides.
+    fn through_via(&self, via: Via, x: V3, direction: V3, length: f64) -> bool {
+        let j = via.surface;
         let surface = &self.scene.surfaces[j];
-        let Some(t) = surface.polygon.ray_hit(x, direction, length) else { return false };
+        let t = if via.cutoff_hz.is_none() {
+            let Some(t) = surface.polygon.ray_hit(x, direction, length) else { return false };
+            let hit = crate::geom::add(x, scale(direction, t));
+            if !surface.is_solid(surface.polygon.to_plane(hit)) {
+                return false;
+            }
+            t
+        } else {
+            let along = dot(direction, surface.polygon.normal);
+            let t = -surface.polygon.signed_distance(x) / along;
+            if along.abs() < 1e-12 || t <= 1e-7 || t >= length - 1e-7 {
+                return false;
+            }
+            t
+        };
         let hit = crate::geom::add(x, scale(direction, t));
-        if !surface.is_solid(surface.polygon.to_plane(hit)) || self.scene.occluded(&[self.index, j], x, direction, t) {
+        if self.scene.occluded(&[self.index, j], x, direction, t) {
             return false;
         }
         let onward = surface.polygon.mirror_direction(direction);
@@ -188,9 +225,9 @@ impl Context<'_> {
 
 // Each surface's own scattering, then the second-order pairs that `via_pairs`
 // gives to the Kirchhoff sum.
-pub fn traversals(scene: &Scene) -> Vec<(usize, Option<usize>)> {
+pub fn traversals(scene: &Scene) -> Vec<(usize, Option<Via>)> {
     let single = scene.surfaces.iter().enumerate().filter(|(_, s)| s.strength > 0.0).map(|(i, _)| (i, None));
-    single.chain(via_pairs(scene).into_iter().map(|(i, j)| (i, Some(j)))).collect()
+    single.chain(via_pairs(scene).into_iter().map(|(i, via)| (i, Some(via)))).collect()
 }
 
 fn extension(scene: &Scene, bins: usize) -> f64 {
@@ -202,9 +239,9 @@ fn extension(scene: &Scene, bins: usize) -> f64 {
 // Where it binds, the quadtree's root is sized so that leaves take exactly
 // this size; halving the bounding square instead gave up to four times the
 // limit.
-pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<usize>)], bins: usize) -> f64 {
+pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<Via>)], bins: usize) -> f64 {
     let reach = extension(scene, bins);
-    let area: f64 = traversals.iter().filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat()).map(|&(i, via)| domain(scene, i, reach, via).area).sum();
+    let area: f64 = traversals.iter().filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat()).map(|&(i, via)| domain(scene, i, reach, via.map(|v| v.surface)).area).sum();
     (area / scene.quality.element_limit).sqrt()
 }
 
@@ -293,21 +330,23 @@ pub fn edge_depth(scene: &Scene, index: usize, via: Option<usize>, bins: usize) 
 // returns the number of elements it took; none when the surface is seen
 // edge-on from the source.
 #[allow(clippy::too_many_arguments)]
-pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<usize>, strength: f64, relief_floor: f64, part: Part, histograms: &mut Histograms) -> Option<usize> {
+pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<Via>, strength: f64, relief_floor: f64, part: Part, histograms: &mut Histograms) -> Option<usize> {
     let surface = &scene.surfaces[index];
     let facing = match via {
-        Some(j) => {
-            let mirror = &scene.surfaces[j].polygon;
+        Some(v) if !v.receiver => {
+            let mirror = &scene.surfaces[v.surface].polygon;
             match scene.source {
                 None => dot(surface.polygon.normal, mirror.mirror_direction(scene.arrival)),
                 Some(source) => surface.polygon.signed_distance(mirror.mirror_point(source)),
             }
         }
-        None => scene.source_side(&surface.polygon),
+        _ => scene.source_side(&surface.polygon),
     };
     if facing.abs() < 1e-9 {
         return None;
     }
+    let mirror = via.filter(|v| v.receiver).map(|v| &scene.surfaces[v.surface].polygon);
+    let gradients = scene.gradients().into_iter().map(|(set, pattern, facing)| (set, pattern, mirror.map_or(facing, |m| m.mirror_direction(facing)))).collect();
     let lit_normal = if facing > 0.0 { surface.polygon.normal } else { scale(surface.polygon.normal, -1.0) };
     let rate = scene.sample_rate * OVERSAMPLING as f64;
     let reach = extension(scene, histograms.bins());
@@ -317,7 +356,8 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<u
         scene,
         index,
         via,
-        domain: domain(scene, index, reach, via),
+        microphone: mirror.map_or(scene.microphone, |m| m.mirror_point(scene.microphone)),
+        domain: domain(scene, index, reach, via.map(|v| v.surface)),
         lit_normal,
         relief_element,
         rate,
@@ -327,7 +367,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<u
         elements: 0,
         part,
         traversal,
-        gradients: scene.gradients(),
+        gradients,
     };
     let (lo, hi) = context.domain.bounds();
     let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]);
@@ -398,7 +438,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: u
     let solid = samples.iter().filter(|&&q| is_solid(q)).count();
     let vertex_inside = domain.points.iter().any(|p| (p[0] - centre[0]).abs() <= h && (p[1] - centre[1]).abs() <= h);
     let x = domain.to_space(centre);
-    let to_microphone = sub(context.scene.microphone, x);
+    let to_microphone = sub(context.microphone, x);
     let distance = norm(to_microphone);
     let c = context.scene.speed_of_sound;
     let incident = context.incident(x);
@@ -468,17 +508,22 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     }
     let towards_source_clear = virtual_element
         || match context.via {
-            Some(j) => context.through_via(j, x, incident.towards_source, incident.source_distance),
-            None => !scene.occluded(&skip, x, incident.towards_source, incident.source_distance),
+            Some(via) if !via.receiver => context.through_via(via, x, incident.towards_source, incident.source_distance),
+            _ => !scene.occluded(&skip, x, incident.towards_source, incident.source_distance),
         };
     if !towards_source_clear {
         return;
     }
-    let to_microphone = sub(scene.microphone, x);
+    let to_microphone = sub(context.microphone, x);
     let distance = norm(to_microphone).max(NEAREST_DISTANCE_METRES);
     let direction = scale(to_microphone, 1.0 / distance);
     let cos_scatter = dot(tilted, direction);
-    if cos_scatter > 0.0 && !virtual_element && scene.occluded(&skip, x, direction, distance) {
+    let heard_via = context.via.filter(|v| v.receiver);
+    let blocked = match heard_via {
+        Some(via) => !context.through_via(via, x, direction, distance),
+        None => !virtual_element && scene.occluded(&skip, x, direction, distance),
+    };
+    if cos_scatter > 0.0 && blocked {
         return;
     }
     if cos_scatter > 0.0 && shades(direction) {
@@ -486,7 +531,8 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     }
     let c = scene.speed_of_sound;
     let delay = (incident.extra_metres + distance) / c * context.rate;
-    let (listener_delay, weights) = scene.split(scale(direction, -1.0), distance);
+    let arriving = heard_via.map_or(direction, |via| scene.surfaces[via.surface].polygon.mirror_direction(direction));
+    let (listener_delay, weights) = scene.split(scale(arriving, -1.0), distance);
     let listener_shift = listener_delay * context.rate;
     let length = context.histograms.bins();
     if delay >= (length - 2) as f64 {
