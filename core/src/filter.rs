@@ -12,6 +12,7 @@ use std::f64::consts::PI;
 // the head's spectra reach backwards, and through a pipe mouth that hears the
 // sound before the microphone does (`lead_seconds`).
 const HORIZON_MARGIN_SAMPLES: f64 = 256.0;
+const DEPTH_CLASSES_PER_OCTAVE: f64 = 2.0;
 
 fn sinc(x: f64) -> f64 {
     if x.abs() < 1e-12 {
@@ -137,10 +138,12 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
     let reflection: Vec<Vec<Complex64>> = scene.surfaces.iter().map(|s| minimum_phase(&s.reflection, n, fs, &mut fft)).collect();
     let j = Complex64::new(0.0, 1.0);
 
-    // Surfaces of one material share their histograms; each group is filled,
-    // transformed, and freed before the next, so only one is held at a time.
+    // Surfaces of one material and of about one screen depth (`edge`) share
+    // their histograms; each group is filled, transformed, and freed before
+    // the next, so only one is held at a time.
     let traversals = traversals(scene);
     let floor = relief_floor(scene, &traversals, horizon);
+    let depths: Vec<(f64, f64)> = traversals.iter().map(|&(index, also)| edge_depth(scene, index, also, horizon)).collect();
     let mut groups: Vec<(Vec<u64>, Vec<usize>)> = Vec::new();
     for (traversal, &(index, also)) in traversals.iter().enumerate() {
         let surface = &scene.surfaces[index];
@@ -149,6 +152,7 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
             key.push(u64::MAX);
             key.extend(scene.surfaces[j].reflection.iter().map(|r| r.to_bits()).chain(scene.surfaces[j].pattern.low_frequency_key()));
         }
+        key.push((depths[traversal].0.log2() * DEPTH_CLASSES_PER_OCTAVE).round().to_bits());
         match groups.iter_mut().find(|(k, _)| *k == key) {
             Some((_, members)) => members.push(traversal),
             None => groups.push((key, vec![traversal])),
@@ -157,27 +161,23 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
 
     for (_, members) in &groups {
         let mut h = Histograms::new(scene.sets(), horizon);
-        let mut spare: Option<Histograms> = None;
         let mut heard_from = None;
+        let (mut depth_sum, mut weight_sum) = (0.0, 0.0);
         for &traversal in members {
             let (index, also) = traversals[traversal];
             let s = scene.surfaces[index].strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
-            let tau_bins = edge_depth(scene, index, also, horizon) / c * fs * OVERSAMPLING as f64;
-            let target = if heard_from.is_none() {
-                &mut h
-            } else {
-                let spare = spare.get_or_insert_with(|| Histograms::new(scene.sets(), horizon));
-                spare.clear();
-                spare
-            };
-            if scatter_into(scene, traversal, index, also, s, floor, part, target).is_none() {
+            if scatter_into(scene, traversal, index, also, s, floor, part, &mut h).is_none() {
                 continue;
             }
-            target.edge_correct_rigid(tau_bins);
-            match heard_from {
-                None => heard_from = Some((index, also)),
-                Some(_) => h.add(spare.as_ref().expect("filled above")),
+            let (depth, weight) = depths[traversal];
+            if depth.is_finite() {
+                depth_sum += depth * weight * s;
+                weight_sum += weight * s;
             }
+            heard_from.get_or_insert((index, also));
+        }
+        if weight_sum > 0.0 {
+            h.edge_correct_rigid(depth_sum / weight_sum / c * fs * OVERSAMPLING as f64);
         }
         let Some((index, also)) = heard_from else { continue };
         let surface = &scene.surfaces[index];

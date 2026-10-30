@@ -8,7 +8,9 @@
 // frequencies (class A), 1 at high ones, where it fades as 1/(kΦ)² so that a
 // large surface keeps its physical-optics edges, and at most 0.7 dB above 1
 // between (class C). One effective Φ per surface for its Kirchhoff sum, its
-// plain mean for the images.
+// plain mean for the images. Surfaces of one material, whose histograms are
+// shared, take their effective Φ's mean weighted by how much of each the
+// microphone hears.
 //
 // Φ at a point is the strip's form over the chord across the nearest edge,
 // d1 to that edge and d2 to the far side, times a factor running from 1 for a
@@ -118,18 +120,21 @@ pub fn mean_depth(polygon: &Polygon, pattern: &Pattern) -> f64 {
 // the surface weighted by each part's physical-optics share there, 1/(R Φ̄)
 // from afar and 1/R² close by, where Φ̄ is its plain mean. `reach` is the
 // harmonic distance to the microphone and the source.
-pub fn effective_depth(polygon: &Polygon, pattern: &Pattern, to_space: impl Fn([f64; 2]) -> V3, distance: impl Fn(V3) -> f64) -> f64 {
+// Returns Φ and the total weight.
+pub fn effective_depth(polygon: &Polygon, pattern: &Pattern, to_space: impl Fn([f64; 2]) -> V3, distance: impl Fn(V3) -> f64) -> (f64, f64) {
     let samples: Vec<(f64, f64)> =
         solid_grid(polygon, pattern).into_iter().map(|q| (screen_depth(polygon, pattern, q), distance(to_space(q)).max(NEAREST_WEIGHT_METRES))).collect();
     if samples.is_empty() {
-        return f64::INFINITY;
+        return (f64::INFINITY, 0.0);
     }
+    let (lo, hi) = polygon.bounds();
+    let cell = (hi[0] - lo[0]) * (hi[1] - lo[1]) / (GRID * GRID) as f64;
     let plain = samples.iter().map(|(depth, _)| depth).sum::<f64>() / samples.len() as f64;
     let (weighted, total) = samples.iter().fold((0.0, 0.0), |(sum, total), &(depth, r)| {
         let weight = 1.0 / (r * plain) + 1.0 / (r * r);
         (sum + weight * depth, total + weight)
     });
-    weighted / total
+    (weighted / total, total * cell)
 }
 
 pub fn harmonic_reach(point: V3, microphone: V3, source_distance: f64) -> f64 {
@@ -168,10 +173,12 @@ mod tests {
     #[test]
     fn a_disc_takes_lambs_added_mass() {
         let a = 0.3;
-        let disc: Vec<V3> = (0..256).map(|i| {
-            let t = i as f64 / 256.0 * std::f64::consts::TAU;
-            [a * t.cos(), a * t.sin(), 0.0]
-        }).collect();
+        let disc: Vec<V3> = (0..256)
+            .map(|i| {
+                let t = i as f64 / 256.0 * std::f64::consts::TAU;
+                [a * t.cos(), a * t.sin(), 0.0]
+            })
+            .collect();
         let m = added_mass(&Polygon::new(&disc).unwrap());
         let exact = 8.0 / 3.0 * a * a * a;
         assert!((m / exact - 1.0).abs() < 0.01, "disc {m} vs {exact}");

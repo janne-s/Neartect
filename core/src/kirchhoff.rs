@@ -72,14 +72,6 @@ impl Histograms {
         self.sets * LISTS
     }
 
-    pub fn clear(&mut self) {
-        self.values.fill(0.0);
-    }
-
-    pub fn add(&mut self, other: &Histograms) {
-        self.values.iter_mut().zip(&other.values).for_each(|(a, b)| *a += b);
-    }
-
     // The rigid lists through the edge correction (`edge`), τ in bins, by
     // the bilinear transform.
     pub fn edge_correct_rigid(&mut self, tau_bins: f64) {
@@ -291,7 +283,7 @@ pub fn plain_depth(scene: &Scene, index: usize, bins: usize) -> f64 {
     crate::edge::mean_depth(&screen(scene, index, bins, None), &scene.surfaces[index].pattern)
 }
 
-pub fn edge_depth(scene: &Scene, index: usize, via: Option<usize>, bins: usize) -> f64 {
+pub fn edge_depth(scene: &Scene, index: usize, via: Option<usize>, bins: usize) -> (f64, f64) {
     let surface = &scene.surfaces[index];
     let domain = screen(scene, index, bins, via);
     crate::edge::effective_depth(&domain, &surface.pattern, |q| domain.to_space(q), |x| crate::edge::harmonic_reach(x, scene.microphone, scene.incident(x).source_distance))
