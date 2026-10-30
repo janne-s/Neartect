@@ -235,6 +235,23 @@ export function releaseObject(space, id) {
   boundPoints(space).forEach(point => { if (point.reference === id) referTo(space, point, null); });
 }
 
+// The inside model's share for a point on a pipe's axis region near a
+// mouth: 1 deeper than the radius inside, 0 as far outside, and a smoothstep
+// between, so that the filter changes smoothly through the mouth (class C).
+export function pipeShare(space, point) {
+  for (const object of space.objects) {
+    if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
+    const [x, y, z] = toLocal(object, point);
+    const [diameter, length] = object.size;
+    const radius = diameter / 2;
+    const depth = length / 2 - Math.abs(y);
+    if (Math.hypot(x, z) >= radius || depth <= -radius) continue;
+    const t = Math.min(1, Math.max(0, (depth + radius) / (2 * radius)));
+    return { pipe: { object, mouthA: toWorld(object, [0, -length / 2, 0]), mouthB: toWorld(object, [0, length / 2, 0]), radius }, share: t * t * (3 - 2 * t) };
+  }
+  return null;
+}
+
 export function pipeAround(space, point) {
   for (const object of space.objects) {
     if (object.kind !== 'pipe' || !(object.strength > 0)) continue;

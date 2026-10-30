@@ -95,9 +95,9 @@ continuation of joined edges at other than right angles, and the strength
 control class C. Both heads are class B: the measured one as minimum-phase
 responses with delays interpolated between directions, the sphere as Brown
 and Duda's model. The pipe interior is class B, with its cross modes' coupling at the mouth
+and the blend between outside and inside within a radius of the mouth
 class C. Not modelled: the
-microphone capsule's own size, a smooth change at a pipe mouth (the model
-switches from outside to inside there), room modes
+microphone capsule's own size, room modes
 of closed small spaces, edge diffraction into the shadow beyond the Kirchhoff
 approximation, angle-dependent absorption, and surface vibration. A panel
 small against the wavelength takes a low-frequency edge correction: exact

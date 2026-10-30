@@ -1,6 +1,6 @@
 import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
-import { aimVector, expandObject, pipeAround, pointPosition } from './objects.js';
+import { aimVector, expandObject, pipeAround, pipeShare, pointPosition } from './objects.js';
 import { rigMembers } from './rigs.js';
 import { arrivalVector, PATTERNS, speedOfSound } from './space.js';
 
@@ -65,9 +65,8 @@ export function alignment(space, positions) {
   return lead.map(l => ({ delaySeconds: (first - l) / c, gain: 1 }));
 }
 
-export function packSpace(space, listener, aligned, longest, second = null) {
+export function packSpace(space, listener, aligned, longest, second = null, pipe = pipeAround(space, listener.position), share = 1) {
   const microphone = listener.position;
-  const pipe = pipeAround(space, microphone);
   const point = space.source.kind === 'point';
   const rate = space.render.sampleRateHz;
   const values = {
@@ -79,7 +78,7 @@ export function packSpace(space, listener, aligned, longest, second = null) {
     ...vector('arrival', arrivalVector(space.arrival)),
     pointSource: point ? 1 : 0,
     ...vector('source', point ? pointPosition(space, space.source) : [0, 0, 0]),
-    gain: aligned.gain,
+    gain: aligned.gain * share,
     delaySeconds: aligned.delaySeconds,
     pipeRadiusMetres: pipe ? pipe.radius : 0,
     ...vector('pipeMouthA', pipe ? pipe.mouthA : [0, 0, 0]),
@@ -133,10 +132,14 @@ export function channelJobs(space) {
   for (let index = 0; index < list.length; index += 1) {
     const listener = list[index];
     const second = coincident(listener, list[index + 1]) ? list[index + 1] : null;
-    const packed = packSpace(space, listener, aligned[index], longest, second);
-    const split = !pipeAround(space, listener.position) && space.objects.some(hasRelief);
-    const parts = !split ? 1 : listener.ear?.head === 'measured' ? MEASURED_HEAD_PARTS : RELIEF_PARTS;
-    jobs.push({ ...packed, parts, channels: second ? 2 : 1 });
+    const near = pipeShare(space, listener.position);
+    const models = !near || near.share <= 0 ? [[null, 1]] : near.share >= 1 ? [[near.pipe, 1]] : [[near.pipe, near.share], [null, 1 - near.share]];
+    const variants = models.map(([pipe, share]) => {
+      const packed = packSpace(space, listener, aligned[index], longest, second, pipe, share);
+      const split = !pipe && space.objects.some(hasRelief);
+      return { ...packed, parts: !split ? 1 : listener.ear?.head === 'measured' ? MEASURED_HEAD_PARTS : RELIEF_PARTS };
+    });
+    jobs.push({ variants, channels: second ? 2 : 1 });
     if (second) index += 1;
   }
   return jobs;
@@ -188,8 +191,9 @@ export function runJob(core, job) {
 // parts' spectra) and may run them anywhere; the parts are summed in order.
 export async function computeFilter(space, run) {
   const list = listeners(space);
-  const jobs = await Promise.all(channelJobs(space).map(async ({ settings, surfaces, parts, channels: count }) => {
-    const spectra = await Promise.all(Array.from({ length: parts }, (_, part) => run({ settings, surfaces, part, parts })));
+  const jobs = await Promise.all(channelJobs(space).map(async ({ variants, channels: count }) => {
+    const settings = variants[0].settings;
+    const spectra = await Promise.all(variants.flatMap(({ settings, surfaces, parts }) => Array.from({ length: parts }, (_, part) => run({ settings, surfaces, part, parts }))));
     const joined = new Float64Array(spectra.reduce((sum, s) => sum + s.length, 0));
     spectra.reduce((at, s) => { joined.set(s, at); return at + s.length; }, 0);
     const filters = await run({ settings, spectra: joined });

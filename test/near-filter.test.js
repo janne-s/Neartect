@@ -228,7 +228,7 @@ test('a job takes no more WebAssembly memory than its estimate', async () => {
     const wasm = await init();
     const base = situationSpace('corner', defaultSpace());
     const space = readSpace({ ...base, render: { ...base.render, lengthMilliseconds: ${milliseconds}, sampleRateHz: ${rate} }, microphones: [], rigs: [defaultRig('${rig}', { position: base.microphones[0].position, head: 'measured' })] });
-    const job = channelJobs(space)[0];
+    const job = channelJobs(space)[0].variants[0];
     runJob(core, { ...job, part: 0 });
     console.log(JSON.stringify({ estimate: jobBytes(job), used: wasm.memory.buffer.byteLength }));
   `], { cwd: new URL('.', import.meta.url) }));
@@ -236,4 +236,22 @@ test('a job takes no more WebAssembly memory than its estimate', async () => {
     const { estimate, used } = measure(rig, milliseconds, rate);
     assert.ok(used <= estimate && estimate < 2 * used, `${rig} ${milliseconds} ms ${rate} Hz: estimate ${estimate}, used ${used}`);
   }
+});
+
+test('the filter changes smoothly through a pipe mouth', async () => {
+  const { situationSpace } = await import('../src/domain/situations.js');
+  const { magnitudeResponse } = await import('../src/domain/response.js');
+  const base = situationSpace('pipe', defaultSpace());
+  const octaves = async x => {
+    const { samples } = await nearFilter(readSpace({ ...base, microphones: [{ position: [x, 0, 0.5] }] }));
+    const { frequencies, decibels } = magnitudeResponse(samples, 48000);
+    const levels = [];
+    for (let lo = 44; lo < 16000; lo *= 2) {
+      const inBand = decibels.filter((_, k) => frequencies[k] >= lo && frequencies[k] < 2 * lo);
+      levels.push(10 * Math.log10(inBand.reduce((sum, db) => sum + 10 ** (db / 10), 0) / inBand.length));
+    }
+    return levels;
+  };
+  const [outside, inside] = [await octaves(1.001), await octaves(0.999)];
+  outside.forEach((level, band) => assert.ok(Math.abs(level - inside[band]) < 0.5, `octave ${band}: ${level} vs ${inside[band]}`));
 });
