@@ -132,13 +132,15 @@ fn image_design_frequency_follows_a_small_panels_kirchhoff_slope() {
     let length = 8192;
     for (half, height, degrees) in [(0.15, 0.5, 0.0), (0.5, 1.0, 0.0), (0.15, 0.5, 45.0)] {
         let angle = f64::to_radians(degrees);
-        let panel = surface(rectangle([0.0, 0.0, 0.0], [half, 0.0, 0.0], [0.0, half, 0.0]), RIGID);
-        let h = near_spectrum(&scene(vec![panel], [0.0, 0.0, height], [angle.sin(), 0.0, angle.cos()], length, 1));
+        let polygon = rectangle([0.0, 0.0, 0.0], [half, 0.0, 0.0], [0.0, half, 0.0]);
+        let depth = neartect_core::edge::mean_depth(&polygon, &Pattern::Solid);
+        let h = near_spectrum(&scene(vec![surface(polygon, RIGID)], [0.0, 0.0, height], [angle.sin(), 0.0, angle.cos()], length, 1));
         let to_microphone = height / angle.cos();
         let design = neartect_core::images::design_frequency(C, 2.0 * to_microphone, (2.0 * half).powi(2), angle.cos());
         let hz = design / 4.0;
+        let image = 0.25 * neartect_core::edge::response(std::f64::consts::TAU * hz, depth, C).norm();
         let reflected = (at(&h, length, hz) - Complex64::new(1.0, 0.0)).norm();
-        assert!((reflected / 0.25 - 1.0).abs() < 0.1, "{half} {height} {degrees}: {reflected}");
+        assert!((reflected / image - 1.0).abs() < 0.1, "{half} {height} {degrees}: {reflected} vs {image}");
     }
 }
 
@@ -424,7 +426,7 @@ fn cardioid_over_a_floor_matches_its_image_with_proximity() {
     let length = 4096;
     let (microphone, source) = ([1.0, 0.0, 0.5], [0.0, 0.0, 1.0]);
     let facing = normalize([-1.0, 0.0, 0.0]);
-    let s = aimed(from_point(vec![floor(20.0)], microphone, source, length, 1), 0.5, facing);
+    let s = aimed(from_point(vec![floor(60.0)], microphone, source, length, 1), 0.5, facing);
     let h = near_spectrum(&s);
     let direct = distance(source, microphone);
     let image_point = [0.0, 0.0, -1.0];
@@ -797,5 +799,41 @@ fn a_coincident_pair_hears_what_its_capsules_hear_alone() {
             let peak = alone.iter().map(|x| x.norm()).fold(0.0, f64::max);
             assert!(worst < 1e-12 * peak, "capsule {capsule}: {worst}");
         }
+    }
+}
+
+fn disc(radius: f64) -> Surface {
+    let points: Vec<V3> = (0..96)
+        .map(|i| {
+            let t = i as f64 / 96.0 * std::f64::consts::TAU;
+            [radius * t.cos(), radius * t.sin(), 0.0]
+        })
+        .collect();
+    surface(Polygon::new(&points).unwrap(), RIGID)
+}
+
+#[test]
+fn a_small_disc_close_to_the_microphone_does_not_double_the_bass() {
+    let length = 8192;
+    let a = 0.15;
+    let h = near_spectrum(&scene(vec![disc(a)], [0.0, 0.0, 0.001], [0.0, 0.0, 1.0], length, 1));
+    let hz = 30.0;
+    let ka = std::f64::consts::TAU * hz / C * a;
+    let exact = Complex64::new(1.0, std::f64::consts::FRAC_2_PI * ka).norm();
+    let level = 20.0 * (at(&h, length, hz).norm() / exact).log10();
+    assert!(level.abs() < 0.5, "{level} dB from Lamb's limit");
+}
+
+#[test]
+fn a_small_disc_scatters_rayleighs_dipole_from_afar() {
+    let length = 8192;
+    let (a, r) = (0.15, 2.0);
+    let h = near_spectrum(&scene(vec![disc(a)], [0.0, 0.0, r], [0.0, 0.0, 1.0], length, 1));
+    for ka in [0.1, 0.2] {
+        let hz = ka * C / (std::f64::consts::TAU * a);
+        let k = ka / a;
+        let exact = 2.0 / (3.0 * std::f64::consts::PI) * k * k * a * a * a / r;
+        let scattered = (at(&h, length, hz) - Complex64::new(1.0, 0.0)).norm();
+        assert!((scattered / exact - 1.0).abs() < 0.25, "ka {ka}: {scattered} vs {exact}");
     }
 }

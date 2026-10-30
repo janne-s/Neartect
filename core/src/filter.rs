@@ -1,6 +1,6 @@
 use crate::geom::{dot, scale, sub, V3};
 use crate::images::specular_paths;
-use crate::kirchhoff::{relief_floor, scatter_into, traversals, Histograms, Part, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
+use crate::kirchhoff::{edge_depth, plain_depth, relief_floor, scatter_into, traversals, Histograms, Part, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
 use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
 use crate::spectrum::{angular_frequency, minimum_phase, Fft};
@@ -157,12 +157,26 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
 
     for (_, members) in &groups {
         let mut h = Histograms::new(scene.sets(), horizon);
+        let mut spare: Option<Histograms> = None;
         let mut heard_from = None;
         for &traversal in members {
             let (index, also) = traversals[traversal];
             let s = scene.surfaces[index].strength * also.map_or(1.0, |j| scene.surfaces[j].strength);
-            if scatter_into(scene, traversal, index, also, s, floor, part, &mut h).is_some() && heard_from.is_none() {
-                heard_from = Some((index, also));
+            let tau_bins = edge_depth(scene, index, also, horizon) / c * fs * OVERSAMPLING as f64;
+            let target = if heard_from.is_none() {
+                &mut h
+            } else {
+                let spare = spare.get_or_insert_with(|| Histograms::new(scene.sets(), horizon));
+                spare.clear();
+                spare
+            };
+            if scatter_into(scene, traversal, index, also, s, floor, part, target).is_none() {
+                continue;
+            }
+            target.edge_correct_rigid(tau_bins);
+            match heard_from {
+                None => heard_from = Some((index, also)),
+                Some(_) => h.add(spare.as_ref().expect("filled above")),
             }
         }
         let Some((index, also)) = heard_from else { continue };
@@ -198,9 +212,13 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
     }
 
     let paths = if whole { specular_paths(scene) } else { Vec::new() };
+    let mut depths: Vec<Option<f64>> = vec![None; scene.surfaces.len()];
     for path in paths {
         let strength: f64 = path.reflections.iter().map(|r| scene.surfaces[r.surface].strength).product();
         let path_split = scene.split(path.from, path.distance);
+        for r in &path.reflections {
+            depths[r.surface].get_or_insert_with(|| plain_depth(scene, r.surface, horizon));
+        }
         for k in 0..=half {
             let omega = angular_frequency(k, n, fs);
             let mut gain = Complex64::from_polar(strength * path.gain, -omega * path.delay_seconds);
@@ -208,7 +226,8 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
                 let cutoff = 2.0 * PI * r.cutoff_hz;
                 let grating = scene.surfaces[r.surface].pattern.low_frequency_factor(k as f64 * fs / n as f64, c);
                 let rough = (-2.0 * (omega / c * r.rough_metres).powi(2)).exp();
-                gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff) * (grating * rough);
+                let edge = crate::edge::response(omega, depths[r.surface].unwrap_or(f64::INFINITY), c);
+                gain *= reflection[r.surface][k] * (j * omega) / (j * omega + cutoff) * edge * (grating * rough);
             }
             for (capsule, spectrum) in total.iter_mut().enumerate() {
                 spectrum[k] += heard(&path_split, capsule, k) * gain;

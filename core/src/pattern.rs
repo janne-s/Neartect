@@ -66,6 +66,22 @@ impl Pattern {
         }
     }
 
+    // The distance from `q` to an opening's outline and the unit direction
+    // away from the opening, for a point outside it.
+    pub fn opening_edge(&self, q: [f64; 2]) -> Option<(f64, [f64; 2])> {
+        let Pattern::Opening { centre, half, round } = *self else { return None };
+        let offset = [q[0] - centre[0], q[1] - centre[1]];
+        let length = offset[0].hypot(offset[1]);
+        let away = if length > 1e-12 { [offset[0] / length, offset[1] / length] } else { [1.0, 0.0] };
+        let gap = if round {
+            let scaled = (offset[0] / half[0]).hypot(offset[1] / half[1]);
+            ((scaled - 1.0) * half[0].min(half[1])).max(0.0)
+        } else {
+            (offset[0].abs() - half[0]).max(0.0).hypot((offset[1].abs() - half[1]).max(0.0))
+        };
+        Some((gap, away))
+    }
+
     pub fn may_cross(&self, centre: [f64; 2], size: f64) -> bool {
         match *self {
             Pattern::Solid => false,

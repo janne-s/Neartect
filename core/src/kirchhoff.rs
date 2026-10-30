@@ -72,6 +72,34 @@ impl Histograms {
         self.sets * LISTS
     }
 
+    pub fn clear(&mut self) {
+        self.values.fill(0.0);
+    }
+
+    pub fn add(&mut self, other: &Histograms) {
+        self.values.iter_mut().zip(&other.values).for_each(|(a, b)| *a += b);
+    }
+
+    // The rigid lists through the edge correction (`edge`), τ in bins, by
+    // the bilinear transform.
+    pub fn edge_correct_rigid(&mut self, tau_bins: f64) {
+        if !tau_bins.is_finite() {
+            return;
+        }
+        let [b0, b1, b2, a1, a2] = crate::edge::biquad(2.0 * tau_bins);
+        let width = self.width();
+        for set in 0..self.sets {
+            for list in [RIGID_FAR, RIGID_NEAR] {
+                let (mut x1, mut x2, mut y1, mut y2) = (0.0, 0.0, 0.0, 0.0);
+                for value in self.values[set * LISTS + list..].iter_mut().step_by(width) {
+                    let y = b0 * *value + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+                    (x2, x1, y2, y1) = (x1, *value, y1, y);
+                    *value = y;
+                }
+            }
+        }
+    }
+
     pub fn list(&self, set: usize, list: usize) -> impl Iterator<Item = f64> + '_ {
         self.values[set * LISTS + list..].iter().step_by(self.width()).copied()
     }
@@ -186,6 +214,87 @@ pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<usize>)], bins: 
     let reach = extension(scene, bins);
     let area: f64 = traversals.iter().filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat()).map(|&(i, via)| domain(scene, i, reach, via).area).sum();
     (area / scene.quality.element_limit).sqrt()
+}
+
+// The screen depth Φ of surface `index` as heard at the microphone, in
+// metres (`edge`), over its domain with joined edges extended.
+fn same_edge((a, b): (V3, V3), (c, d): (V3, V3)) -> bool {
+    let close = |p: V3, q: V3| norm(sub(p, q)) < JOIN_TOLERANCE_METRES;
+    (close(a, c) && close(b, d)) || (close(a, d) && close(b, c))
+}
+
+fn has_edge(polygon: &Polygon, edge: (V3, V3)) -> bool {
+    (0..polygon.points.len()).any(|e| same_edge(polygon.edge(e), edge))
+}
+
+fn shares(scene: &Scene, index: usize, edge: (V3, V3)) -> bool {
+    scene.surfaces.iter().enumerate().any(|(j, other)| j != index && has_edge(&other.polygon, edge))
+}
+
+// Half the middle extent of the body that surface `index` belongs to through
+// shared edges: the scale the air flows round instead of a shared edge.
+fn body_scale(scene: &Scene, index: usize) -> f64 {
+    let mut body = vec![index];
+    let mut at = 0;
+    while at < body.len() {
+        let polygon = &scene.surfaces[body[at]].polygon;
+        for e in 0..polygon.points.len() {
+            let edge = polygon.edge(e);
+            for (j, other) in scene.surfaces.iter().enumerate() {
+                if !body.contains(&j) && has_edge(&other.polygon, edge) {
+                    body.push(j);
+                }
+            }
+        }
+        at += 1;
+    }
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for &i in &body {
+        let polygon = &scene.surfaces[i].polygon;
+        for &q in &polygon.points {
+            let p = polygon.to_space(q);
+            for k in 0..3 {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+        }
+    }
+    let mut extents = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+    extents.sort_by(f64::total_cmp);
+    extents[1] / 2.0
+}
+
+// The surface as a screen for the edge correction: joined edges extended as
+// for the Kirchhoff sum, and edges shared with the rest of a body continued
+// by the body's scale, since the air flows round the body there.
+fn screen(scene: &Scene, index: usize, bins: usize, via: Option<usize>) -> Polygon {
+    let polygon = &scene.surfaces[index].polygon;
+    let reach = extension(scene, bins);
+    let scale = body_scale(scene, index);
+    let distances: Vec<f64> = (0..polygon.points.len())
+        .map(|i| {
+            let edge = polygon.edge(i);
+            if joined(scene, index, edge, via) {
+                reach
+            } else if shares(scene, index, edge) {
+                scale
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    polygon.offset(&distances)
+}
+
+pub fn plain_depth(scene: &Scene, index: usize, bins: usize) -> f64 {
+    crate::edge::mean_depth(&screen(scene, index, bins, None), &scene.surfaces[index].pattern)
+}
+
+pub fn edge_depth(scene: &Scene, index: usize, via: Option<usize>, bins: usize) -> f64 {
+    let surface = &scene.surfaces[index];
+    let domain = screen(scene, index, bins, via);
+    crate::edge::effective_depth(&domain, &surface.pattern, |q| domain.to_space(q), |x| crate::edge::harmonic_reach(x, scene.microphone, scene.incident(x).source_distance))
 }
 
 // Adds surface `index`'s scattering, times `strength`, to `histograms` and

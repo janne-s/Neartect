@@ -1,3 +1,4 @@
+pub mod edge;
 pub mod filter;
 pub mod geom;
 pub mod hrtf;

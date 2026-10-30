@@ -98,9 +98,10 @@ and Duda's model. The pipe interior is class B, with its cross modes' coupling a
 class C. Not modelled: the
 microphone capsule's own size, a smooth change at a pipe mouth (the model
 switches from outside to inside there), room modes
-of closed small spaces, edge diffraction beyond the Kirchhoff
-approximation (into the shadow, and the bass of a panel small against the
-wavelength with the microphone close to it, which the model overstates), angle-dependent absorption, and surface vibration.
+of closed small spaces, edge diffraction into the shadow beyond the Kirchhoff
+approximation, angle-dependent absorption, and surface vibration. A panel
+small against the wavelength takes a low-frequency edge correction: exact
+in its limits (Lamb's disc), class C between.
 
 ## Development
 
