@@ -14,7 +14,7 @@ import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
 import { computeFilter, jobBytes, listeners } from './domain/near-filter.js';
-import { createRenderMarker, unfinishedRenderText } from './shared/ui/render-marker.js';
+import { createRenderMarker, renderLoadText } from './shared/ui/render-marker.js';
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
 
@@ -1115,4 +1115,9 @@ $('results-toggle').addEventListener('click', () => {
 
 view.centre(spaceCentre(state.space));
 changed({ save: false, panel: true, compute: !unfinishedFilter });
-if (unfinishedFilter) setStatus(unfinishedRenderText(unfinishedFilter), true);
+if (unfinishedFilter) {
+  const stopped = unfinishedFilter.hidden === true
+    ? 'The last filter stopped while the page was in the background'
+    : 'This device ran out of memory computing the last filter';
+  setStatus(`${stopped}${renderLoadText(unfinishedFilter)}`, true);
+}
