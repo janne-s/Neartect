@@ -34,6 +34,11 @@ export const SITUATIONS = Object.freeze({
     objects: [floor('woodFloor'), { kind: 'wall', name: 'Wall', position: [0, 0, 1.25], size: [5, 0, 2.5], material: 'plaster', opening: { shape: 'rectangle', sizeMetres: [0.9, 2.1], offsetMetres: [0, -0.2] } }],
     microphone: [0.2, 0.05, 1.5], arrival: { azimuthDegrees: 0, elevationDegrees: 0 }
   },
+  curved: {
+    label: 'By a curved wall',
+    objects: [floor(), { kind: 'plane', name: 'Curved wall', position: [0, -1, 1.5], size: [4, 0, 3], material: 'plaster', bend: { angleDegrees: 90, axis: 'up' } }],
+    microphone: [0, -0.4, 1.2], arrival: { azimuthDegrees: 0, elevationDegrees: 10 }
+  },
   corrugated: {
     label: 'By a corrugated wall',
     objects: [floor(), { kind: 'plane', name: 'Corrugated wall', position: [0, -1, 1.5], size: [6, 0, 3], material: 'rigid', relief: { shape: 'arches', heightMetres: 0.04, periodMetres: 0.15, directionDegrees: 0 } }],

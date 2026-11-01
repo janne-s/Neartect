@@ -1,6 +1,7 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector, signedTurn } from '../domain/space.js';
-import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
+import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointFrame, pointPosition, referenceObject, surfacePoint, toWorld } from '../domain/objects.js';
+import { bentNormal, bentPoint } from '../domain/bend.js';
 import { faceNormal, nearestSurface } from '../domain/placement.js';
 import { faceRelief, hasRelief } from '../domain/relief.js';
 import { headWidth, rigFrame, rigMembers } from '../domain/rigs.js';
@@ -43,6 +44,8 @@ const AIM_PIXELS = 26;
 const MOST_RELIEF_CELLS = 2400;
 const MOST_RELIEF_CELLS_ALONG = 240;
 const MOST_PROFILE_POINTS = 400;
+const BEND_STRIPS = 24;
+const BEND_PIECES = 16;
 
 const withAlpha = (color, alpha) => {
   const hex = color.trim().replace('#', '');
@@ -226,40 +229,95 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return chosen ? chosen.position : camera.target;
   }
 
+  const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+  const placed = (face, p) => bentPoint(face.bend, p);
+
+  // A bent face is drawn as strips across its arc; each strip strokes only
+  // the outline pieces it holds.
+  function faceParts(face) {
+    if (!face.bend) return [{ world: face.vertices, edges: null, first: true }];
+    const [a, b, c, d] = face.vertices;
+    const arcAcross = Math.abs(dot(normalize(sub(b, a)), face.bend.arc)) > 0.5;
+    const [p0, p1, q0, q1] = arcAcross ? [a, b, d, c] : [a, d, b, c];
+    return Array.from({ length: BEND_STRIPS }, (_, i) => {
+      const [t0, t1] = [i / BEND_STRIPS, (i + 1) / BEND_STRIPS];
+      const world = [lerp(p0, p1, t0), lerp(p0, p1, t1), lerp(q0, q1, t1), lerp(q0, q1, t0)].map(p => placed(face, p));
+      return { world, edges: [true, i === BEND_STRIPS - 1, true, i === 0], first: i === 0 };
+    });
+  }
+
   function drawFaces(context, colors, fill, edge) {
     faces = [];
     space.objects.forEach(object => {
       expandObject(object).forEach((face, faceIndex) => {
-        const corners = face.vertices.map(project);
-        if (corners.some(c => !c)) return;
-        faces.push({ object, face, faceIndex, corners, depth: corners.reduce((s, c) => s + c[2], 0) / corners.length });
+        for (const part of faceParts(face)) {
+          const corners = part.world.map(project);
+          if (corners.some(c => !c)) continue;
+          faces.push({ object, face, faceIndex, corners, part, depth: corners.reduce((s, c) => s + c[2], 0) / corners.length });
+        }
       });
     });
     faces.sort((a, b) => b.depth - a.depth);
     const active = activeObjectId();
-    for (const { object, face, corners } of faces) {
+    for (const { object, face, corners, part } of faces) {
       const member = object.id === active || objectInGroup(object.id);
       const highlighted = member || (hover?.type === 'object' && hover.id === object.id);
       const dim = focusing() && !member ? DIMMED : 1;
+      const outlineColor = highlighted ? colors.accent : edge;
       context.globalAlpha = (object.strength > 0 ? 1 : 0.4) * dim;
-      context.beginPath();
-      corners.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
-      context.closePath();
       const hole = face.pattern.kind === 'opening' ? openingOutline(face) : null;
-      if (hole) {
-        hole.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
+      const shape = () => {
+        context.beginPath();
+        corners.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
         context.closePath();
+        if (hole) {
+          hole.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
+          context.closePath();
+        }
+      };
+      if (part.edges) {
+        context.save();
+        context.beginPath();
+        corners.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
+        context.closePath();
+        context.clip();
+        if (face.pattern.kind !== 'grid') {
+          shape();
+          context.fillStyle = fill;
+          context.fill('evenodd');
+        }
+        if (hole) {
+          context.beginPath();
+          hole.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)));
+          context.closePath();
+          context.strokeStyle = outlineColor;
+          context.lineWidth = member ? 2 : 1;
+          context.stroke();
+        }
+        context.restore();
+        context.strokeStyle = outlineColor;
+        context.lineWidth = member ? 2 : 1;
+        context.beginPath();
+        part.edges.forEach((on, i) => {
+          if (!on) return;
+          const [p, q] = [corners[i], corners[(i + 1) % 4]];
+          context.moveTo(p[0], p[1]);
+          context.lineTo(q[0], q[1]);
+        });
+        context.stroke();
+      } else {
+        shape();
+        if (face.pattern.kind !== 'grid') {
+          context.fillStyle = fill;
+          context.fill('evenodd');
+        }
+        context.strokeStyle = outlineColor;
+        context.lineWidth = member ? 2 : 1;
+        context.stroke();
       }
-      if (face.pattern.kind !== 'grid') {
-        context.fillStyle = fill;
-        context.fill('evenodd');
-      }
-      context.strokeStyle = highlighted ? colors.accent : edge;
-      context.lineWidth = member ? 2 : 1;
-      context.stroke();
       context.lineWidth = 1;
-      if (face.pattern.kind === 'grid') drawBars(context, face, highlighted ? colors.accent : edge);
-      if (hasRelief(object)) drawRelief(context, object, face, hole ? [corners, hole] : [corners], highlighted ? colors.accent : edge);
+      if (part.first && face.pattern.kind === 'grid') drawBars(context, face, outlineColor);
+      if (part.first && hasRelief(object)) drawRelief(context, object, face, !part.edges ? (hole ? [corners, hole] : [corners]) : null, outlineColor);
       context.globalAlpha = 1;
     }
   }
@@ -275,7 +333,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const points = round
       ? Array.from({ length: RING_SEGMENTS }, (_, i) => [cu + hu * Math.cos(2 * Math.PI * i / RING_SEGMENTS), cv + hv * Math.sin(2 * Math.PI * i / RING_SEGMENTS)])
       : [[cu - hu, cv - hv], [cu + hu, cv - hv], [cu + hu, cv + hv], [cu - hu, cv + hv]];
-    const projected = points.map(([a, b]) => project(add(origin, add(scale(u, a), scale(v, b)))));
+    const projected = points.map(([a, b]) => project(placed(face, add(origin, add(scale(u, a), scale(v, b))))));
     return projected.every(Boolean) ? projected : null;
   }
 
@@ -292,6 +350,16 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
         const from = Math.min(i * period, span);
         const to = Math.min(i * period + bar, span);
         const start = add(origin, scale(along, from));
+        if (face.bend) {
+          const middle = add(start, scale(along, (to - from) / 2));
+          const pieces = Array.from({ length: BEND_PIECES + 1 }, (_, k) => project(placed(face, add(middle, scale(other, otherSpan * k / BEND_PIECES)))));
+          if (pieces.every(Boolean)) {
+            context.beginPath();
+            pieces.forEach(([x, y], k) => (k ? context.lineTo(x, y) : context.moveTo(x, y)));
+            context.stroke();
+          }
+          continue;
+        }
         const strip = [start, add(start, scale(along, to - from))].flatMap(p => [p, add(p, scale(other, otherSpan))]);
         const corners = [strip[0], strip[2], strip[3], strip[1]].map(project);
         if (step > 1 || !corners.every(Boolean) || Math.hypot(corners[1][0] - corners[0][0], corners[1][1] - corners[0][1]) < 1.5) {
@@ -323,10 +391,14 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const ns = Math.max(1, Math.min(MOST_RELIEF_CELLS_ALONG, Math.ceil((s1 - s0) / step)));
     const nt = relief.oneWay ? 1 : Math.max(1, Math.min(Math.floor(MOST_RELIEF_CELLS / ns), Math.ceil((t1 - t0) / step)));
     const point = (s, t) => add(origin, add(scale(along, s), scale(sideways, t)));
+    const shown = p => placed(face, p);
+    const normalAt = p => bentNormal(face.bend, p)?.map(v => v * Math.sign(dot(normal, face.bend.front))) ?? normal;
     context.save();
-    context.beginPath();
-    outline.forEach(path => path.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y))));
-    context.clip('evenodd');
+    if (outline) {
+      context.beginPath();
+      outline.forEach(path => path.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y))));
+      context.clip('evenodd');
+    }
     const ds = (s1 - s0) / ns;
     const dt = (t1 - t0) / nt;
     for (let i = 0; i < ns; i += 1) {
@@ -334,7 +406,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
         const s = s0 + (i + 0.5) * ds;
         const t = t0 + (j + 0.5) * dt;
         const h = relief.at(point(s, t)) / relief.range;
-        const corners = [[s - ds / 2, t - dt / 2], [s + ds / 2, t - dt / 2], [s + ds / 2, t + dt / 2], [s - ds / 2, t + dt / 2]].map(([a, b]) => project(point(a, b)));
+        const corners = [[s - ds / 2, t - dt / 2], [s + ds / 2, t - dt / 2], [s + ds / 2, t + dt / 2], [s - ds / 2, t + dt / 2]].map(([a, b]) => project(shown(point(a, b))));
         if (corners.some(c => !c)) continue;
         context.fillStyle = h >= 0 ? `rgba(255, 255, 255, ${(0.35 * h).toFixed(3)})` : `rgba(0, 0, 0, ${(-0.45 * h).toFixed(3)})`;
         context.beginPath();
@@ -349,7 +421,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     for (const t of [t0 + (t1 - t0) / 4, (t0 + t1) / 2, t1 - (t1 - t0) / 4]) {
       const points = Array.from({ length: samples + 1 }, (_, k) => {
         const p = point(s0 + (s1 - s0) * k / samples, t);
-        return project(add(p, scale(normal, relief.at(p))));
+        return project(add(shown(p), scale(normalAt(p), relief.at(p))));
       });
       if (points.some(p => !p)) continue;
       context.beginPath();
@@ -420,7 +492,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const sides = symmetric ? [1, -1] : [Math.abs(max[axis]) >= Math.abs(min[axis]) ? 1 : -1];
       for (const side of sides) {
         const local = [0, 1, 2].map(i => (i === axis ? (side > 0 ? max[i] : min[i]) : (min[i] + max[i]) / 2));
-        const p = project(toWorld(object, local));
+        const p = project(surfacePoint(object, local));
         if (!p) continue;
         const handle = { id: `size-${axis}-${side}`, type: 'size', axis, side, symmetric, point: p, vector: [objectFrame(object).across, objectFrame(object).front, objectFrame(object).up][axis] };
         context.fillStyle = isHot(handle) ? colors.accent : colors.ink;
@@ -596,7 +668,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const reference = referenceObject(space, selectedPoint.point);
       const start = aimed ? AIM_RING_PIXELS + 3 : POINT_ARROW_START_PIXELS;
       if (reference) {
-        const { across, front, up } = objectFrame(reference);
+        const { across, front, up } = pointFrame(reference, selectedPoint.point);
         moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, [across, front, up], start);
       } else {
         moveHandles(context, colors, selectedPoint.point.position, selectedPoint.key, WORLD_AXES, start);
@@ -768,7 +840,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     context.fillStyle = colors.muted;
     context.font = '11px system-ui, sans-serif';
     if (reference) {
-      const { front } = objectFrame(reference);
+      const { front } = pointFrame(reference, point);
       const gap = point.offset[1];
       context.setLineDash([3, 3]);
       context.strokeStyle = colors.muted;

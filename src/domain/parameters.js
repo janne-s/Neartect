@@ -7,6 +7,7 @@ export const PARAMETERS = Object.freeze({
   sizeMetres: row(RANGES.sizeMetres, 'm', 'Size'),
   yawDegrees: row(RANGES.yawDegrees, '°', 'Facing'),
   tiltDegrees: row(RANGES.tiltDegrees, '°', 'Tilt'),
+  bendDegrees: row(RANGES.bendDegrees, '°', 'Bend', 'B'),
   strength: row(RANGES.strength, '', 'Strength', 'C'),
   periodMetres: row(RANGES.periodMetres, 'm', 'Period'),
   barMetres: row(RANGES.periodMetres, 'm', 'Bar'),

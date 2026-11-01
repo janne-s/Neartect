@@ -28,6 +28,7 @@ const SITUATION_ICONS = Object.freeze({
   pipe: stroke(`<path d="M3 8h11M3 16h11"/><ellipse cx="14" cy="12" rx="2" ry="4"/>${dot(19, 12)}`),
   doorway: stroke(`<path d="M3 21V4h18v17M9 21V9h6v12"/>${dot(12, 15)}`),
   water: stroke(`<path d="M3 17c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>${dot(12, 10)}`),
+  curved: stroke(`<path d="M3 5c3 9 15 9 18 0"/>${dot(12, 7)}`),
   corrugated: stroke(`<path d="M5 3v18M5 4a3 3 0 0 1 0 4a3 3 0 0 1 0 4a3 3 0 0 1 0 4a3 3 0 0 1 0 4"/>${dot(14, 12)}`),
   waves: stroke(`<path d="M3 15c1.5-3 3-3 4.5 0s3 3 4.5 0 3-3 4.5 0 3 3 4.5 0M3 19c1.5-3 3-3 4.5 0s3 3 4.5 0 3-3 4.5 0 3 3 4.5 0"/>${dot(12, 8)}`)
 });
