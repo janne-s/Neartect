@@ -102,6 +102,16 @@ test('a situation keeps the microphones and their spacing', async () => {
   assert.ok(Math.abs(next.source.position[1] - a[1] - 2) < 1e-9);
 });
 
+test('a situation adds its objects to those built, which stay as they were', async () => {
+  const { situationSpace } = await import('../src/domain/situations.js');
+  const space = defaultSpace();
+  space.objects[1].strength = 0;
+  const next = situationSpace('corner', space);
+  assert.deepEqual(next.objects.slice(0, 2).map(o => [o.id, o.strength]), space.objects.map(o => [o.id, o.strength]));
+  assert.equal(next.objects.length, 3);
+  assert.equal(next.microphones[0].reference, next.objects[2].id);
+});
+
 test('render quality takes defaults and clamps into range', () => {
   const plain = readSpace({ kind: 'neartect.space' });
   assert.deepEqual(plain.render.quality, { reliefDetail: 6, elementLimit: 400000, movingDetail: 0.5 });

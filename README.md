@@ -41,8 +41,8 @@ WebAssembly and heard live through a crossfading convolver.
   Shift-click to add or remove one. The selection moves along east, north,
   and up and turns on its ring as one; microphones bound to a selected object
   follow it. Delete removes the selection.
-- **Situations** keep your microphones and point source, moving them with the
-  first microphone.
+- **Situations** add their objects to those you have built and keep your
+  microphones and point source, moving them with the first microphone.
 - **Relief** — any object's faces can be waves, arches, scallops, or an egg
   crate at a set height, period, and direction, plus random roughness with a
   height and grain. Each piece of the surface moves to its height and tilts to
