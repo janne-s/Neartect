@@ -141,17 +141,22 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return [a, b];
   }
 
-  function line(context, a, b) {
+  function segment(context, a, b) {
     const cut = clipped(a, b);
     if (!cut) return null;
     const p = project(cut[0]);
     const q = project(cut[1]);
     if (!p || !q) return null;
-    context.beginPath();
     context.moveTo(p[0], p[1]);
     context.lineTo(q[0], q[1]);
-    context.stroke();
     return [p, q];
+  }
+
+  function line(context, a, b) {
+    context.beginPath();
+    const ends = segment(context, a, b);
+    if (ends) context.stroke();
+    return ends;
   }
 
   function objectCentre(object) {
@@ -657,10 +662,12 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const count = Math.round(extent / step);
       const x0 = Math.round(cx / step) * step;
       const y0 = Math.round(cy / step) * step;
+      context.beginPath();
       for (let i = -count; i <= count; i += 1) {
-        line(context, [x0 + i * step, y0 - extent, 0], [x0 + i * step, y0 + extent, 0]);
-        line(context, [x0 - extent, y0 + i * step, 0], [x0 + extent, y0 + i * step, 0]);
+        segment(context, [x0 + i * step, y0 - extent, 0], [x0 + i * step, y0 + extent, 0]);
+        segment(context, [x0 - extent, y0 + i * step, 0], [x0 + extent, y0 + i * step, 0]);
       }
+      context.stroke();
     };
     const fine = camera.distance < GRID_FINE_DISTANCE_METRES;
     if (fine) {
