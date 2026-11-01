@@ -3,8 +3,11 @@
 // length runs along across (axis up) or along up (axis across), and offsets
 // from it in front become distances along the arc's normal. A positive angle
 // bends the surface towards its front, so that it is concave seen from there.
+// A pipe's centreline bends the same way, its arc along front and towards
+// across (axis up) or up (axis across), no tighter than its own radius.
 
-export const BEND_KINDS = Object.freeze(['plane', 'wall', 'grating']);
+export const BEND_KINDS = Object.freeze(['plane', 'wall', 'grating', 'pipe']);
+const TIGHTEST_PIPE_BEND = 1.02;
 export const BEND_AXES = Object.freeze(['up', 'across']);
 export const FLAT_BEND = Object.freeze({ angleDegrees: 0, axis: 'up' });
 const FLAT_CURVATURE = 1e-9;
@@ -19,7 +22,15 @@ const along = (p, ...terms) => terms.reduce((sum, [v, s]) => sum.map((x, i) => x
 export function bendOf(object, frame) {
   const bend = object.bend ?? FLAT_BEND;
   if (!BEND_KINDS.includes(object.kind) || !bend.angleDegrees) return null;
-  const [w, , h] = object.size;
+  const [w, d, h] = object.size;
+  if (object.kind === 'pipe') {
+    const tightest = 1 / (TIGHTEST_PIPE_BEND * w / 2);
+    const turn = bend.angleDegrees * Math.PI / 180 / d;
+    const curvature = Math.sign(turn) * Math.min(Math.abs(turn), tightest);
+    if (!(d > 0) || Math.abs(curvature) < FLAT_CURVATURE) return null;
+    const towards = bend.axis === 'up' ? frame.across : frame.up;
+    return { curvature, arc: frame.front, axis: bend.axis === 'up' ? frame.up : frame.across, front: towards, touching: object.position };
+  }
   const length = bend.axis === 'up' ? w : h;
   if (!(length > 0)) return null;
   const curvature = bend.angleDegrees * Math.PI / 180 / length;

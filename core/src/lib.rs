@@ -30,7 +30,7 @@ pub const BEND_VALUES: usize = 7;
 // spherical head, 2 for an ear on the measured head, which also takes the
 // head's front and up, and 3 for a pair of capsules at one point, the second
 // with its own pattern and facing.
-pub const SETTINGS: [&str; 41] = [
+pub const SETTINGS: [&str; 47] = [
     "sampleRateHz",
     "speedOfSoundMetresPerSecond",
     "lengthSamples",
@@ -54,6 +54,12 @@ pub const SETTINGS: [&str; 41] = [
     "pipeMouthBX",
     "pipeMouthBY",
     "pipeMouthBZ",
+    "pipeBendCentreX",
+    "pipeBendCentreY",
+    "pipeBendCentreZ",
+    "pipeBendAxisX",
+    "pipeBendAxisY",
+    "pipeBendAxisZ",
     "pattern",
     "facingX",
     "facingY",
@@ -123,7 +129,12 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         source: (get("pointSource") > 0.0).then(|| vector("source")),
         gain: get("gain"),
         delay_seconds: get("delaySeconds"),
-        pipe: (get("pipeRadiusMetres") > 0.0).then(|| pipe::PipeInside { radius: get("pipeRadiusMetres"), mouth_a: vector("pipeMouthA"), mouth_b: vector("pipeMouthB") }),
+        pipe: (get("pipeRadiusMetres") > 0.0).then(|| pipe::PipeInside {
+            radius: get("pipeRadiusMetres"),
+            mouth_a: vector("pipeMouthA"),
+            mouth_b: vector("pipeMouthB"),
+            bend: (geom::norm(vector("pipeBendAxis")) > 0.5).then(|| pipe::PipeBend { centre: vector("pipeBendCentre"), axis: normalize(vector("pipeBendAxis")) }),
+        }),
         listener: match get("listenerKind").round() as i64 {
             3 => scene::Listener::Pair { patterns: [get("pattern"), get("secondPattern")], facings: [normalize(vector("facing")), normalize(vector("secondFacing"))] },
             2 => scene::Listener::MeasuredEar { front: normalize(vector("headFront")), outward: normalize(vector("facing")), up: normalize(vector("headUp")) },

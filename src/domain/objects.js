@@ -7,6 +7,7 @@ import { bendOf, bentNormal, bentPoint, bentTangent, flatPoint } from './bend.js
 export const OBJECT_KINDS = Object.freeze(['plane', 'disc', 'grating', 'wall', 'box', 'corner', 'recess', 'pipe']);
 export const DISC_SIDES = 48;
 export const PIPE_SIDES = 16;
+const PIPE_BEND_SEGMENT_RADIANS = Math.PI / 12;
 const RECESS_MARGIN_METRES = 0.5;
 
 export const OBJECT_DEFAULTS = Object.freeze({
@@ -161,12 +162,56 @@ export function surfaceFrame(object, local) {
   if (!bend) return frame;
   const flat = toWorld(object, local);
   const tangent = bentTangent(bend, flat);
-  const front = bentNormal(bend, flat);
-  return object.bend.axis === 'up' ? { across: tangent, front, up: frame.up } : { across: frame.across, front, up: tangent };
+  const normal = bentNormal(bend, flat);
+  if (object.kind === 'pipe') return object.bend.axis === 'up' ? { across: normal, front: tangent, up: frame.up } : { across: frame.across, front: tangent, up: normal };
+  return object.bend.axis === 'up' ? { across: tangent, front: normal, up: frame.up } : { across: frame.across, front: normal, up: tangent };
+}
+
+// A bent pipe's outside: rings of planar pieces along its arc.
+function bentPipeFaces(object, bend) {
+  const [w, d] = object.size;
+  const radius = w / 2;
+  const segments = Math.max(1, Math.ceil(Math.abs(bend.curvature * d) / PIPE_BEND_SEGMENT_RADIANS));
+  const ring = i => [radius * Math.cos(2 * Math.PI * i / PIPE_SIDES), radius * Math.sin(2 * Math.PI * i / PIPE_SIDES)];
+  const faces = [];
+  for (let j = 0; j < segments; j += 1) {
+    const [y0, y1] = [-d / 2 + d * j / segments, -d / 2 + d * (j + 1) / segments];
+    for (let i = 0; i < PIPE_SIDES; i += 1) {
+      const [[x0, z0], [x1, z1]] = [ring(i), ring(i + 1)];
+      faces.push({ local: [[x0, y0, z0], [x0, y1, z0], [x1, y1, z1], [x1, y0, z1]] });
+    }
+  }
+  return faces;
+}
+
+// A bent pipe's centreline as the core takes it: its mouths, the centre of
+// the arc, and the axis turning from mouth A towards mouth B.
+export function pipeCentreline(object) {
+  const [, d] = object.size;
+  const bend = objectBend(object);
+  const mouthA = surfacePoint(object, [0, -d / 2, 0]);
+  const mouthB = surfacePoint(object, [0, d / 2, 0]);
+  if (!bend) return { mouthA, mouthB, bend: null };
+  const centre = bend.touching.map((p, i) => p + bend.front[i] / bend.curvature);
+  const travel = bentTangent(bend, toWorld(object, [0, -d / 2, 0]));
+  const radial = sub(mouthA, centre);
+  const axis = [radial[1] * travel[2] - radial[2] * travel[1], radial[2] * travel[0] - radial[0] * travel[2], radial[0] * travel[1] - radial[1] * travel[0]];
+  const n = Math.hypot(...axis);
+  return { mouthA, mouthB, bend: { centre, axis: axis.map(v => v / n) } };
 }
 
 export function expandObject(object) {
   const bend = objectBend(object);
+  if (bend && object.kind === 'pipe') {
+    return bentPipeFaces(object, bend).map(({ local }) => ({
+      vertices: local.map(point => bentPoint(bend, toWorld(object, point))),
+      bend: null,
+      material: object.material,
+      strength: object.strength,
+      pattern: { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
+      relief: reliefValues(object)
+    }));
+  }
   return localFaces(object).map(({ local, pattern }) => ({
     vertices: local.map(point => toWorld(object, point)),
     bend,
@@ -325,13 +370,13 @@ export function releaseObject(space, id) {
 export function pipeShare(space, point) {
   for (const object of space.objects) {
     if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
-    const [x, y, z] = toLocal(object, point);
+    const [x, y, z] = surfaceLocal(object, point);
     const [diameter, length] = object.size;
     const radius = diameter / 2;
     const depth = length / 2 - Math.abs(y);
     if (Math.hypot(x, z) >= radius || depth <= -radius) continue;
     const t = Math.min(1, Math.max(0, (depth + radius) / (2 * radius)));
-    return { pipe: { object, mouthA: toWorld(object, [0, -length / 2, 0]), mouthB: toWorld(object, [0, length / 2, 0]), radius }, share: t * t * (3 - 2 * t) };
+    return { pipe: { object, ...pipeCentreline(object), radius }, share: t * t * (3 - 2 * t) };
   }
   return null;
 }
@@ -339,10 +384,10 @@ export function pipeShare(space, point) {
 export function pipeAround(space, point) {
   for (const object of space.objects) {
     if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
-    const [x, y, z] = toLocal(object, point);
+    const [x, y, z] = surfaceLocal(object, point);
     const [diameter, length] = object.size;
     if (Math.hypot(x, z) < diameter / 2 && Math.abs(y) < length / 2) {
-      return { object, mouthA: toWorld(object, [0, -length / 2, 0]), mouthB: toWorld(object, [0, length / 2, 0]), radius: diameter / 2 };
+      return { object, ...pipeCentreline(object), radius: diameter / 2 };
     }
   }
   return null;

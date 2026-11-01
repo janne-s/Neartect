@@ -271,7 +271,7 @@ fn hidden_back_of_a_box_is_not_extended() {
 
 fn inside_pipe(along: f64, arrival: V3) -> Vec<Complex64> {
     let mut s = scene(vec![], [0.0, along, 0.0], arrival, 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05 });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None });
     near_spectrum(&s)
 }
 
@@ -396,7 +396,7 @@ fn cardioid_facing_away_from_a_floor_hears_less_of_its_reflection() {
 #[test]
 fn figure_eight_across_a_pipe_hears_nothing_inside_it() {
     let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05 });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None });
     let h = near_spectrum(&aimed(s, 0.0, [1.0, 0.0, 0.0]));
     assert!(h.iter().all(|x| x.norm() < 1e-9));
 }
@@ -672,7 +672,7 @@ fn second_order_through_a_barely_relieved_wall_matches_the_images() {
 
 fn wide_pipe(microphone: V3, arrival: V3) -> Vec<Complex64> {
     let mut s = scene(vec![], microphone, arrival, 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 2.0, 0.0], radius: 0.3 });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 2.0, 0.0], radius: 0.3, bend: None });
     near_spectrum(&s)
 }
 
@@ -790,7 +790,7 @@ fn a_coincident_pair_hears_what_its_capsules_hear_alone() {
     let facings = [normalize([0.7, 0.7, 0.0]), normalize([-0.7, 0.7, 0.0])];
     let mut piped = base.clone();
     piped.microphone = [0.0, 0.3, 0.6];
-    piped.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.6], mouth_b: [0.0, 1.0, 0.6], radius: 0.05 });
+    piped.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.6], mouth_b: [0.0, 1.0, 0.6], radius: 0.05, bend: None });
     for base in [base, piped] {
         let mut pair = base.clone();
         pair.listener = Listener::Pair { patterns, facings };
@@ -923,4 +923,83 @@ fn a_second_order_path_over_a_floor_keeps_the_bend_factor() {
     assert_eq!(paths.len(), 1, "paths {}", paths.len());
     assert_eq!(paths[0].reflections.iter().map(|r| r.surface).collect::<Vec<_>>(), [0, 1]);
     assert!((paths[0].gain - expected).abs() < 1e-6, "gain {}", paths[0].gain);
+}
+
+#[test]
+fn a_bend_speeds_the_long_wave_by_the_slice_model() {
+    use neartect_core::pipe::bend_speed_ratio;
+    let small = bend_speed_ratio(0.1);
+    assert!((small - (1.0 + 0.01 / 8.0)).abs() < 1e-4, "small bend {small}");
+    // Keefe and Benade's tuning-slide bends, B = 9.25/12.7: the slice model
+    // predicts about 9 %, more than their measured 4.7 %.
+    let slide = bend_speed_ratio(9.25 / 12.7);
+    assert!(slide > 1.085 && slide < 1.095, "tuning slide {slide}");
+}
+
+fn bent_pipe(turn: f64, length: f64, radius: f64) -> neartect_core::pipe::PipeInside {
+    let bend_radius = length / turn;
+    neartect_core::pipe::PipeInside {
+        mouth_a: [bend_radius, 0.0, 0.0],
+        mouth_b: [bend_radius * turn.cos(), bend_radius * turn.sin(), 0.0],
+        radius,
+        bend: Some(neartect_core::pipe::PipeBend { centre: [0.0, 0.0, 0.0], axis: [0.0, 0.0, 1.0] }),
+    }
+}
+
+#[test]
+fn a_bent_pipe_measures_along_its_centreline() {
+    let pipe = bent_pipe(std::f64::consts::FRAC_PI_2, 1.0, 0.05);
+    assert!((pipe.length() - 1.0).abs() < 1e-12);
+    let middle = pipe.centre_point(0.5);
+    assert!((pipe.along(middle) - 0.5).abs() < 1e-12);
+    let start = pipe.tangent(0.0);
+    assert!((start[1] - 1.0).abs() < 1e-12);
+}
+
+fn bent_inside(turn: f64, radius: f64) -> Vec<Complex64> {
+    let pipe = bent_pipe(turn, 1.0, radius);
+    let mut s = scene(vec![], pipe.centre_point(0.5), [1.0, 0.0, 0.0], 8192, 1);
+    s.pipe = Some(pipe);
+    near_spectrum(&s)
+}
+
+fn resonance(h: &[Complex64]) -> f64 {
+    let n = spectrum_size(8192);
+    let (a, b) = ((100.0 * n as f64 / FS) as usize, (250.0 * n as f64 / FS) as usize);
+    let n_fine = 64;
+    let magnitude = |x: f64| {
+        let i = x.floor() as usize;
+        let f = x - i as f64;
+        h[i].norm() * (1.0 - f) + h[i + 1].norm() * f
+    };
+    let mut best = (0.0, a as f64);
+    for step in 0..(b - a) * n_fine {
+        let x = a as f64 + step as f64 / n_fine as f64;
+        if magnitude(x) > best.0 {
+            best = (magnitude(x), x);
+        }
+    }
+    best.1 * FS / n as f64
+}
+
+#[test]
+fn a_nearly_straight_bend_resonates_as_the_straight_pipe() {
+    let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None });
+    let straight = resonance(&near_spectrum(&s));
+    let bent = resonance(&bent_inside(1e-3, 0.05));
+    assert!((bent / straight - 1.0).abs() < 2e-3, "straight {straight} Hz, bent {bent} Hz");
+}
+
+#[test]
+fn a_sharp_bend_raises_the_resonance_by_at_most_its_long_wave_speed() {
+    let turn = std::f64::consts::PI;
+    let radius = 0.2;
+    let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius, bend: None });
+    let straight = resonance(&near_spectrum(&s));
+    let bent = resonance(&bent_inside(turn, radius));
+    let most = neartect_core::pipe::bend_speed_ratio(radius / (1.0 / turn));
+    let rise = bent / straight;
+    assert!(rise > 1.002 && rise < most + 0.005, "rise {rise}, long-wave speed {most}");
 }

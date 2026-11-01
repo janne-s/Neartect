@@ -62,3 +62,34 @@ test('a concave wall gathers more of a frontal wave than the flat wall at its fo
   assert.ok(concave.samples.every(Number.isFinite));
   assert.ok(energy(concave.samples) > 2 * energy(flat.samples), `${energy(concave.samples)} vs ${energy(flat.samples)}`);
 });
+
+test('a bent pipe holds a microphone on its arc and turns from mouth A to mouth B', async () => {
+  const { pipeAround, pipeCentreline } = await import('../src/domain/objects.js');
+  const space = readSpace({ kind: 'neartect.space', objects: [{ kind: 'pipe', position: [0, 0, 1], size: [0.2, 2, 0.2], bend: { angleDegrees: 90, axis: 'up' } }] });
+  const pipe = space.objects[0];
+  const microphone = { reference: pipe.id, offset: [0, -1, 0], position: [0, 0, 0] };
+  const at = pointPosition(space, microphone);
+  assert.ok(pipeAround(space, at), 'the middle of the arc is inside');
+  assert.equal(pipeAround(space, [0, 0, 1 + 0.5]), null);
+  const { mouthA, mouthB, bend } = pipeCentreline(pipe);
+  const radius = 2 / (Math.PI / 2);
+  const a = mouthA.map((v, i) => v - bend.centre[i]);
+  const b = mouthB.map((v, i) => v - bend.centre[i]);
+  assert.ok(Math.abs(Math.hypot(...a) - radius) < 1e-9 && Math.abs(Math.hypot(...b) - radius) < 1e-9);
+  const turn = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  assert.ok(turn.reduce((s, v, i) => s + v * bend.axis[i], 0) > 0, 'A turns towards B about the axis');
+});
+
+test('a microphone inside a bent pipe gets a finite filter unlike the straight pipe’s', async () => {
+  const space = angle => readSpace({
+    kind: 'neartect.space',
+    render: { lengthMilliseconds: 40, order: 1 },
+    objects: [{ kind: 'pipe', name: 'Pipe', position: [0, 0, 1], size: [0.3, 2, 0.3], bend: { angleDegrees: angle, axis: 'up' } }],
+    microphones: [{ position: [0, 0, 1] }]
+  }, 0);
+  const straight = await nearFilter(space(0));
+  const bent = await nearFilter(space(150));
+  assert.ok(bent.samples.every(Number.isFinite));
+  const difference = bent.samples.reduce((s, x, i) => s + (x - straight.samples[i]) ** 2, 0);
+  assert.ok(difference > 1e-6, `difference ${difference}`);
+});
