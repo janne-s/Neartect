@@ -968,8 +968,16 @@ document.addEventListener('keydown', event => {
   event.preventDefault();
   $('play').click();
 });
+function showFileName() {
+  const name = $('file-name');
+  name.hidden = state.signal !== 'file' || !state.file;
+  name.textContent = state.file?.name ?? '';
+  name.title = name.textContent;
+}
+
 $('signal').addEventListener('change', () => {
   state.signal = $('signal').value;
+  showFileName();
   if (preview.playing) startPlayback();
 });
 $('load-signal').addEventListener('click', () => $('signal-file').click());
@@ -986,10 +994,9 @@ $('signal-file').addEventListener('change', async () => {
     }
     state.file = { samples, sampleRate: audio.sampleRate, name: file.name };
     state.signal = 'file';
-    const option = $('signal').options[3];
-    option.textContent = file.name;
-    option.hidden = false;
+    $('signal').options[3].hidden = false;
     $('signal').value = 'file';
+    showFileName();
     if (preview.playing) startPlayback();
   } catch {
     setStatus('The file could not be read as audio.', true);
