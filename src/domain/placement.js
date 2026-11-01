@@ -1,3 +1,4 @@
+import { bentNormal, flatPoint } from './bend.js';
 import { expandObjects, firstListener } from './objects.js';
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -37,9 +38,11 @@ export function nearestSurface(space, point) {
   let best = null;
   const owners = space.objects.flatMap((object, index) => expandObjectsOf(object).map(face => ({ face, index })));
   for (const { face, index } of owners) {
-    const normal = faceNormal(face.vertices);
-    if (!footInside(face.vertices, normal, point)) continue;
-    const distance = dot(sub(point, face.vertices[0]), normal);
+    const flat = faceNormal(face.vertices);
+    const laid = flatPoint(face.bend, point);
+    if (!footInside(face.vertices, flat, laid)) continue;
+    const distance = dot(sub(laid, face.vertices[0]), flat);
+    const normal = face.bend ? bentNormal(face.bend, laid).map(v => v * Math.sign(dot(flat, face.bend.front))) : flat;
     if (!best || Math.abs(distance) < Math.abs(best.distance)) best = { index, distance, normal };
   }
   return best;

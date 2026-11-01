@@ -1,6 +1,8 @@
 import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
 import { aimVector, expandObject, pipeAround, pipeShare, pointPosition } from './objects.js';
+import { bendValues } from './bend.js';
+import { faceNormal } from './placement.js';
 import { rigMembers } from './rigs.js';
 import { arrivalVector, PATTERNS, speedOfSound } from './space.js';
 
@@ -103,6 +105,7 @@ export function packSpace(space, listener, aligned, longest, second = null, pipe
       PATTERN_CODES[surface.pattern.kind],
       ...surface.pattern.values,
       ...surface.relief,
+      ...bendValues(surface.bend, faceNormal(surface.vertices)),
       surface.vertices.length,
       ...surface.vertices.flat()
     ];

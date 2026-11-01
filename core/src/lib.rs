@@ -1,3 +1,4 @@
+pub mod bend;
 pub mod edge;
 pub mod filter;
 pub mod geom;
@@ -21,6 +22,8 @@ pub const PATTERN_VALUES: usize = 6;
 // Relief: shape, height, period, direction xyz, anchor xyz, offset, rough
 // height, grain, seed.
 pub const RELIEF_VALUES: usize = 13;
+// Curvature (1/m), the arc's direction, and a point where it touches the plane.
+pub const BEND_VALUES: usize = 7;
 // The settings record, by name. A pipe radius of 0 means no pipe; the
 // pattern runs from 1 (omni) to 0 (figure of eight); `facing` is an ear's
 // outward axis; the listener kind is 0 for a microphone, 1 for an ear on the
@@ -73,7 +76,7 @@ pub const SETTINGS: [&str; 41] = [
 const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
 const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
 const FEWEST_ELEMENTS: f64 = 1000.0;
-const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES + RELIEF_VALUES;
+const SURFACE_HEADER: usize = 3 + BAND_COUNT + 1 + PATTERN_VALUES + RELIEF_VALUES + BEND_VALUES;
 
 pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
     if settings.len() != SETTINGS.len() {
@@ -96,6 +99,7 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         let pattern = Pattern::from_numbers(r[pattern_at], &r[pattern_at + 1..pattern_at + 1 + PATTERN_VALUES]);
         let relief_at = pattern_at + 1 + PATTERN_VALUES;
         let relief_values = &r[relief_at..relief_at + RELIEF_VALUES];
+        let bend_values = &r[relief_at + RELIEF_VALUES..relief_at + RELIEF_VALUES + BEND_VALUES];
         let vertex_count = r[SURFACE_HEADER - 1] as usize;
         if SURFACE_HEADER + vertex_count * 3 != record {
             return Err(format!("surface record at {at} has the wrong length"));
@@ -103,7 +107,8 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         let vertices: Vec<[f64; 3]> = r[SURFACE_HEADER..].chunks(3).map(|v| [v[0], v[1], v[2]]).collect();
         if let Some(polygon) = Polygon::new(&vertices) {
             let relief = surface_relief(&polygon, relief_values);
-            list.push(Surface { polygon, strength, reflection, pattern, relief });
+            let bend = bend::Bend::new(&polygon, bend_values[0], [bend_values[1], bend_values[2], bend_values[3]], [bend_values[4], bend_values[5], bend_values[6]]);
+            list.push(Surface { polygon, strength, reflection, pattern, relief, bend });
         }
         at += record;
     }

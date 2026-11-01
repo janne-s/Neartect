@@ -126,7 +126,7 @@ pub fn via_pairs(scene: &Scene) -> Vec<(usize, Via)> {
             continue;
         }
         for (j, other) in scene.surfaces.iter().enumerate() {
-            if j == i || other.strength <= 0.0 || !other.relief.is_flat() {
+            if j == i || other.strength <= 0.0 || !other.relief.is_flat() || other.is_bent() {
                 continue;
             }
             if joined_with(scene, i, j) {
@@ -145,7 +145,7 @@ pub fn via_pairs(scene: &Scene) -> Vec<(usize, Via)> {
 
 fn joined_with(scene: &Scene, index: usize, other: usize) -> bool {
     let polygon = &scene.surfaces[index].polygon;
-    (0..polygon.points.len()).any(|e| joined(scene, index, polygon.edge(e), Some(other)))
+    (0..polygon.points.len()).any(|e| joined(scene, index, e, Some(other)))
 }
 
 struct Context<'a> {
@@ -304,7 +304,7 @@ fn screen(scene: &Scene, index: usize, bins: usize, via: Option<usize>) -> Polyg
     let distances: Vec<f64> = (0..polygon.points.len())
         .map(|i| {
             let edge = polygon.edge(i);
-            if joined(scene, index, edge, via) {
+            if joined(scene, index, i, via) {
                 reach
             } else if shares(scene, index, edge) {
                 scale
@@ -323,7 +323,7 @@ pub fn plain_depth(scene: &Scene, index: usize, bins: usize) -> f64 {
 pub fn edge_depth(scene: &Scene, index: usize, via: Option<usize>, bins: usize) -> (f64, f64) {
     let surface = &scene.surfaces[index];
     let domain = screen(scene, index, bins, via);
-    crate::edge::effective_depth(&domain, &surface.pattern, |q| domain.to_space(q), |x| crate::edge::harmonic_reach(x, scene.microphone, scene.incident(x).source_distance))
+    crate::edge::effective_depth(&domain, &surface.pattern, |q| surface.point(q), |x| crate::edge::harmonic_reach(x, scene.microphone, scene.incident(x).source_distance))
 }
 
 // Adds surface `index`'s scattering, times `strength`, to `histograms` and
@@ -342,7 +342,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<V
         }
         _ => scene.source_side(&surface.polygon),
     };
-    if facing.abs() < 1e-9 {
+    if facing.abs() < 1e-9 && !surface.is_bent() {
         return None;
     }
     let mirror = via.filter(|v| v.receiver).map(|v| &scene.surfaces[v.surface].polygon);
@@ -384,7 +384,7 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<V
 // outside of a box, and other angles keep their edges (class B diffraction).
 fn domain(scene: &Scene, index: usize, extension: f64, via: Option<usize>) -> Polygon {
     let polygon = &scene.surfaces[index].polygon;
-    let distances: Vec<f64> = (0..polygon.points.len()).map(|i| if joined(scene, index, polygon.edge(i), via) { extension } else { 0.0 }).collect();
+    let distances: Vec<f64> = (0..polygon.points.len()).map(|i| if joined(scene, index, i, via) { extension } else { 0.0 }).collect();
     polygon.offset(&distances)
 }
 
@@ -394,21 +394,34 @@ const JOIN_PROBE_METRES: f64 = 5e-3;
 
 pub fn extended_edges(scene: &Scene, index: usize) -> usize {
     let polygon = &scene.surfaces[index].polygon;
-    (0..polygon.points.len()).filter(|&i| joined(scene, index, polygon.edge(i), None)).count()
+    (0..polygon.points.len()).filter(|&i| joined(scene, index, i, None)).count()
 }
 
-fn joined(scene: &Scene, index: usize, (a, b): (V3, V3), only: Option<usize>) -> bool {
-    let this = &scene.surfaces[index].polygon;
-    let middle = scale(crate::geom::add(a, b), 0.5);
+// A bent surface joins only along its arcs, to a flat surface across its
+// axis: past such an edge the cylinder continues as its own mirror image.
+fn joined(scene: &Scene, index: usize, e: usize, only: Option<usize>) -> bool {
+    let surface = &scene.surfaces[index];
+    let this = &surface.polygon;
+    let n = this.points.len();
+    let (qa, qb) = (this.points[e], this.points[(e + 1) % n]);
+    if surface.is_bent() && !surface.bend.follows_arc(qa, qb) {
+        return false;
+    }
+    let (a, b) = surface.edge(e);
+    let middle_plane = [(qa[0] + qb[0]) / 2.0, (qa[1] + qb[1]) / 2.0];
+    let middle = surface.point(middle_plane);
+    let (this_normal, _, _) = surface.frame(middle_plane);
     let edge = sub(b, a);
-    let microphone_side = this.signed_distance(scene.microphone).signum();
+    let microphone_side = surface.locate(scene.microphone).1.signum();
     scene.surfaces.iter().enumerate().any(|(j, other)| {
         let p = &other.polygon;
         if j == index
+            || other.is_bent()
             || only.is_some_and(|o| o != j)
-            || dot(this.normal, p.normal).abs() >= RIGHT_ANGLE_COSINE
+            || dot(this_normal, p.normal).abs() >= RIGHT_ANGLE_COSINE
             || p.signed_distance(a).abs() >= JOIN_TOLERANCE_METRES
             || p.signed_distance(b).abs() >= JOIN_TOLERANCE_METRES
+            || p.signed_distance(middle).abs() >= JOIN_TOLERANCE_METRES
         {
             return false;
         }
@@ -421,7 +434,7 @@ fn joined(scene: &Scene, index: usize, (a, b): (V3, V3), only: Option<usize>) ->
         [1.0, -1.0].iter().any(|&sign| {
             let probe = crate::geom::add(middle, scale(across, sign * JOIN_PROBE_METRES));
             let q = p.to_plane(probe);
-            other.is_solid(q) && this.signed_distance(probe).signum() == microphone_side
+            other.is_solid(q) && surface.locate(probe).1.signum() == microphone_side
         })
     })
 }
@@ -437,7 +450,7 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: u
     let is_solid = |q: [f64; 2]| domain.contains(q) && surface.pattern.is_solid(q);
     let solid = samples.iter().filter(|&&q| is_solid(q)).count();
     let vertex_inside = domain.points.iter().any(|p| (p[0] - centre[0]).abs() <= h && (p[1] - centre[1]).abs() <= h);
-    let x = domain.to_space(centre);
+    let x = surface.point(centre);
     let to_microphone = sub(context.microphone, x);
     let distance = norm(to_microphone);
     let c = context.scene.speed_of_sound;
@@ -471,11 +484,12 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: u
 fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     context.elements += 1;
     let scene = context.scene;
-    let real = &scene.surfaces[context.index].polygon;
-    let polygon = &context.domain;
+    let surface = &scene.surfaces[context.index];
+    let real = &surface.polygon;
     let skip = [context.index];
     let virtual_element = !real.contains(centre);
-    let relief = &scene.surfaces[context.index].relief;
+    let relief = &surface.relief;
+    let bent = surface.is_bent();
     let shaped = !relief.is_flat();
     // An element past a joined edge stands for the surface's mirror image in
     // the joining surface, so it carries the relief mirrored across that edge.
@@ -489,19 +503,28 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     } else {
         relief.at(centre)
     };
-    let normal = real.normal;
-    let x = crate::geom::add(polygon.to_space(centre), scale(normal, height));
-    let side = dot(context.lit_normal, normal);
-    let tilted = scale(sub(normal, crate::geom::add(scale(polygon.u, slope[0]), scale(polygon.v, slope[1]))), side);
-    let tangent_u = crate::geom::add(polygon.u, scale(normal, slope[0]));
-    let tangent_v = crate::geom::add(polygon.v, scale(normal, slope[1]));
+    let (normal, along_u, along_v) = surface.frame(centre);
+    let x = crate::geom::add(surface.point(centre), scale(normal, height));
     let incident = context.incident(x);
-    if shaped && dot(tilted, incident.towards_source) <= 0.0 {
+    // A bent sheet is lit on whichever face turns to the source there.
+    let side = if bent {
+        let towards = dot(normal, incident.towards_source);
+        if towards == 0.0 {
+            return;
+        }
+        towards.signum()
+    } else {
+        dot(context.lit_normal, normal)
+    };
+    let tilted = scale(sub(normal, crate::geom::add(scale(along_u, slope[0]), scale(along_v, slope[1]))), side);
+    let tangent_u = crate::geom::add(along_u, scale(normal, slope[0]));
+    let tangent_v = crate::geom::add(along_v, scale(normal, slope[1]));
+    if (shaped || bent) && dot(tilted, incident.towards_source) <= 0.0 {
         return;
     }
     let shades = |towards: V3| {
         let rise = dot(towards, normal);
-        shaped && relief.shades(centre, height, [dot(towards, polygon.u), dot(towards, polygon.v)], rise, side.signum(), |q| real.contains(q))
+        shaped && relief.shades(centre, height, [dot(towards, along_u), dot(towards, along_v)], rise, side.signum(), |q| real.contains(q))
     };
     if shades(incident.towards_source) {
         return;

@@ -18,7 +18,7 @@ fn floor(half: f64) -> Surface {
 }
 
 fn surface(polygon: Polygon, reflection: [f64; 8]) -> Surface {
-    Surface { polygon, strength: 1.0, reflection, pattern: Pattern::Solid, relief: neartect_core::relief::Relief::flat() }
+    Surface { polygon, strength: 1.0, reflection, pattern: Pattern::Solid, relief: neartect_core::relief::Relief::flat(), bend: neartect_core::bend::Bend::flat() }
 }
 
 fn scene(surfaces: Vec<Surface>, microphone: V3, arrival: V3, length: usize, max_order: usize) -> Scene {
@@ -184,6 +184,7 @@ fn grating(period: [f64; 2], bar: [f64; 2], half: f64) -> Surface {
         reflection: RIGID,
         pattern: Pattern::Grid { period, bar, thickness: 0.003 },
         relief: neartect_core::relief::Relief::flat(),
+        bend: neartect_core::bend::Bend::flat(),
     }
 }
 
@@ -244,6 +245,7 @@ fn niche_lip_is_not_extended_into_the_room() {
         reflection: RIGID,
         pattern: Pattern::Opening { centre: [1.0, 1.0], half: [0.2, 0.2], round: false },
         relief: neartect_core::relief::Relief::flat(),
+        bend: neartect_core::bend::Bend::flat(),
     };
     let side = surface(rectangle([-0.2, -0.1, 1.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.2]), RIGID);
     let length = 2048;
@@ -861,4 +863,64 @@ fn second_order_through_a_barely_relieved_wall_and_a_free_panel_follows_the_imag
         let second = mean(&|k| (images[k] - first[k]).norm());
         assert!(error < 0.2 * second, "receiver {receiver}: error {error} of {second}");
     }
+}
+
+fn bent_wall(radius: f64, concave_towards: V3, half_arc: f64, half_height: f64) -> Surface {
+    bent_wall_at([0.0; 3], radius, concave_towards, half_arc, half_height)
+}
+
+fn bent_wall_at(centre: V3, radius: f64, concave_towards: V3, half_arc: f64, half_height: f64) -> Surface {
+    let polygon = rectangle(centre, [half_arc, 0.0, 0.0], [0.0, 0.0, half_height]);
+    let towards = neartect_core::geom::dot(polygon.normal, concave_towards).signum();
+    let bend = neartect_core::bend::Bend::new(&polygon, towards / radius, [1.0, 0.0, 0.0], centre);
+    Surface { bend, ..surface(polygon, RIGID) }
+}
+
+// The reflection's amplitude from the mean power of 1 + D e^(−jωτ) over many
+// comb periods.
+fn reflection_amplitude(surfaces: Vec<Surface>, microphone: V3, arrival: V3) -> f64 {
+    let length = 4096;
+    let h = near_spectrum(&scene(surfaces, microphone, arrival, length, 1));
+    let n = spectrum_size(length);
+    let (a, b) = ((3000.0 * n as f64 / FS) as usize, (9000.0 * n as f64 / FS) as usize);
+    let power = h[a..=b].iter().map(|x| x.norm_sqr()).sum::<f64>() / (b - a + 1) as f64;
+    (power - 1.0).max(0.0).sqrt()
+}
+
+#[test]
+fn a_nearly_flat_bend_reflects_as_the_flat_wall() {
+    let microphone = [0.0, 0.6, 0.0];
+    let flat = reflection_amplitude(vec![surface(rectangle([0.0; 3], [3.0, 0.0, 0.0], [0.0, 0.0, 3.0]), RIGID)], microphone, [0.0, 1.0, 0.0]);
+    let bent = reflection_amplitude(vec![bent_wall(1e5, [0.0, 1.0, 0.0], 3.0, 3.0)], microphone, [0.0, 1.0, 0.0]);
+    assert!((flat - bent).abs() < 1e-3, "flat {flat} bent {bent}");
+}
+
+#[test]
+fn a_convex_wall_spreads_its_reflection_by_the_ray_tube_factor() {
+    let radius = 2.0;
+    let d = reflection_amplitude(vec![bent_wall(radius, [0.0, -1.0, 0.0], 1.5, 3.0)], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]);
+    let expected = (1.0_f64 / (1.0 + 2.0 * 1.0 / radius)).sqrt();
+    assert!((d - expected).abs() < 0.08, "reflection {d}, ray tube {expected}");
+}
+
+#[test]
+fn a_concave_wall_gathers_its_reflection_by_the_ray_tube_factor() {
+    let radius = 2.0;
+    let d = reflection_amplitude(vec![bent_wall(radius, [0.0, 1.0, 0.0], 1.5, 3.0)], [0.0, 0.5, 0.0], [0.0, 1.0, 0.0]);
+    let expected = (1.0_f64 / (1.0 - 2.0 * 0.5 / radius)).sqrt();
+    assert!((d - expected).abs() < 0.12, "reflection {d}, ray tube {expected}");
+}
+
+#[test]
+fn a_second_order_path_over_a_floor_keeps_the_bend_factor() {
+    let radius = 2.0;
+    let wall = bent_wall_at([0.0, 0.0, 3.0], radius, [0.0, -1.0, 0.0], 1.5, 3.0);
+    let floor = floor(10.0);
+    let arrival = normalize([0.0, 1.0, 0.5]);
+    let s = scene(vec![wall, floor], [0.0, 1.0, 1.0], arrival, 2048, 2);
+    let paths = neartect_core::images::specular_paths(&s);
+    let expected = (1.0_f64 / (1.0 + 2.0 * 1.0 / radius)).sqrt();
+    assert_eq!(paths.len(), 1, "paths {}", paths.len());
+    assert_eq!(paths[0].reflections.iter().map(|r| r.surface).collect::<Vec<_>>(), [0, 1]);
+    assert!((paths[0].gain - expected).abs() < 1e-6, "gain {}", paths[0].gain);
 }

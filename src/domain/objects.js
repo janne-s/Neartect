@@ -2,6 +2,8 @@
 // core. Local frame: x across, y the front normal, z up; the object is tilted
 // about x, then turned to its facing (compass yaw) about the vertical.
 
+import { bendOf, bentNormal, bentPoint, bentTangent, flatPoint } from './bend.js';
+
 export const OBJECT_KINDS = Object.freeze(['plane', 'disc', 'grating', 'wall', 'box', 'corner', 'recess', 'pipe']);
 export const DISC_SIDES = 48;
 export const PIPE_SIDES = 16;
@@ -127,9 +129,36 @@ export function reliefValues(object, shift = 0) {
   ];
 }
 
+export function objectBend(object) {
+  return bendOf(object, objectFrame(object));
+}
+
+// A point in the object's flat frame on its bent surface, and back.
+export function surfacePoint(object, local) {
+  return bentPoint(objectBend(object), toWorld(object, local));
+}
+
+export function surfaceLocal(object, point) {
+  return toLocal(object, flatPoint(objectBend(object), point));
+}
+
+// The object's frame where a point bound to it sits: on a bent surface its
+// across or up follows the arc and its front the arc's normal.
+export function surfaceFrame(object, local) {
+  const frame = objectFrame(object);
+  const bend = objectBend(object);
+  if (!bend) return frame;
+  const flat = toWorld(object, local);
+  const tangent = bentTangent(bend, flat);
+  const front = bentNormal(bend, flat);
+  return object.bend.axis === 'up' ? { across: tangent, front, up: frame.up } : { across: frame.across, front, up: tangent };
+}
+
 export function expandObject(object) {
+  const bend = objectBend(object);
   return localFaces(object).map(({ local, pattern }) => ({
     vertices: local.map(point => toWorld(object, point)),
+    bend,
     material: object.material,
     strength: object.strength,
     pattern: pattern ?? { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
@@ -176,7 +205,7 @@ export function pointPosition(space, point) {
   const object = referenceObject(space, point);
   if (!object) return point.position;
   const base = anchor(object);
-  return toWorld(object, point.offset.map((v, i) => v + base[i]));
+  return surfacePoint(object, point.offset.map((v, i) => v + base[i]));
 }
 
 export function referTo(space, point, id) {
@@ -184,7 +213,7 @@ export function referTo(space, point, id) {
   const facing = point.aim ? aimVector(space, point) : null;
   const object = id ? space.objects.find(o => o.id === id) : null;
   point.reference = object ? object.id : null;
-  point.offset = object ? toLocal(object, position).map((v, i) => v - anchor(object)[i]) : [0, 0, 0];
+  point.offset = object ? surfaceLocal(object, position).map((v, i) => v - anchor(object)[i]) : [0, 0, 0];
   point.position = position;
   if (facing) aimAt(space, point, facing);
 }
@@ -198,13 +227,18 @@ export function aimVector(space, microphone) {
   const local = [Math.cos(el) * Math.sin(az), Math.cos(el) * Math.cos(az), Math.sin(el)];
   const object = referenceObject(space, microphone);
   if (!object) return local;
-  const { across, front, up } = objectFrame(object);
+  const { across, front, up } = pointFrame(object, microphone);
   return [0, 1, 2].map(i => local[0] * across[i] + local[1] * front[i] + local[2] * up[i]);
+}
+
+export function pointFrame(object, point) {
+  const base = anchor(object);
+  return surfaceFrame(object, point.offset.map((v, i) => v + base[i]));
 }
 
 export function aimAt(space, microphone, direction) {
   const object = referenceObject(space, microphone);
-  const d = object ? (() => { const { across, front, up } = objectFrame(object); return [dot(direction, across), dot(direction, front), dot(direction, up)]; })() : direction;
+  const d = object ? (() => { const { across, front, up } = pointFrame(object, microphone); return [dot(direction, across), dot(direction, front), dot(direction, up)]; })() : direction;
   const n = Math.hypot(...d) || 1;
   const az = Math.atan2(d[0], d[1]) * 180 / Math.PI;
   microphone.aim = {
@@ -215,7 +249,7 @@ export function aimAt(space, microphone, direction) {
 
 export function placePointAt(space, point, position) {
   const object = referenceObject(space, point);
-  if (object) point.offset = toLocal(object, position).map((v, i) => v - anchor(object)[i]);
+  if (object) point.offset = surfaceLocal(object, position).map((v, i) => v - anchor(object)[i]);
   point.position = position;
 }
 

@@ -1,5 +1,6 @@
 import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
 import { FLAT_RELIEF, OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo, RELIEF_SHAPES } from './objects.js';
+import { BEND_AXES, BEND_KINDS, FLAT_BEND } from './bend.js';
 import { HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, RIG_SPACING_METRES } from './rigs.js';
 
 export const SPACE_KIND = 'neartect.space';
@@ -15,6 +16,7 @@ export const RANGES = Object.freeze({
   sizeMetres: [0.01, 50],
   yawDegrees: [0, 360],
   tiltDegrees: [-180, 180],
+  bendDegrees: [-180, 180],
   strength: [0, 2],
   azimuthDegrees: [0, 360],
   elevationDegrees: [-90, 90],
@@ -95,6 +97,7 @@ function readObject(value, index = 0) {
   };
   if (kind === 'pipe') object.size[2] = object.size[0];
   object.relief = readRelief(o.relief);
+  if (BEND_KINDS.includes(kind)) object.bend = readBend(o.bend);
   if (kind === 'grating') object.pattern = readPattern(o.pattern ?? defaults.pattern);
   if (kind === 'wall') object.opening = readOpening(o.opening ?? defaults.opening, size);
   return object;
@@ -157,6 +160,14 @@ function readSource(value) {
     kind: choice(s.kind, SOURCE_KINDS, 'far'),
     ...readPoint(s, [0, 2, 1.5]),
     distance: typeof s.distance === 'boolean' ? s.distance : true
+  };
+}
+
+function readBend(value) {
+  const b = isRecord(value) ? value : {};
+  return {
+    angleDegrees: number(b.angleDegrees, RANGES.bendDegrees, FLAT_BEND.angleDegrees),
+    axis: choice(b.axis, BEND_AXES, FLAT_BEND.axis)
   };
 }
 

@@ -64,22 +64,28 @@ struct Reach {
     corners: Vec<Vec<V3>>,
     centres: Vec<V3>,
     convex: Vec<bool>,
+    bent: Vec<bool>,
 }
 
 impl Reach {
     fn new(scene: &Scene) -> Reach {
         let count = scene.surfaces.len();
-        let corners: Vec<Vec<V3>> = scene.surfaces.iter().map(|s| s.polygon.points.iter().map(|&q| s.polygon.to_space(q)).collect()).collect();
+        let corners: Vec<Vec<V3>> = scene
+            .surfaces
+            .iter()
+            .map(|s| if s.is_bent() { s.bend.outline(&s.polygon, OUTLINE_PIECES) } else { s.polygon.points.iter().map(|&q| s.polygon.to_space(q)).collect() })
+            .collect();
         let mut sides = vec![0; count * count];
         for (a, here) in scene.surfaces.iter().enumerate() {
             for (b, points) in corners.iter().enumerate() {
-                sides[a * count + b] = points.iter().fold(0, |mask, &p| mask | side(here.polygon.signed_distance(p)));
+                sides[a * count + b] = if here.is_bent() { FRONT | BACK } else { points.iter().fold(0, |mask, &p| mask | side(here.polygon.signed_distance(p))) };
             }
         }
-        let microphone = scene.surfaces.iter().map(|s| side(s.polygon.signed_distance(scene.microphone))).collect();
+        let microphone = scene.surfaces.iter().map(|s| if s.is_bent() { FRONT | BACK } else { side(s.polygon.signed_distance(scene.microphone)) }).collect();
         let centres = corners.iter().map(|points| scale(points.iter().fold([0.0; 3], |sum, &p| add(sum, p)), 1.0 / points.len() as f64)).collect();
-        let convex = scene.surfaces.iter().map(|s| is_convex(&s.polygon.points)).collect();
-        Reach { count, sides, microphone, corners, centres, convex }
+        let convex = scene.surfaces.iter().map(|s| !s.is_bent() && is_convex(&s.polygon.points)).collect();
+        let bent = scene.surfaces.iter().map(|s| s.is_bent()).collect();
+        Reach { count, sides, microphone, corners, centres, convex, bent }
     }
 
     fn can_follow(&self, sequence: &[usize], image: V3, next: usize) -> bool {
@@ -88,7 +94,8 @@ impl Reach {
             Some(&previous) => self.sides[last * self.count + previous],
             None => self.microphone[last],
         };
-        arriving & self.sides[last * self.count + next] != 0 && (!self.convex[last] || self.in_beam(image, last, next))
+        let image_holds = !sequence.iter().any(|&i| self.bent[i]);
+        arriving & self.sides[last * self.count + next] != 0 && (!self.convex[last] || !image_holds || self.in_beam(image, last, next))
     }
 
     fn in_beam(&self, apex: V3, window: usize, next: usize) -> bool {
@@ -106,6 +113,7 @@ impl Reach {
 }
 
 const BEAM_TOLERANCE: f64 = 1e-9;
+const OUTLINE_PIECES: usize = 8;
 
 fn is_convex(points: &[[f64; 2]]) -> bool {
     let n = points.len();
@@ -137,21 +145,20 @@ fn covered_pairs(scene: &Scene) -> Vec<[usize; 2]> {
 // The specular path through `sequence`, nearest the microphone first, over
 // the flat polygons.
 pub fn path_through(scene: &Scene, sequence: &[usize]) -> Option<Path> {
-    trace(scene, sequence)
+    trace(scene, sequence).into_iter().next()
 }
 
 fn extend(scene: &Scene, covered: &[[usize; 2]], reach: &Reach, sequence: &mut Vec<usize>, image: V3, paths: &mut Vec<Path>) {
     let held = sequence.len() == 2 && covered.contains(&[sequence[0], sequence[1]]);
     if sequence.len() >= 2 && !held {
-        if let Some(path) = trace(scene, sequence) {
-            paths.push(path);
-        }
+        paths.extend(trace(scene, sequence));
     }
     if sequence.len() >= scene.max_order {
         return;
     }
     for i in 0..scene.surfaces.len() {
-        if sequence.last() == Some(&i) || scene.surfaces[i].strength <= 0.0 || !reach.can_follow(sequence, image, i) {
+        let second_bend = scene.surfaces[i].is_bent() && sequence.iter().any(|&j| scene.surfaces[j].is_bent());
+        if sequence.last() == Some(&i) || scene.surfaces[i].strength <= 0.0 || second_bend || !reach.can_follow(sequence, image, i) {
             continue;
         }
         sequence.push(i);
@@ -160,17 +167,104 @@ fn extend(scene: &Scene, covered: &[[usize; 2]], reach: &Reach, sequence: &mut V
     }
 }
 
-fn trace(scene: &Scene, sequence: &[usize]) -> Option<Path> {
-    match scene.source {
-        None => trace_plane(scene, sequence),
-        Some(source) => trace_point(scene, sequence, source),
+// A mirror for one reflection: a flat surface's plane, or the tangent plane
+// of a bent surface at its specular point.
+#[derive(Clone, Copy)]
+struct Mirror {
+    point: V3,
+    normal: V3,
+}
+
+impl Mirror {
+    fn of(polygon: &crate::geom::Polygon) -> Mirror {
+        Mirror { point: polygon.origin, normal: polygon.normal }
+    }
+
+    fn distance(&self, x: V3) -> f64 {
+        dot(sub(x, self.point), self.normal)
+    }
+
+    fn mirror_point(&self, x: V3) -> V3 {
+        sub(x, scale(self.normal, 2.0 * self.distance(x)))
+    }
+
+    fn mirror_direction(&self, d: V3) -> V3 {
+        sub(d, scale(self.normal, 2.0 * dot(d, self.normal)))
     }
 }
 
-fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
+// The reflection on a bent surface: where it is, and the ray-tube gain the
+// curvature gives it against a flat mirror there.
+#[derive(Clone, Copy)]
+struct Bounce {
+    at: usize,
+    point: V3,
+    gain: f64,
+}
+
+const BOUNCE_TOLERANCE_METRES: f64 = 1e-6;
+
+// A path may reflect from one bent surface: its specular points are found on
+// the arc between the microphone's and the source's images in the flat
+// surfaces on either side. Paths over two bent surfaces are left out.
+fn trace(scene: &Scene, sequence: &[usize]) -> Vec<Path> {
+    let mirrors: Vec<Mirror> = sequence.iter().map(|&i| Mirror::of(&scene.surfaces[i].polygon)).collect();
+    let bent: Vec<usize> = (0..sequence.len()).filter(|&k| scene.surfaces[sequence[k]].is_bent()).collect();
+    match bent[..] {
+        [] => trace_with(scene, sequence, &mirrors, None).into_iter().collect(),
+        [k] => {
+            let surface = &scene.surfaces[sequence[k]];
+            let to = mirrors[..k].iter().fold(scene.microphone, |x, m| m.mirror_point(x));
+            let later = &mirrors[k + 1..];
+            let source = scene.source.map(|s| later.iter().rev().fold(s, |x, m| m.mirror_point(x)));
+            let towards = later.iter().rev().fold(scene.arrival, |d, m| m.mirror_direction(d));
+            let range = surface.bend.arc_range(&surface.polygon);
+            surface
+                .bend
+                .specular(&surface.polygon, range, to, source, towards)
+                .into_iter()
+                .filter(|found| surface.is_solid(found.plane))
+                .filter_map(|found| {
+                    let mut own = mirrors.clone();
+                    own[k] = Mirror { point: found.point, normal: found.normal };
+                    trace_with(scene, sequence, &own, Some(Bounce { at: k, point: found.point, gain: found.gain }))
+                })
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn hit_on(surface: &crate::scene::Surface, mirror: Mirror, bounce: Option<Bounce>, point: V3, direction: V3, remaining: f64) -> Option<(f64, V3)> {
+    match bounce {
+        Some(b) => {
+            let along = dot(direction, mirror.normal);
+            if along.abs() < 1e-12 {
+                return None;
+            }
+            let t = -mirror.distance(point) / along;
+            let hit = add(point, scale(direction, t));
+            (t > 1e-7 && t < remaining - 1e-7 && norm(sub(hit, b.point)) < BOUNCE_TOLERANCE_METRES * (1.0 + t)).then_some((t, hit))
+        }
+        None => {
+            let (t, q) = surface.ray_hit(point, direction, remaining)?;
+            surface.pattern.is_solid(q).then(|| (t, add(point, scale(direction, t))))
+        }
+    }
+}
+
+fn trace_with(scene: &Scene, sequence: &[usize], mirrors: &[Mirror], bounce: Option<Bounce>) -> Option<Path> {
+    let path = match scene.source {
+        None => trace_plane(scene, sequence, mirrors, bounce),
+        Some(source) => trace_point(scene, sequence, mirrors, bounce, source),
+    }?;
+    Some(Path { gain: path.gain * bounce.map_or(1.0, |b| b.gain), ..path })
+}
+
+fn trace_point(scene: &Scene, sequence: &[usize], mirrors: &[Mirror], bounce: Option<Bounce>, source: V3) -> Option<Path> {
     let mut image = source;
-    for &i in sequence.iter().rev() {
-        image = scene.surfaces[i].polygon.mirror_point(image);
+    for m in mirrors.iter().rev() {
+        image = m.mirror_point(image);
     }
     let path_length = norm(sub(image, scene.microphone));
     let from = crate::geom::normalize(sub(image, scene.microphone));
@@ -178,24 +272,20 @@ fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
     let mut hits: Vec<(V3, f64, f64)> = Vec::with_capacity(sequence.len());
     let mut travelled = 0.0;
     for (k, &i) in sequence.iter().enumerate() {
-        let surface = &scene.surfaces[i];
+        let mirror = mirrors[k];
         let remaining = norm(sub(image, point));
         let direction = scale(sub(image, point), 1.0 / remaining);
-        if surface.polygon.signed_distance(point).signum() == surface.polygon.signed_distance(image).signum() {
+        if mirror.distance(point).signum() == mirror.distance(image).signum() {
             return None;
         }
-        let t = surface.polygon.ray_hit(point, direction, remaining)?;
-        let hit = add(point, scale(direction, t));
-        if !surface.pattern.is_solid(surface.polygon.to_plane(hit)) {
-            return None;
-        }
+        let (t, hit) = hit_on(&scene.surfaces[i], mirror, bounce.filter(|b| b.at == k), point, direction, remaining)?;
         let previous: Vec<usize> = if k > 0 { vec![sequence[k - 1], i] } else { vec![i] };
         if scene.occluded(&previous, point, direction, t) {
             return None;
         }
         travelled += t;
-        hits.push((hit, travelled, dot(direction, surface.polygon.normal).abs()));
-        image = surface.polygon.mirror_point(image);
+        hits.push((hit, travelled, dot(direction, mirror.normal).abs()));
+        image = mirror.mirror_point(image);
         point = hit;
     }
     let to_source = sub(source, point);
@@ -208,30 +298,25 @@ fn trace_point(scene: &Scene, sequence: &[usize], source: V3) -> Option<Path> {
     Some(Path { delay_seconds: (path_length - direct) / c, gain: direct / path_length, from, distance: path_length, reflections: rindel(scene, sequence, &hits, Some(source)) })
 }
 
-fn trace_plane(scene: &Scene, sequence: &[usize]) -> Option<Path> {
+fn trace_plane(scene: &Scene, sequence: &[usize], mirrors: &[Mirror], bounce: Option<Bounce>) -> Option<Path> {
     let mut direction = scene.arrival;
-    for &i in sequence.iter().rev() {
-        direction = scene.surfaces[i].polygon.mirror_direction(direction);
+    for m in mirrors.iter().rev() {
+        direction = m.mirror_direction(direction);
     }
     let from = direction;
     let mut point = scene.microphone;
     let mut hits: Vec<(V3, f64, f64)> = Vec::with_capacity(sequence.len());
     let mut travelled = 0.0;
     for (k, &i) in sequence.iter().enumerate() {
-        let surface = &scene.surfaces[i];
-        let t = surface.polygon.ray_hit(point, direction, f64::INFINITY)?;
-        let hit = add(point, scale(direction, t));
-        if !surface.pattern.is_solid(surface.polygon.to_plane(hit)) {
-            return None;
-        }
+        let mirror = mirrors[k];
+        let (t, hit) = hit_on(&scene.surfaces[i], mirror, bounce.filter(|b| b.at == k), point, direction, f64::INFINITY)?;
         let previous: Vec<usize> = if k > 0 { vec![sequence[k - 1], i] } else { vec![i] };
         if scene.occluded(&previous, point, direction, t) {
             return None;
         }
         travelled += t;
-        let cos_incidence = dot(direction, surface.polygon.normal).abs();
-        hits.push((hit, travelled, cos_incidence));
-        direction = surface.polygon.mirror_direction(direction);
+        hits.push((hit, travelled, dot(direction, mirror.normal).abs()));
+        direction = mirror.mirror_direction(direction);
         point = hit;
     }
     if norm(sub(direction, scene.arrival)) > 1e-6 {

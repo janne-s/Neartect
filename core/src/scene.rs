@@ -16,11 +16,47 @@ pub struct Surface {
     pub reflection: [f64; BAND_COUNT],
     pub pattern: Pattern,
     pub relief: crate::relief::Relief,
+    pub bend: crate::bend::Bend,
 }
 
 impl Surface {
     pub fn is_solid(&self, q: [f64; 2]) -> bool {
         self.polygon.contains(q) && self.pattern.is_solid(q)
+    }
+
+    pub fn is_bent(&self) -> bool {
+        self.bend.is_bent()
+    }
+
+    pub fn point(&self, q: [f64; 2]) -> V3 {
+        self.bend.point(&self.polygon, q)
+    }
+
+    // The surface's normal and its two plane directions at `q`, turned with
+    // the bend.
+    pub fn frame(&self, q: [f64; 2]) -> (V3, V3, V3) {
+        let p = &self.polygon;
+        (self.bend.rotate(p, q, p.normal), self.bend.rotate(p, q, p.u), self.bend.rotate(p, q, p.v))
+    }
+
+    pub fn locate(&self, p: V3) -> ([f64; 2], f64) {
+        self.bend.locate(&self.polygon, p)
+    }
+
+    // The nearest crossing of the ray with the surface within `max_length`,
+    // as distance and plane coordinates (the polygon's outline, not its
+    // pattern).
+    pub fn ray_hit(&self, from: V3, direction: V3, max_length: f64) -> Option<(f64, [f64; 2])> {
+        if !self.is_bent() {
+            let t = self.polygon.ray_hit(from, direction, max_length)?;
+            return Some((t, self.polygon.to_plane(crate::geom::add(from, crate::geom::scale(direction, t)))));
+        }
+        self.bend.crossings(&self.polygon, from, direction, max_length).into_iter().find(|&(_, q)| self.polygon.contains(q))
+    }
+
+    pub fn edge(&self, i: usize) -> (V3, V3) {
+        let n = self.polygon.points.len();
+        (self.point(self.polygon.points[i]), self.point(self.polygon.points[(i + 1) % n]))
     }
 }
 
@@ -245,22 +281,29 @@ impl Scene {
         }
     }
 
+    pub fn source_towards(&self, point: V3, normal: V3) -> f64 {
+        match self.source {
+            None => crate::geom::dot(normal, self.arrival),
+            Some(source) => crate::geom::dot(normal, crate::geom::sub(source, point)),
+        }
+    }
+
     pub fn off_surfaces(&self) -> Scene {
         let mut scene = self.clone();
         for surface in &self.surfaces {
-            let polygon = &surface.polygon;
-            let gap = polygon.signed_distance(scene.microphone);
-            if gap.abs() >= SMALLEST_GAP_METRES || !polygon.contains(polygon.to_plane(scene.microphone)) {
+            let (q, gap) = surface.locate(scene.microphone);
+            if gap.abs() >= SMALLEST_GAP_METRES || !surface.polygon.contains(q) {
                 continue;
             }
+            let (normal, _, _) = surface.frame(q);
             let side = if gap != 0.0 {
                 gap.signum()
-            } else if self.source_side(polygon) < 0.0 {
+            } else if self.source_towards(surface.point(q), normal) < 0.0 {
                 -1.0
             } else {
                 1.0
             };
-            scene.microphone = crate::geom::add(scene.microphone, crate::geom::scale(polygon.normal, side * SMALLEST_GAP_METRES - gap));
+            scene.microphone = crate::geom::add(scene.microphone, crate::geom::scale(normal, side * SMALLEST_GAP_METRES - gap));
         }
         scene
     }
@@ -274,11 +317,8 @@ impl Scene {
             if skip.contains(&i) {
                 return false;
             }
-            match s.polygon.ray_hit(from, direction, max_length) {
-                Some(t) => {
-                    let hit = crate::geom::add(from, crate::geom::scale(direction, t));
-                    s.pattern.is_solid(s.polygon.to_plane(hit))
-                }
+            match s.ray_hit(from, direction, max_length) {
+                Some((_, q)) => s.pattern.is_solid(q),
                 None => false,
             }
         })
