@@ -455,7 +455,17 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     }
   }
 
+  let drawRequested = false;
   function draw() {
+    if (drawRequested) return;
+    drawRequested = true;
+    requestAnimationFrame(() => {
+      drawRequested = false;
+      drawNow();
+    });
+  }
+
+  function drawNow() {
     const fitted = fitCanvas(canvas);
     const { context } = fitted;
     size = { width: fitted.width, height: fitted.height };
@@ -1223,7 +1233,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (item?.type === 'rig') camera.target = [...space.rigs.find(r => r.id === item.id).position];
     draw();
   });
-  new ResizeObserver(() => draw()).observe(canvas);
+  new ResizeObserver(() => drawNow()).observe(canvas);
 
   return {
     update(nextSpace, nextSelection) {
