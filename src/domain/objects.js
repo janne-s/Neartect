@@ -99,10 +99,21 @@ function planePattern(object) {
     return { kind: 'grid', values: [...p.periodMetres, ...p.barMetres, p.thicknessMetres, 0] };
   }
   if (object.kind === 'wall' && object.opening) {
-    const o = object.opening;
+    const o = fittedOpening(object.opening, object.size);
     return { kind: 'opening', values: [w / 2 + o.offsetMetres[0], h / 2 + o.offsetMetres[1], o.sizeMetres[0] / 2, o.sizeMetres[1] / 2, o.shape === 'round' ? 1 : 0, 0] };
   }
   return { kind: 'solid', values: [0, 0, 0, 0, 0, 0] };
+}
+
+// An opening kept inside its wall: no wider or taller than the wall, and
+// moved in from an edge it would cross.
+export function fittedOpening(opening, [w, , h]) {
+  const sizeMetres = opening.sizeMetres.map((s, i) => Math.min(s, [w, h][i]));
+  const offsetMetres = opening.offsetMetres.map((d, i) => {
+    const room = ([w, h][i] - sizeMetres[i]) / 2;
+    return Math.max(-room, Math.min(room, d));
+  });
+  return { ...opening, sizeMetres, offsetMetres };
 }
 
 export const RELIEF_SHAPES = Object.freeze(['flat', 'waves', 'arches', 'scallops', 'egg']);

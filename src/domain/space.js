@@ -1,5 +1,5 @@
 import { DEFAULT_MATERIAL, MATERIALS } from './materials.js';
-import { FLAT_RELIEF, OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo, RELIEF_SHAPES } from './objects.js';
+import { FLAT_RELIEF, fittedOpening, OBJECT_DEFAULTS, OBJECT_KINDS, placePoints, referTo, RELIEF_SHAPES } from './objects.js';
 import { BEND_AXES, BEND_KINDS, FLAT_BEND } from './bend.js';
 import { HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, RIG_SPACING_METRES } from './rigs.js';
 
@@ -189,10 +189,10 @@ function readRelief(value) {
 function readOpening(value, size) {
   const o = isRecord(value) ? value : {};
   const sizeMetres = (Array.isArray(o.sizeMetres) && o.sizeMetres.length === 2 ? o.sizeMetres : [0.4, 0.4])
-    .map((v, i) => Math.min(number(v, RANGES.sizeMetres, 0.4), size[i * 2]));
+    .map(v => number(v, RANGES.sizeMetres, 0.4));
   const offsetMetres = (Array.isArray(o.offsetMetres) && o.offsetMetres.length === 2 ? o.offsetMetres : [0, 0])
-    .map((v, i) => number(v, RANGES.positionMetres, 0));
-  return { shape: choice(o.shape, OPENING_SHAPES, 'round'), sizeMetres, offsetMetres };
+    .map(v => number(v, RANGES.positionMetres, 0));
+  return fittedOpening({ shape: choice(o.shape, OPENING_SHAPES, 'round'), sizeMetres, offsetMetres }, size);
 }
 
 function readPattern(value) {

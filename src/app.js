@@ -3,7 +3,7 @@ import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
-import { aimAt, firstListener, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
+import { aimAt, firstListener, fittedOpening, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { BEND_KINDS } from './domain/bend.js';
@@ -445,7 +445,11 @@ function objectCard(container, object) {
       macro(shape, { label: 'Bar width', range: [0.001, 0.2], log: true, format: formatGap, fallback: 0.004, read: () => current().pattern.barMetres[0], write: v => { const p = current().pattern; p.barMetres = p.barMetres.map((b, i) => (p.periodMetres[i] > 0 ? Math.min(v, p.periodMetres[i]) : 0)); } });
     }
     if (object.kind === 'wall') {
-      macro(shape, { label: 'Opening', title: 'Opening size', range: [0.02, 5], log: true, format: formatGap, fallback: 0.4, read: () => current().opening.sizeMetres[0], write: v => { const o = current().opening; o.sizeMetres = [Math.min(v, current().size[0]), Math.min(v, current().size[2])]; } });
+      ['Opening width', 'Opening height'].forEach((label, i) => macro(shape, {
+        label, range: [0.02, 10], log: true, format: formatGap, fallback: defaultObject('wall').opening.sizeMetres[i],
+        read: () => current().opening.sizeMetres[i],
+        write: v => { const o = current().opening; o.sizeMetres[i] = v; Object.assign(o, fittedOpening(o, current().size)); }
+      }));
     }
     const surface = cardGroup(card, 'Surface');
     selectRow(surface.macros, {
@@ -845,8 +849,8 @@ function openDetails(id) {
   if (object.kind === 'wall') {
     const opening = group('Opening');
     fields.selectField(opening, { label: 'Shape', value: object.opening.shape, options: [['round', 'Round'], ['rectangle', 'Rectangle']], onCommit: v => update(o => { o.opening.shape = v; }) });
-    ['Width', 'Height'].forEach((label, i) => fields.numberField(opening, { key: 'sizeMetres', label, value: object.opening.sizeMetres[i], onCommit: v => update(o => { o.opening.sizeMetres[i] = v; }) }));
-    ['Across', 'Up'].forEach((label, i) => fields.numberField(opening, { key: 'positionMetres', label: `Offset ${label.toLowerCase()}`, value: object.opening.offsetMetres[i], onCommit: v => update(o => { o.opening.offsetMetres[i] = v; }) }));
+    ['Width', 'Height'].forEach((label, i) => fields.numberField(opening, { key: 'sizeMetres', label, value: object.opening.sizeMetres[i], onCommit: v => update(o => { o.opening.sizeMetres[i] = v; o.opening = fittedOpening(o.opening, o.size); }, true) }));
+    ['Across', 'Up'].forEach((label, i) => fields.numberField(opening, { key: 'positionMetres', label: `Offset ${label.toLowerCase()}`, value: object.opening.offsetMetres[i], onCommit: v => update(o => { o.opening.offsetMetres[i] = v; o.opening = fittedOpening(o.opening, o.size); }, true) }));
   }
   if (!dialog.open) {
     dialog.showModal();

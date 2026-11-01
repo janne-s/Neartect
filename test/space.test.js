@@ -124,3 +124,11 @@ test('a saved space states its classes, with strength other than 1 as C, and rea
   assert.equal(saved.reliability.lowest, 'C');
   assert.equal(readSpace(JSON.parse(JSON.stringify(saved))).reliability, undefined);
 });
+
+test('a wall keeps its opening inside, whatever its size and offset', () => {
+  const space = readSpace({ kind: 'neartect.space', objects: [{ kind: 'wall', size: [3, 0, 2.5], opening: { shape: 'rectangle', sizeMetres: [0.9, 4], offsetMetres: [1.4, 0] } }] });
+  assert.deepEqual(space.objects[0].opening.sizeMetres, [0.9, 2.5]);
+  assert.ok(Math.abs(space.objects[0].opening.offsetMetres[0] - 1.05) < 1e-12);
+  const values = expandObject({ ...space.objects[0], size: [1, 0, 2.5] })[0].pattern.values;
+  assert.ok(Math.abs(values[0] - 0.55) < 1e-12 && values[0] + values[2] <= 1 + 1e-12);
+});
