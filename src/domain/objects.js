@@ -219,6 +219,17 @@ export function pointPosition(space, point) {
   return surfacePoint(object, point.offset.map((v, i) => v + base[i]));
 }
 
+// The offset that puts a bound point at its object's middle: a flat object
+// keeps the gap (a wall centres on its opening), a solid one takes its centre.
+export function centredOffset(object, offset) {
+  const { min, max } = objectBounds(object);
+  const base = anchor(object);
+  const centre = [0, 1, 2].map(i => (min[i] + max[i]) / 2 - base[i]);
+  if (!FLAT_KINDS.includes(object.kind)) return centre;
+  const opening = object.kind === 'wall' && object.opening ? fittedOpening(object.opening, object.size).offsetMetres : [0, 0];
+  return [centre[0] + opening[0], offset[1], centre[2] + opening[1]];
+}
+
 export function referTo(space, point, id) {
   const position = pointPosition(space, point);
   const facing = point.aim ? aimVector(space, point) : null;

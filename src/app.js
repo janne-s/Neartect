@@ -3,7 +3,7 @@ import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
-import { aimAt, firstListener, fittedOpening, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
+import { aimAt, centredOffset, firstListener, fittedOpening, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { BEND_KINDS } from './domain/bend.js';
@@ -384,7 +384,7 @@ function tileRow(group, macros, { label, items, chosen, onPick }) {
   group.insertBefore(row, macros);
 }
 
-function selectRow(macros, { label, title, value, options, onChange, note = '' }) {
+function selectRow(macros, { label, title, value, options, onChange, note = '', extra = null }) {
   const name = element('label', null);
   name.innerHTML = label;
   name.title = title;
@@ -397,7 +397,7 @@ function selectRow(macros, { label, title, value, options, onChange, note = '' }
   });
   select.value = value;
   select.addEventListener('change', () => onChange(select.value));
-  macros.append(name, select, element('span', 'macro-value', note));
+  macros.append(name, select, extra ?? element('span', 'macro-value', note));
 }
 
 function objectCard(container, object) {
@@ -559,13 +559,28 @@ function refreshPanel() {
   }));
 }
 
+function centreButton(action) {
+  const button = element('button', 'icon-toggle row-button');
+  button.type = 'button';
+  button.title = 'Centre on the object';
+  button.setAttribute('aria-label', button.title);
+  button.innerHTML = '<i class="fa-solid fa-bullseye" aria-hidden="true"></i>';
+  button.addEventListener('click', action);
+  return button;
+}
+
 function pointControls(macros, current, gapFallback) {
   const reference = referenceObject(state.space, current());
   selectRow(macros, {
     label: '<i class="fa-solid fa-anchor" aria-hidden="true"></i> Bound to', title: 'Bound to an object, or free in the world',
     value: reference?.id ?? '',
     options: [['', 'World'], ...state.space.objects.map(o => [o.id, o.name])],
-    onChange: id => { referTo(state.space, current(), id || null); changed({ panel: true }); }
+    onChange: id => { referTo(state.space, current(), id || null); changed({ panel: true }); },
+    extra: reference ? centreButton(() => {
+      const point = current();
+      point.offset = centredOffset(referenceObject(state.space, point), point.offset);
+      changed({ panel: true });
+    }) : null
   });
   if (reference) {
     [['↔ Across', 'Across the object'], ['⟂ Gap', 'Out from the object (negative is behind or inside)'], ['↕ Up', 'Up along the object']].forEach(([label, title], axis) => macro(macros, {

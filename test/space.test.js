@@ -132,3 +132,15 @@ test('a wall keeps its opening inside, whatever its size and offset', () => {
   const values = expandObject({ ...space.objects[0], size: [1, 0, 2.5] })[0].pattern.values;
   assert.ok(Math.abs(values[0] - 0.55) < 1e-12 && values[0] + values[2] <= 1 + 1e-12);
 });
+
+test('centring a bound point puts it mid-pipe, or mid-wall at the same gap', async () => {
+  const { centredOffset, pointPosition } = await import('../src/domain/objects.js');
+  const space = readSpace({ kind: 'neartect.space', objects: [
+    { kind: 'pipe', position: [1, 2, 0.5], size: [0.3, 2, 0.3], yawDegrees: 90 },
+    { kind: 'wall', size: [5, 0, 2.5], opening: { shape: 'rectangle', sizeMetres: [0.9, 2.1], offsetMetres: [0.5, -0.2] } }
+  ] });
+  const [pipe, wall] = space.objects;
+  const point = { reference: pipe.id, offset: centredOffset(pipe, [0.05, 0.3, 0.02]), position: [0, 0, 0] };
+  assert.deepEqual(round(pointPosition(space, point)), [1, 2, 0.5]);
+  assert.deepEqual(round(centredOffset(wall, [1, 0.25, 1])), [0.5, 0.25, -0.2]);
+});
