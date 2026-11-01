@@ -1,6 +1,6 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector, signedTurn } from '../domain/space.js';
-import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointFrame, pointPosition, referenceObject, surfacePoint, toWorld } from '../domain/objects.js';
+import { aimAt, aimVector, boundPoints, expandObject, followResize, resizedPosition, objectBounds, objectFrame, placePointAt, pointFrame, pointPosition, referenceObject, surfacePoint, toWorld } from '../domain/objects.js';
 import { bentNormal, bentPoint } from '../domain/bend.js';
 import { wheelGesture } from '../shared/ui/wheel.js';
 import { faceNormal, nearestSurface } from '../domain/placement.js';
@@ -924,6 +924,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const snapshot = JSON.parse(JSON.stringify(bound ?? (handle.type === 'arrival' ? { arrival: space.arrival } : object)));
     const centre = bound ? bound.position : handle.type === 'arrival' ? listeningCentre() : object ? objectCentre(object) : null;
     const start = { point };
+    if (handle.type === 'size') start.offsets = new Map(boundPoints(space).filter(p => p.reference === object.id).map(p => [p, [...p.offset]]));
     if (handle.type === 'move' || handle.type === 'size') {
       start.axis = handle.vector;
       start.screen = screenAxis(centre, handle.vector);
@@ -991,7 +992,10 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return degrees(Math.atan2(d[2], d[0] * Math.sin(yaw) + d[1] * Math.cos(yaw)));
   }
 
-  function dragTo(point, free) {
+  // Shift is free movement everywhere but on size handles, where it scales in
+  // proportion, Alt grows about the centre, and Cmd or Ctrl is free.
+  function dragTo(point, keys) {
+    const free = drag.handle.type === 'size' ? keys.command : keys.shift;
     const { handle, snapshot, centre, start } = drag;
     const step = gridSpacing() / SNAP_PER_GRID;
     if (drag.aim && handle.which === 'tilt') {
@@ -1054,16 +1058,18 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       });
     } else if (handle.type === 'size') {
       const delta = alongAxis(start, point) * handle.side;
-      const size = Math.max(0.01, snap(snapshot.size[handle.axis] + delta, step, free));
-      const change = size - snapshot.size[handle.axis];
-      readout = { x: point[0], y: point[1], text: `${SIZE_NAMES[handle.axis]} ${formatGap(size)}` };
+      const length = Math.max(0.01, snap(snapshot.size[handle.axis] + delta, step, free));
+      const ratio = length / snapshot.size[handle.axis];
+      const size = keys.shift ? snapshot.size.map(v => v * ratio) : snapshot.size.map((v, i) => (i === handle.axis ? length : v));
+      if (snapshot.kind === 'pipe' && handle.axis === 0) size[2] = size[0];
+      const keep = [0, 1, 2].map(i => keys.alt || i !== handle.axis);
+      const side = [0, 1, 2].map(i => (i === handle.axis ? handle.side : 1));
+      readout = { x: point[0], y: point[1], text: `${SIZE_NAMES[handle.axis]} ${formatGap(length)}${keys.shift ? ` · ×${ratio.toFixed(2)}` : ''}` };
       onEdit(next => {
         const object = next.objects.find(o => o.id === drag.objectId);
-        object.size[handle.axis] = size;
-        if (object.kind === 'pipe' && handle.axis === 0) object.size[2] = size;
-        if (handle.symmetric) {
-          object.position = snapshot.position.map((p, i) => p + start.axis[i] * change / 2 * handle.side);
-        }
+        object.size = size;
+        object.position = resizedPosition(snapshot, size, keep, side);
+        followResize(next, snapshot, object, start.offsets);
       });
     } else if (handle.type === 'ring') {
       const object = space.objects.find(o => o.id === drag.objectId);
@@ -1217,7 +1223,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       return;
     }
     if (drag.handle) {
-      dragTo(point, event.shiftKey);
+      dragTo(point, { shift: event.shiftKey, alt: event.altKey, command: event.metaKey || event.ctrlKey });
       return;
     }
     if (drag.marquee) {

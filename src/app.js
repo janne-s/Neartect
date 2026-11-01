@@ -3,7 +3,7 @@ import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
-import { aimAt, centredOffset, firstListener, fittedOpening, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
+import { aimAt, centredOffset, firstListener, fittedOpening, followResize, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
 import { BEND_KINDS } from './domain/bend.js';
@@ -428,7 +428,12 @@ function objectCard(container, object) {
       macro(shape, {
         label: SIZE_TITLES[label], range: [0.01, 20], log: true, format: formatGap, fallback: defaultObject(object.kind).size[axis],
         read: () => current().size[axis],
-        write: v => { current().size[axis] = v; if (object.kind === 'pipe' && axis === 0) current().size[2] = v; }
+        write: v => {
+          const before = clone(current());
+          current().size[axis] = v;
+          if (object.kind === 'pipe' && axis === 0) current().size[2] = v;
+          followResize(state.space, before, current());
+        }
       });
     });
     macro(shape, { label: 'Facing', title: 'Compass direction the front faces', range: [0, 360], format: degrees, fallback: 0, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
@@ -845,7 +850,7 @@ function openDetails(id) {
   const sizeNames = { W: 'Width', D: 'Depth', H: 'Height', L: 'Length', '⌀': 'Diameter', '⌀↕': 'Diameter up' };
   SIZE_LABELS[object.kind].forEach((label, axis) => {
     if (!label) return;
-    fields.numberField(shape, { key: 'sizeMetres', label: sizeNames[label], value: object.size[axis], onCommit: v => update(o => { o.size[axis] = v; if (o.kind === 'pipe' && axis === 0) o.size[2] = v; }) });
+    fields.numberField(shape, { key: 'sizeMetres', label: sizeNames[label], value: object.size[axis], onCommit: v => update(o => { const before = clone(o); o.size[axis] = v; if (o.kind === 'pipe' && axis === 0) o.size[2] = v; followResize(state.space, before, o); }) });
   });
   const acoustics = group('Acoustics');
   fields.selectField(acoustics, {

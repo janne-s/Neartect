@@ -154,3 +154,28 @@ test('centring a bound point puts it mid-pipe, or mid-wall at the same gap', asy
   assert.deepEqual(round(pointPosition(space, point)), [1, 2, 0.5]);
   assert.deepEqual(round(centredOffset(wall, [1, 0.25, 1])), [0.5, 0.25, -0.2]);
 });
+
+test('microphones bound inside a pipe keep their share of it when it grows', async () => {
+  const { followResize, pointPosition } = await import('../src/domain/objects.js');
+  const space = readSpace({ kind: 'neartect.space', objects: [{ kind: 'pipe', position: [0, 0, 1], size: [0.2, 2, 0.2], yawDegrees: 0 }] });
+  const pipe = space.objects[0];
+  const at = offset => ({ reference: pipe.id, offset, position: [0, 0, 0] });
+  const inside = [at([0.05, -0.5, 0]), at([-0.05, -1.5, 0])];
+  const outside = at([0, 0.3, 0]);
+  space.microphones = [...inside, outside];
+  const before = structuredClone(pipe);
+  pipe.size = [0.4, 4, 0.4];
+  followResize(space, before, pipe);
+  assert.deepEqual(round(pointPosition(space, inside[0])), [0.1, 1, 1]);
+  assert.deepEqual(round(pointPosition(space, inside[1])), [-0.1, -1, 1]);
+  assert.deepEqual(round(pointPosition(space, outside)), [0, 2.3, 1]);
+});
+
+test('a resize keeps the opposite face, or the centre with Alt', async () => {
+  const { resizedPosition } = await import('../src/domain/objects.js');
+  const plane = readSpace({ kind: 'neartect.space', objects: [{ kind: 'plane', position: [0, 0, 1], size: [2, 0, 2] }] }).objects[0];
+  assert.deepEqual(round(resizedPosition(plane, [3, 0, 2], [false, true, true], [1, 1, 1])), [0.5, 0, 1]);
+  assert.deepEqual(round(resizedPosition(plane, [3, 0, 2], [true, true, true], [1, 1, 1])), [0, 0, 1]);
+  const corner = readSpace({ kind: 'neartect.space', objects: [{ kind: 'corner', position: [0, 0, 0], size: [2, 2, 2] }] }).objects[0];
+  assert.deepEqual(round(resizedPosition(corner, [4, 2, 2], [true, true, true], [1, 1, 1])), [-1, 0, 0]);
+});

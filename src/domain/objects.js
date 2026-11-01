@@ -230,6 +230,34 @@ export function centredOffset(object, offset) {
   return [centre[0] + opening[0], offset[1], centre[2] + opening[1]];
 }
 
+// Points bound to a resized object keep their place in it: inside its
+// extent along an axis they keep their fraction of it, outside they keep
+// their distance to the nearest face.
+export function followResize(space, before, after, offsets = null) {
+  const [was, now] = [objectBounds(before), objectBounds(after)];
+  const [baseWas, baseNow] = [anchor(before), anchor(after)];
+  boundPoints(space).filter(point => point.reference === after.id).forEach(point => {
+    const offset = offsets?.get(point) ?? point.offset;
+    point.offset = offset.map((v, i) => {
+      const x = v + baseWas[i];
+      const [lo, hi] = [was.min[i], was.max[i]];
+      const [low, high] = [now.min[i], now.max[i]];
+      const y = hi > lo && x >= lo && x <= hi ? low + (x - lo) / (hi - lo) * (high - low) : x < lo ? low - (lo - x) : high + (x - hi);
+      return y - baseNow[i];
+    });
+  });
+}
+
+// The position that keeps a resized object's centre (`keep` true for an
+// axis) or the face opposite the handle on `side` in place.
+export function resizedPosition(before, size, keep, side) {
+  const was = objectBounds(before);
+  const now = objectBounds({ ...before, size });
+  const shift = [0, 1, 2].map(i => (keep[i] ? (was.min[i] + was.max[i] - now.min[i] - now.max[i]) / 2 : side[i] > 0 ? was.min[i] - now.min[i] : was.max[i] - now.max[i]));
+  const { across, front, up } = objectFrame(before);
+  return before.position.map((p, j) => p + shift[0] * across[j] + shift[1] * front[j] + shift[2] * up[j]);
+}
+
 export function referTo(space, point, id) {
   const position = pointPosition(space, point);
   const facing = point.aim ? aimVector(space, point) : null;
