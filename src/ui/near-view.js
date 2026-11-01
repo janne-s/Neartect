@@ -2,6 +2,7 @@ import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector, signedTurn } from '../domain/space.js';
 import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointFrame, pointPosition, referenceObject, surfacePoint, toWorld } from '../domain/objects.js';
 import { bentNormal, bentPoint } from '../domain/bend.js';
+import { wheelGesture } from '../shared/ui/wheel.js';
 import { faceNormal, nearestSurface } from '../domain/placement.js';
 import { faceRelief, hasRelief } from '../domain/relief.js';
 import { headWidth, rigFrame, rigMembers } from '../domain/rigs.js';
@@ -39,7 +40,7 @@ const SIZE_NAMES = Object.freeze(['W', 'D', 'H']);
 const OFFSET_NAMES = Object.freeze(['Across', 'Gap', 'Up']);
 const DIMMED = 0.3;
 const SURFACE_SNAP_PIXELS = 10;
-const WHEEL_LINE_PIXELS = 16;
+const ZOOM_PER_PIXEL = 0.003;
 const AIM_PIXELS = 26;
 const MOST_RELIEF_CELLS = 2400;
 const MOST_RELIEF_CELLS_ALONG = 240;
@@ -86,7 +87,7 @@ function insidePolygon([x, y], corners) {
   return inside;
 }
 
-export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true }) {
+export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true, scrollPans = () => false }) {
   const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
@@ -1287,12 +1288,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   canvas.addEventListener('contextmenu', event => event.preventDefault());
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
-    const lines = event.deltaMode === 1 ? WHEEL_LINE_PIXELS : 1;
-    const deltaX = event.deltaX * lines;
-    const deltaY = event.deltaY * lines;
-    const mouseWheel = event.deltaMode === 1 || (event.deltaX === 0 && Math.abs(event.deltaY) >= 40 && Number.isInteger(event.deltaY));
-    if (event.ctrlKey || mouseWheel) zoomBy(Math.exp(-deltaY * (event.ctrlKey ? 0.01 : 0.001)));
-    else panBy(-deltaX, -deltaY);
+    const { zoomPixels, panX, panY } = wheelGesture(event, scrollPans());
+    if (zoomPixels === undefined) panBy(-panX, -panY);
+    else zoomBy(Math.exp(-zoomPixels * ZOOM_PER_PIXEL));
     draw();
   }, { passive: false });
   let gestureScale = 1;
