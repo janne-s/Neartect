@@ -3,8 +3,6 @@ const OUTPUT_GAIN = 0.35;
 const BRANCHES = 4;
 const RELEASE_MARGIN_SECONDS = 0.05;
 
-// Each channel plays at its [left, right] gains: free microphones spread from
-// left to right, stereo pairs sit at their sides, and mid-side decodes.
 export function stereo(channels, pans) {
   const length = channels[0].length;
   const left = new Float32Array(length);
@@ -50,18 +48,13 @@ export function createPreview() {
     return context;
   }
 
-  // Consecutive filters glide: the new one rises and the others fall in
-  // straight lines over the fade, which is a linear interpolation between
-  // the two filters while it lasts. Moving relief passes the time between
-  // updates as the fade, so the sound slides from one filter to the next.
   function ramp(param, target, time, fade) {
     param.cancelScheduledValues(time);
     param.setValueAtTime(param.value, time);
     param.linearRampToValueAtTime(target, time + fade);
   }
 
-  // A convolver at zero gain still convolves, so a branch that has faded out
-  // gives up its filter; the active one keeps it for bypass and silence.
+  // A convolver at zero gain still convolves.
   function levels(time, fade = CROSSFADE_SECONDS) {
     branches.forEach((branch, index) => {
       const heard = !bypass && index === active && branch.convolver.buffer;

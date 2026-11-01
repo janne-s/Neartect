@@ -10,7 +10,7 @@ const PATTERN_CODES = Object.freeze({ solid: 0, grid: 1, opening: 2 });
 const DISTANCE_REFERENCE_METRES = 1;
 const NEAREST_LEVEL_METRES = 0.1;
 
-// The core's settings record, in its order (`settingNames` in the core).
+// In the core's order (`settingNames`).
 export const SETTING_NAMES = Object.freeze([
   'sampleRateHz', 'speedOfSoundMetresPerSecond', 'lengthSamples', 'order',
   'microphoneX', 'microphoneY', 'microphoneZ',
@@ -30,9 +30,6 @@ const vector = (name, v) => ({ [`${name}X`]: v[0], [`${name}Y`]: v[1], [`${name}
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
-// Every channel the space produces: each free microphone, then each rig's
-// capsules or ears. Free microphones spread from left to right in the
-// preview; a lone one plays in both.
 export function listeners(space) {
   const count = space.microphones.length;
   const free = space.microphones.map((m, index) => {
@@ -49,10 +46,6 @@ export function listeners(space) {
   return [...free, ...rigged];
 }
 
-// Each channel's filter is relative to the direct sound at that listener;
-// alignment puts them back on one clock and one level, so that a pair keeps
-// its time and level differences. The earliest listener has no delay; a point
-// source with distance on is levelled to 1 m.
 export function alignment(space, positions) {
   const c = speedOfSound(space.air.temperatureCelsius);
   if (space.source.kind === 'point') {
@@ -117,17 +110,11 @@ export function packSpace(space, listener, aligned, longest, second = null, pipe
   return { settings, surfaces: new Float64Array(records) };
 }
 
-// Channels with relief split their scattering into parts that workers share;
-// the cut is fixed by the space, so the filter does not depend on how many
-// workers there are. Flat spaces gain less than a part costs, and a part on
-// the measured head costs its 17 spectral sets.
 const RELIEF_PARTS = 16;
 const MEASURED_HEAD_PARTS = 4;
 
 const hasRelief = object => object.strength > 0 && ((object.relief.shape !== 'flat' && object.relief.heightMetres > 0) || object.relief.roughMetres > 0);
 
-// Two microphones at one point, as in XY, Blumlein, and mid-side, share one
-// job: the core traces the geometry once and returns both channels.
 const coincident = (a, b) => b && !a.ear && !b.ear && a.position.every((v, i) => v === b.position[i]);
 
 export function channelJobs(space) {
@@ -156,18 +143,12 @@ const HISTOGRAM_LISTS = 4;
 const HORIZON_MARGIN_SAMPLES = 256;
 const OVERSAMPLING = 2;
 
-// Measured peaks exceed the sum of the arrays by up to 35 % (allocator growth,
-// resized buffers, the head's table).
+// Measured peaks exceed the arrays by up to 35 %.
 const ALLOCATION_SLACK = 1.4;
 const BASE_BYTES = 8 * 2 ** 20;
 
 const nextPowerOfTwo = value => 2 ** Math.ceil(Math.log2(Math.max(1, value)));
 
-// An upper estimate of the WebAssembly memory one job takes, after the
-// core's allocations in `outside_spectrum`: the histograms of one group of
-// equal materials at a time, the listener's spectral sets, each surface's reflection,
-// and the FFT buffers; inside a pipe, both mouths. Summing parts into a
-// filter takes the spectra twice over.
 export function jobBytes({ settings, surfaces, spectra }) {
   if (spectra) return 2 * spectra.byteLength + BASE_BYTES;
   const value = name => settings[SETTING_NAMES.indexOf(name)];
@@ -193,8 +174,6 @@ export function runJob(core, job) {
     : core.nearSpectrumPart(job.settings, job.surfaces, job.part, job.parts);
 }
 
-// `run` computes one job (a part's spectrum, or a channel's filter from its
-// parts' spectra) and may run them anywhere; the parts are summed in order.
 export async function computeFilter(space, run) {
   const list = listeners(space);
   const jobs = await Promise.all(channelJobs(space).map(async ({ variants, channels: count }) => {

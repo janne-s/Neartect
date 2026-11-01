@@ -24,12 +24,8 @@ pub const PATTERN_VALUES: usize = 6;
 pub const RELIEF_VALUES: usize = 13;
 // Curvature (1/m), the arc's direction, and a point where it touches the plane.
 pub const BEND_VALUES: usize = 7;
-// The settings record, by name. A pipe radius of 0 means no pipe; the
-// pattern runs from 1 (omni) to 0 (figure of eight); `facing` is an ear's
-// outward axis; the listener kind is 0 for a microphone, 1 for an ear on the
-// spherical head, 2 for an ear on the measured head, which also takes the
-// head's front and up, and 3 for a pair of capsules at one point, the second
-// with its own pattern and facing.
+// listenerKind: 0 microphone, 1 ear on the sphere, 2 ear on the measured head,
+// 3 two capsules at one point. A pipe radius of 0 means no pipe.
 pub const SETTINGS: [&str; 47] = [
     "sampleRateHz",
     "speedOfSoundMetresPerSecond",
@@ -169,9 +165,7 @@ fn surface_relief(polygon: &Polygon, v: &[f64]) -> relief::Relief {
     relief::Relief::new(v[0], v[1], v[2], [dot(along, polygon.u), dot(along, polygon.v)], [dot(from_anchor, along), dot(from_anchor, across)], v[9], v[10], v[11], v[12])
 }
 
-// One part's share of each capsule's near spectrum, one after the other, as
-// interleaved real and imaginary parts of the bins from 0 to half the FFT
-// length.
+// Each capsule in turn, as interleaved real and imaginary parts of bins 0 to n/2.
 #[wasm_bindgen(js_name = nearSpectrumPart)]
 pub fn near_spectrum_part(settings: &[f64], surfaces: &[f64], part: usize, parts: usize) -> Result<Vec<f64>, JsError> {
     let scene = read_scene(settings, surfaces).map_err(|e| JsError::new(&e))?;
@@ -182,8 +176,6 @@ pub fn near_spectrum_part(settings: &[f64], surfaces: &[f64], part: usize, parts
     Ok(spectra.iter().flatten().flat_map(|x| [x.re, x.im]).collect())
 }
 
-// The filter of each capsule, one after the other, from all parts' spectra
-// summed in their order.
 #[wasm_bindgen(js_name = nearFilterFromParts)]
 pub fn near_filter_from_parts(settings: &[f64], spectra: &[f64]) -> Result<Vec<f32>, JsError> {
     let scene = read_scene(settings, &[]).map_err(|e| JsError::new(&e))?;

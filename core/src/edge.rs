@@ -1,22 +1,4 @@
-// A finite panel cannot hold the pressure doubling that physical optics puts
-// on its lit face when it is small against the wavelength: the air flows
-// round its edges. The exact low-frequency jump across a thin rigid screen is
-// 2 jk Φ p, where Φ is the potential of the screen moving through still air
-// at unit speed: (2/π) √(a² − r²) on a disc (Lamb, Hydrodynamics § 108),
-// √(a² − x²) across a strip. The near filter takes each surface's rigid part
-// through H = sτ (1 + sτ) / (1 + √2 sτ + s²τ²), τ = Φ/c: jkΦ at low
-// frequencies (class A), 1 at high ones, where it fades as 1/(kΦ)² so that a
-// large surface keeps its physical-optics edges, and at most 0.7 dB above 1
-// between (class C). One effective Φ per surface for its Kirchhoff sum, its
-// plain mean for the images. Surfaces of one material, whose histograms are
-// shared, take their effective Φ's mean weighted by how much of each the
-// microphone hears.
-//
-// Φ at a point is the strip's form over the chord across the nearest edge,
-// d1 to that edge and d2 to the far side, times a factor running from 1 for a
-// long strip to 2/π where the crossing chord is no longer than that one, as
-// on a disc. Integrated over rectangles it gives their added mass within 7 %
-// of the tabulated values (Blevins 1979, table 14-2), a disc's within 0.1 %.
+// Class A in its low- and high-frequency limits (Lamb, Hydrodynamics § 108); class C between and for the form of Φ.
 
 use crate::geom::{norm, sub, Polygon, V3};
 use crate::pattern::Pattern;
@@ -52,8 +34,6 @@ fn unit(v: [f64; 2]) -> Option<[f64; 2]> {
     (length > 1e-12).then(|| [v[0] / length, v[1] / length])
 }
 
-// Φ at plane point `q` of a screen with outline `polygon` and openings from
-// `pattern`, in metres.
 pub fn screen_depth(polygon: &Polygon, pattern: &Pattern, q: [f64; 2]) -> f64 {
     let points = &polygon.points;
     let n = points.len();
@@ -92,8 +72,7 @@ pub fn response(omega: f64, depth: f64, speed_of_sound: f64) -> Complex64 {
     s * (1.0 + s) / (1.0 + std::f64::consts::SQRT_2 * s + s * s)
 }
 
-// The response's biquad by the bilinear transform with K = 2τ in samples:
-// b0, b1, b2, a1, a2 with a0 = 1.
+// [b0, b1, b2, a1, a2] with a0 = 1.
 pub fn biquad(k: f64) -> [f64; 5] {
     let a0 = 1.0 + std::f64::consts::SQRT_2 * k + k * k;
     [(k + k * k) / a0, -2.0 * k * k / a0, (k * k - k) / a0, (2.0 - 2.0 * k * k) / a0, (1.0 - std::f64::consts::SQRT_2 * k + k * k) / a0]
@@ -116,11 +95,6 @@ pub fn mean_depth(polygon: &Polygon, pattern: &Pattern) -> f64 {
     grid.iter().map(|&q| screen_depth(polygon, pattern, q)).sum::<f64>() / grid.len() as f64
 }
 
-// One Φ for a whole surface as heard at the microphone: the mean of Φ over
-// the surface weighted by each part's physical-optics share there, 1/(R Φ̄)
-// from afar and 1/R² close by, where Φ̄ is its plain mean. `reach` is the
-// harmonic distance to the microphone and the source.
-// Returns Φ and the total weight.
 pub fn effective_depth(polygon: &Polygon, pattern: &Pattern, to_space: impl Fn([f64; 2]) -> V3, distance: impl Fn(V3) -> f64) -> (f64, f64) {
     let samples: Vec<(f64, f64)> =
         solid_grid(polygon, pattern).into_iter().map(|q| (screen_depth(polygon, pattern, q), distance(to_space(q)).max(NEAREST_WEIGHT_METRES))).collect();

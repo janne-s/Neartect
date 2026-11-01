@@ -1,14 +1,3 @@
-// A surface's relief: a height field along its normal over its plane
-// coordinates, from a repeating shape and from random roughness. The
-// Kirchhoff sum moves each element to its height and tilts it to the local
-// slope, so the coherent loss, the diffuse scatter, and the lobes of a
-// repeating shape all come from the same sum (class B while slopes are
-// gentle). The repeating shape shades itself along each ray; roughness shades
-// statistically; nothing scatters twice within the surface. Roughness is a
-// sum of cosines with random directions and phases around one grain size,
-// fixed by a seed. The offset slides the whole field along its direction, so
-// moving it in time moves the sound.
-
 use crate::trig::{sin, sin_cos};
 use std::f64::consts::PI;
 
@@ -60,15 +49,11 @@ impl Relief {
         }
     }
 
-    // [shape, height, period, direction radians, offset, rough height, grain,
-    // seed], with the direction in the surface's own plane coordinates.
     pub fn from_numbers(values: &[f64]) -> Relief {
         let angle = values[3];
         Relief::new(values[0], values[1], values[2], [angle.cos(), angle.sin()], [0.0, 0.0], values[4], values[5], values[6], values[7])
     }
 
-    // `start` is where the surface's plane origin sits along the direction
-    // and across it, so that every face of an object shares one field.
     #[allow(clippy::too_many_arguments)]
     pub fn new(shape: f64, height: f64, period: f64, direction: [f64; 2], start: [f64; 2], offset: f64, rough_height: f64, grain: f64, seed: f64) -> Relief {
         let shape_kind = match shape.round() as i64 {
@@ -112,7 +97,6 @@ impl Relief {
         self.shape == Shape::Flat && self.components.is_empty()
     }
 
-    // The shortest length the relief changes over, for the element size.
     pub fn finest(&self) -> f64 {
         let shape = if self.shape == Shape::Flat { f64::INFINITY } else { self.period };
         let rough = if self.components.is_empty() { f64::INFINITY } else { self.grain / 1.5 };
@@ -156,11 +140,6 @@ impl Relief {
         }
     }
 
-    // Whether the repeating shape rises above a ray leaving the surface at
-    // plane point `q` and height `height`, with `along` its step in plane
-    // coordinates, `rise` its step along the normal per unit length, and
-    // `side` +1 or −1 for the side it leaves from. Rays steeper than the
-    // shape's steepest slope cannot be shaded and are not marched.
     pub fn shades(&self, q: [f64; 2], height: f64, along: [f64; 2], rise: f64, side: f64, inside: impl Fn([f64; 2]) -> bool) -> bool {
         let level = (along[0] * along[0] + along[1] * along[1]).sqrt();
         let rise = rise * side;
@@ -186,9 +165,6 @@ impl Relief {
         false
     }
 
-    // The share of rough surface a ray at `cos_angle` from the normal sees
-    // unshaded, for Gaussian slopes of the roughness's rms slope (Smith
-    // 1967, class B; averaged over heights).
     pub fn rough_shadowing(&self, cos_angle: f64) -> f64 {
         if self.components.is_empty() || cos_angle >= 1.0 {
             return 1.0;
@@ -200,7 +176,6 @@ impl Relief {
         1.0 / (1.0 + lambda)
     }
 
-    // Height and its gradient in plane coordinates.
     pub fn at(&self, q: [f64; 2]) -> (f64, [f64; 2]) {
         let d = self.direction;
         let across = [-d[1], d[0]];

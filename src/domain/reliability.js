@@ -3,8 +3,6 @@ import { MATERIALS } from './materials.js';
 const ORDER = ['A', 'B', 'C'];
 const worst = classes => classes.reduce((a, b) => (ORDER.indexOf(b) > ORDER.indexOf(a) ? b : a), 'A');
 
-// The reliability class of each component a space uses, written into every
-// saved document and recomputed on save; the reader drops it.
 export function reliabilityOf(space) {
   const objects = space.objects.filter(o => o.strength > 0);
   const components = { specularReflection: 'A' };

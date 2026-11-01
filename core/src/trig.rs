@@ -1,7 +1,4 @@
-// Sine and cosine together, with fdlibm's kernels and a three-part
-// Cody–Waite reduction. WebAssembly has no trigonometric instructions, and
-// the library's separate sin and cos each reduce the argument again; this
-// also gives native and WebAssembly builds the same result.
+// One argument reduction for both, and identical results natively and in WebAssembly.
 
 const LARGEST_REDUCED: f64 = 823_550.0;
 const PIO2_1: f64 = 1.570_796_326_734_125_6;

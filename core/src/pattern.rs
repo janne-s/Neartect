@@ -1,11 +1,3 @@
-// A grating is a mask on the surface: bars of a stated width repeat at a
-// stated period along the surface's two axes (a period of zero leaves that
-// axis without bars, which makes slats). The Kirchhoff sum over the bars gives
-// repetition pitch, chirps, and grating lobes. Where the period is much
-// shorter than the wavelength the sheet is treated as a perforated mass layer
-// (Crandall/Maa form, class B pending the original), blended over one octave
-// below half a wavelength per period (class C).
-
 use std::f64::consts::PI;
 
 const AIR_DENSITY: f64 = 1.2;
@@ -67,8 +59,6 @@ impl Pattern {
         }
     }
 
-    // The distance from `q` to an opening's outline and the unit direction
-    // away from the opening, for a point outside it.
     pub fn opening_edge(&self, q: [f64; 2]) -> Option<(f64, [f64; 2])> {
         let Pattern::Opening { centre, half, round } = *self else { return None };
         let offset = [q[0] - centre[0], q[1] - centre[1]];
@@ -119,6 +109,7 @@ impl Pattern {
         }
     }
 
+    // Class B: perforated mass layer (Crandall, Maa); the blend over an octave is class C.
     pub fn low_frequency_factor(&self, frequency_hz: f64, speed_of_sound: f64) -> f64 {
         let Pattern::Grid { period, bar, thickness } = *self else { return 1.0 };
         let open = self.grid_open_fraction();

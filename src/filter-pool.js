@@ -1,18 +1,12 @@
 export class FilterCancelled extends Error {}
 
-// What the jobs running at once may hold, as in Rumbletect's tail budget: a
-// phone tab is stopped at about 1.5 GB. A job larger than this runs alone.
+// A phone tab is stopped at about 1.5 GB.
 const RUNNING_BYTES_BUDGET = 512 * 2 ** 20;
-// A WebAssembly memory never shrinks, so a worker that grew past this is
-// replaced by a fresh one once its job is done.
+// WebAssembly memory never shrinks.
 const RETAINED_BYTES = 64 * 2 ** 20;
 const STALL_SECONDS = 60;
 const WATCH_MILLISECONDS = 5000;
 
-// Jobs wait in one queue, in order, and go to whichever worker is free while
-// their estimated memory fits the budget. A build's jobs that have not
-// started can be dropped. A worker that fails, traps, or stops answering is
-// replaced, and its job fails.
 export function createPool(url, count, bytesOf) {
   const spawn = () => new Worker(url, { type: 'module' });
   const idle = Array.from({ length: count }, spawn);

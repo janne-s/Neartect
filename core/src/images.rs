@@ -1,17 +1,7 @@
-// Specular paths of order two and above for a plane-wave arrival or a point
-// source (its images; Allen and Berkley 1979), with validity and visibility
-// checks (Borish 1984). Each reflection takes a first-order high-pass at the
-// finite-size design frequency f = c a* / (2 S cos θ), a* = 2 a1 a2 / (a1 + a2)
-// (Rindel 1986, in the area form of Archives of Acoustics 39(4), 2014): its
-// asymptote is the Kirchhoff sum of a panel small against the wavelength
-// (class A there); the transition is class B.
-
 use crate::geom::{add, dot, norm, scale, sub, V3};
 use crate::scene::Scene;
 
-// Each reflection keeps its relief's rms height times the cosine of incidence:
-// the coherent part falls as exp(−2 (kσ cos θ)²) (Eckart; class C for a
-// repeating shape, whose lobes the images do not follow).
+// Class C for a repeating shape: Eckart’s coherent factor, without its lobes.
 pub struct Reflection {
     pub surface: usize,
     pub cutoff_hz: f64,
@@ -49,14 +39,6 @@ fn side(distance: f64) -> u8 {
     }
 }
 
-// What a sequence of reflections, nearest the microphone first, can be
-// continued by. A reflection on b arrives from and leaves to the same side
-// of b, so the surfaces before and after b (the microphone before the first)
-// must share a side of b's plane. And a path leaving the last surface lies on
-// a ray from the microphone's image in the sequence through that surface, so
-// the next surface must reach into that beam (tested against the last
-// surface only, and only where it is convex). Neither test drops a path;
-// both cut whole subtrees that cannot hold one.
 struct Reach {
     count: usize,
     sides: Vec<u8>,
@@ -126,8 +108,6 @@ fn is_convex(points: &[[f64; 2]]) -> bool {
     turns.iter().all(|&t| t >= 0.0) || turns.iter().all(|&t| t <= 0.0)
 }
 
-// Second-order sequences, nearest the microphone first, that the Kirchhoff sum
-// via a flat surface already holds: both orders at a join, else the one taken.
 fn covered_pairs(scene: &Scene) -> Vec<[usize; 2]> {
     crate::kirchhoff::via_pairs(scene)
         .into_iter()
@@ -142,8 +122,6 @@ fn covered_pairs(scene: &Scene) -> Vec<[usize; 2]> {
         .collect()
 }
 
-// The specular path through `sequence`, nearest the microphone first, over
-// the flat polygons.
 pub fn path_through(scene: &Scene, sequence: &[usize]) -> Option<Path> {
     trace(scene, sequence).into_iter().next()
 }
@@ -167,8 +145,6 @@ fn extend(scene: &Scene, covered: &[[usize; 2]], reach: &Reach, sequence: &mut V
     }
 }
 
-// A mirror for one reflection: a flat surface's plane, or the tangent plane
-// of a bent surface at its specular point.
 #[derive(Clone, Copy)]
 struct Mirror {
     point: V3,
@@ -193,8 +169,6 @@ impl Mirror {
     }
 }
 
-// The reflection on a bent surface: where it is, and the ray-tube gain the
-// curvature gives it against a flat mirror there.
 #[derive(Clone, Copy)]
 struct Bounce {
     at: usize,
@@ -204,9 +178,6 @@ struct Bounce {
 
 const BOUNCE_TOLERANCE_METRES: f64 = 1e-6;
 
-// A path may reflect from one bent surface: its specular points are found on
-// the arc between the microphone's and the source's images in the flat
-// surfaces on either side. Paths over two bent surfaces are left out.
 fn trace(scene: &Scene, sequence: &[usize]) -> Vec<Path> {
     let mirrors: Vec<Mirror> = sequence.iter().map(|&i| Mirror::of(&scene.surfaces[i].polygon)).collect();
     let bent: Vec<usize> = (0..sequence.len()).filter(|&k| scene.surfaces[sequence[k]].is_bent()).collect();

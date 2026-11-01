@@ -401,8 +401,7 @@ fn figure_eight_across_a_pipe_hears_nothing_inside_it() {
     assert!(h.iter().all(|x| x.norm() < 1e-9));
 }
 
-// The proximity term rolls off below 10 Hz in the model (a microphone's own
-// low cut), so the reference does too.
+// The reference rolls off below 10 Hz as the model does.
 fn first_order(pattern: f64, cos: f64, k: f64, r: f64) -> Complex64 {
     let floor = 2.0 * std::f64::consts::PI * 10.0 / C;
     Complex64::new(pattern, 0.0) + (1.0 - pattern) * cos * (Complex64::new(1.0, 0.0) + Complex64::new(1.0 / r, 0.0) / Complex64::new(floor, k))
@@ -447,8 +446,6 @@ fn cardioid_over_a_floor_matches_its_image_with_proximity() {
         let exact = first_order(0.5, cos(source), k, direct) + first_order(0.5, cos(image_point), k, image) * Complex64::from_polar(direct / image, -k * (image - direct));
         worst = worst.max((h[bin] - exact).norm());
     }
-    // Each rigid element's dipole field is differentiated exactly; what is
-    // left is the Kirchhoff sum's own discretisation.
     assert!(worst < 0.03, "largest error {worst}");
 }
 
@@ -604,10 +601,6 @@ fn measured_ear_over_a_floor_matches_its_image() {
         let exact = s.response(towards(source), direct, omega) + s.response(towards(image_point), image, omega) * Complex64::from_polar(direct / image, -k * (image - direct));
         worst = worst.max((h[bin] - exact).norm());
     }
-    // Each element takes the head's response and delay for its own direction,
-    // as for the cardioid's proximity; above a few kHz the ear's offset from
-    // the head centre moves its specular point, so the centre's image is no
-    // longer the reference.
     assert!(worst < 0.12, "largest error {worst}");
 }
 
@@ -689,8 +682,6 @@ fn wide_pipe_has_cross_modes_off_axis_above_the_first_cutoff_only() {
     let oblique = [0.6, -0.8, 0.0];
     let on_axis = wide_pipe([0.0, 1.0, 0.0], oblique);
     let off_axis = wide_pipe([0.2, 1.0, 0.0], oblique);
-    // Each filter is relative to the free field at its own microphone, so the
-    // two differ by a delay; their levels are compared.
     let cutoff = 1.8412 * C / (2.0 * std::f64::consts::PI * 0.3);
     let difference = |lo: f64, hi: f64| {
         let n = spectrum_size(8192);
@@ -840,9 +831,6 @@ fn a_small_disc_scatters_rayleighs_dipole_from_afar() {
     }
 }
 
-// A free panel's own finite size enters as a factor while the Kirchhoff sum
-// still sees where the reflected field ends, which images do not; the two
-// agree within a fifth of the second-order field (about 1.5 dB).
 #[test]
 fn second_order_through_a_barely_relieved_wall_and_a_free_panel_follows_the_images() {
     let length = 4096;
@@ -876,8 +864,6 @@ fn bent_wall_at(centre: V3, radius: f64, concave_towards: V3, half_arc: f64, hal
     Surface { bend, ..surface(polygon, RIGID) }
 }
 
-// The reflection's amplitude from the mean power of 1 + D e^(−jωτ) over many
-// comb periods.
 fn reflection_amplitude(surfaces: Vec<Surface>, microphone: V3, arrival: V3) -> f64 {
     let length = 4096;
     let h = near_spectrum(&scene(surfaces, microphone, arrival, length, 1));
@@ -930,8 +916,6 @@ fn a_bend_speeds_the_long_wave_by_the_slice_model() {
     use neartect_core::pipe::bend_speed_ratio;
     let small = bend_speed_ratio(0.1);
     assert!((small - (1.0 + 0.01 / 8.0)).abs() < 1e-4, "small bend {small}");
-    // Keefe and Benade's tuning-slide bends, B = 9.25/12.7: the slice model
-    // predicts about 9 %, more than their measured 4.7 %.
     let slide = bend_speed_ratio(9.25 / 12.7);
     assert!(slide > 1.085 && slide < 1.095, "tuning slide {slide}");
 }

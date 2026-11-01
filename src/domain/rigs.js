@@ -1,9 +1,5 @@
 import { aimVector, pointPosition } from './objects.js';
 
-// A rig is one placed element that expands into its capsules: a stereo
-// layout or a head with two ears. Spacing and angle are between the outer
-// pair; the rig's aim is its front. Pans are [left, right] gains for the
-// stereo preview, so a mid-side pair decodes as L = (M + S)/√2, R = (M − S)/√2.
 const HALF = Math.SQRT1_2;
 
 export const RIG_KINDS = Object.freeze({
@@ -17,12 +13,9 @@ export const RIG_KINDS = Object.freeze({
   binaural: { label: 'Head', spacingMetres: 0.175 }
 });
 
-// A head is the spherical model (Brown and Duda 1998, B1), sized by its
-// width, or the measured KU100 (SADIE II, B2), whose size is fixed.
 export const HEADS = Object.freeze({ measured: 'KU100', sphere: 'Sphere' });
 
-// The measured head's width for drawing and its ears' radius: Woodworth's
-// radius for the table's largest interaural delay, 687 µs at 343 m/s.
+// Woodworth radius for the table’s largest interaural delay, 687 µs at 343 m/s.
 const MEASURED_HEAD_WIDTH_METRES = 0.183;
 
 export const headWidth = rig => (rig.head === 'measured' ? MEASURED_HEAD_WIDTH_METRES : rig.spacingMetres);

@@ -1,8 +1,6 @@
 import { objectFrame, seedOf } from './objects.js';
 
-// The same height field the core uses (core/src/relief.rs), so the view
-// shows the surface the sound hears: the shape along its direction, and
-// roughness as 32 cosines from the same seeded generator.
+// Mirrors core/src/relief.rs; keep the two in step.
 const ROUGH_COMPONENTS = 32;
 const MASK = (1n << 64n) - 1n;
 
@@ -29,7 +27,6 @@ export function hasRelief(object) {
   return Boolean(r) && (r.shape !== 'flat' || r.roughMetres > 0);
 }
 
-// A height function for one face with normal `normal`, in metres along it.
 export function faceRelief(object, normal, shift = 0) {
   const r = object.relief;
   const { across, up } = objectFrame(object);

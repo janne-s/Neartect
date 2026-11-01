@@ -1,12 +1,4 @@
-// A measured head (B2): SADIE II KU100 (University of York, Apache 2.0;
-// Armstrong et al. 2018, Applied Sciences 8(11), 2029), diffuse-field
-// equalised. Each direction is a minimum-phase response and a pure delay
-// (class B; Kulkarni et al. 1999 for minimum phase plus delay), the left ear
-// stands for both by symmetry, and the responses are 17 principal spectra
-// with weights on rings of fixed elevation every 5°. Weights and delays are
-// interpolated linearly between directions. Built by `tools/hrtf-table.py`;
-// against the measured directions the third-octave levels differ by 0.3 dB
-// (median) and 1.4 dB (95 %), the delays by 2.4 µs (95 %).
+// SADIE II KU100 (University of York, Apache 2.0), built by tools/hrtf-table.py.
 
 use rustfft::num_complex::Complex64;
 use rustfft::FftPlanner;
@@ -65,9 +57,6 @@ pub fn table() -> &'static Table {
 }
 
 impl Table {
-    // Delay in seconds (relative to the head centre, plus the latency that
-    // keeps every delay positive) and the set weights for an arrival from
-    // `front`, `outward` (towards the ear), and `up` components.
     pub fn split(&self, front: f64, outward: f64, up: f64) -> (f64, [f64; SETS]) {
         let azimuth = outward.atan2(front).to_degrees().rem_euclid(360.0);
         let elevation = up.clamp(-1.0, 1.0).asin().to_degrees();

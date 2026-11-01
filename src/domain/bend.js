@@ -1,10 +1,4 @@
-// A plane, wall, or grating bent into a circular arc, as the core bends it
-// (core/src/bend.rs). The object's flat frame stays its laid-out shape: arc
-// length runs along across (axis up) or along up (axis across), and offsets
-// from it in front become distances along the arc's normal. A positive angle
-// bends the surface towards its front, so that it is concave seen from there.
-// A pipe's centreline bends the same way, its arc along front and towards
-// across (axis up) or up (axis across), no tighter than its own radius.
+// Arc length runs along the flat frame; a positive angle bends towards the front (a pipe: towards across or up).
 
 export const BEND_KINDS = Object.freeze(['plane', 'wall', 'grating', 'pipe']);
 const TIGHTEST_PIPE_BEND = 1.02;
@@ -16,9 +10,6 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const along = (p, ...terms) => terms.reduce((sum, [v, s]) => sum.map((x, i) => x + v[i] * s), [...p]);
 
-// The bend of an object in space: curvature towards its front (1/m), the
-// arc's direction, the axis, the front, and the point where the arc touches
-// the flat frame. Null when the object is flat or cannot bend.
 export function bendOf(object, frame) {
   const bend = object.bend ?? FLAT_BEND;
   if (!BEND_KINDS.includes(object.kind) || !bend.angleDegrees) return null;
@@ -40,8 +31,6 @@ export function bendOf(object, frame) {
   return { curvature, arc, axis, front: frame.front, touching: object.position };
 }
 
-// A point given in the flat frame (arc length, distance in front, along the
-// axis) to its place on or off the bent surface.
 export function bentPoint(bend, p) {
   if (!bend) return p;
   const d = sub(p, bend.touching);
@@ -66,7 +55,6 @@ export function bentTangent(bend, p) {
   return along([0, 0, 0], [bend.arc, cos], [bend.front, sin]);
 }
 
-// The inverse of `bentPoint`: a point in space back to the flat frame.
 export function flatPoint(bend, p) {
   if (!bend) return p;
   const k = bend.curvature;
@@ -81,8 +69,6 @@ export function flatPoint(bend, p) {
   return along(bend.touching, [bend.arc, s], [bend.front, gap], [bend.axis, t]);
 }
 
-// The core's numbers for a face: curvature towards the face's own normal,
-// the arc's direction, and the touching point.
 export function bendValues(bend, faceNormal) {
   if (!bend) return [0, 0, 0, 0, 0, 0, 0];
   const towards = Math.sign(dot(faceNormal, bend.front)) || 1;

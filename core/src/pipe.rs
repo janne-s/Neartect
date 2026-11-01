@@ -1,34 +1,7 @@
-// The inside of an open pipe as a waveguide (class B): each mouth is driven
-// by the near field just outside it, loaded by the unflanged radiation
-// impedance (Levine–Schwinger low-ka form with end correction 0.6133 a), and
-// the wave loses energy to the walls by viscothermal attenuation
-// 2.96e-5 √f / a Np/m (Kinsler et al., air at 20 °C). Above ka = j'mn the
-// rigid duct's cross modes (m, n) propagate with k_z = √(k² − (j'mn/a)²)
-// (Morse and Ingard 1968, ch. 9): the mouth's incident wave, taken as a plane
-// wave across the mouth, is projected onto each mode (exact for that field),
-// and each mode's open end takes the plane mode's load in its own impedance
-// k/k_z (class C). Modes run to j'mn ≈ 12.7; above that the propagating set
-// is incomplete. The rise of the received plane-mode pressure towards twice
-// the incident wave on axis as ka grows is a heuristic blend (class C).
-
-// A bent pipe follows a circular centreline. In the long-wave limit its
-// plane mode keeps the straight pipe's compliance while its inertance falls:
-// summing the cross-section as parallel rectangular slices (Keefe and Benade
-// 1983, after Cummings 1974; Rostafinski 1991, NASA RP-1248, §14), phase
-// velocity and wave admittance both rise by √(L₀/L), with
-// L₀/L = (1/πB) ∫₋₁¹ ln((1 + B√(1 − u²))/(1 − B√(1 − u²))) du, B = a/R (class B;
-// Keefe and Benade measured 4.7 % where this gives more). The rise is taken to
-// fade by ka = 1, where Cummings' bends move at the straight speed (class C),
-// and above it the bend's slower phase velocity is left out. Bends transmit
-// the plane mode almost fully below the first cross mode (Cummings 1974:
-// T ≥ 97.5 % even for R₂/R₁ = 10.3), so no reflection is added at the bend;
-// cross modes run along the centreline as in a straight pipe (class C).
-
 use crate::geom::{add, cross, dot, norm, normalize, scale, sub, V3};
 use rustfft::num_complex::Complex64;
 use std::f64::consts::PI;
 
-// Zeros of J'm, (m, n, j'mn), for the rigid circular duct's cross modes.
 const CROSS_MODES: [(i32, f64); 22] = [
     (1, 1.8412),
     (2, 3.0542),
@@ -56,8 +29,6 @@ const CROSS_MODES: [(i32, f64); 22] = [
 const MODE_ONSET: f64 = 0.05;
 const BESSEL_STEPS: usize = 64;
 
-// Bessel's integral, J_m(x) = (1/π) ∫₀^π cos(mτ − x sin τ) dτ, by the
-// trapezoid rule, which converges geometrically for this periodic integrand.
 fn bessel(m: i32, x: f64) -> f64 {
     let h = PI / BESSEL_STEPS as f64;
     let f = |t: f64| (m as f64 * t - x * t.sin()).cos();
@@ -67,7 +38,6 @@ fn bessel(m: i32, x: f64) -> f64 {
 
 const HIGHEST_ORDER: usize = 10;
 
-// J₀ … J₁₀ at `x` in one pass of Bessel's integral.
 fn bessel_orders(x: f64) -> [f64; HIGHEST_ORDER + 2] {
     let h = PI / BESSEL_STEPS as f64;
     let mut sums = [0.0; HIGHEST_ORDER + 2];
@@ -82,8 +52,6 @@ fn bessel_orders(x: f64) -> [f64; HIGHEST_ORDER + 2] {
     sums.map(|v| v * h / PI)
 }
 
-// The plane mode's share of a plane wave crossing the mouth at
-// `sin_incidence`, 2 J₁(β)/β with β = ka sin θ; the rest goes to cross modes.
 pub fn plane_share(ka: f64, sin_incidence: f64) -> f64 {
     let beta = ka * sin_incidence;
     if beta < 1e-6 {
@@ -102,8 +70,7 @@ struct Mode {
     shape: f64,
 }
 
-// The cross modes heard by a microphone `radius_fraction` of the way out from
-// the axis, at `cos_azimuth` from the incident wave's sideways direction.
+// Class C: coupling of the mouth's wave into cross modes and their end load.
 pub struct CrossModes {
     modes: Vec<Mode>,
 }
@@ -128,10 +95,6 @@ impl CrossModes {
         CrossModes { modes }
     }
 
-    // Pressure and ρc times the axial velocity, per unit pressure of the
-    // mouth's plane mode: each mode's share of a plane wave crossing the mouth
-    // at `sin_incidence` (∫₀¹ x J_m(βx) J_m(γx) dx by Lommel, with its limit as
-    // β → γ), its shape at the microphone, and its transfer over `along`.
     pub fn at(&self, frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, sin_incidence: f64) -> (Complex64, Complex64) {
         let ka = 2.0 * PI * frequency_hz / speed_of_sound * radius;
         let mut pressure = Complex64::new(0.0, 0.0);
@@ -161,8 +124,7 @@ impl CrossModes {
 const END_CORRECTION_PER_RADIUS: f64 = 0.6133;
 const WALL_LOSS_PER_ROOT_HZ: f64 = 2.96e-5;
 
-// A bent centreline turns about `axis` through `centre`, positive from mouth
-// A towards mouth B.
+// Turns positive from mouth A towards mouth B.
 #[derive(Clone, Copy, Debug)]
 pub struct PipeBend {
     pub centre: V3,
@@ -184,7 +146,7 @@ fn turned(v: V3, axis: V3, angle: f64) -> V3 {
     add(add(scale(v, cos), scale(cross(axis, v), sin)), scale(axis, dot(axis, v) * (1.0 - cos)))
 }
 
-// √(L₀/L) for bend parameter B = a/R by the midpoint rule.
+// Class B: Keefe and Benade 1983 slice model, long waves; overstates their 4.7 % measurement.
 pub fn bend_speed_ratio(b: f64) -> f64 {
     if b <= 0.0 {
         return 1.0;
@@ -211,7 +173,6 @@ impl PipeInside {
         norm(self.radial(bend, self.mouth_a))
     }
 
-    // The angle from mouth A to `p` about the bend's axis, in [0, 2π).
     fn turn(&self, bend: PipeBend, p: V3) -> f64 {
         let a = normalize(self.radial(bend, self.mouth_a));
         let r = self.radial(bend, p);
@@ -253,7 +214,6 @@ impl PipeInside {
         }
     }
 
-    // The direction of travel from A towards B at `along`.
     pub fn tangent(&self, along: f64) -> V3 {
         match self.bend {
             None => normalize(sub(self.mouth_b, self.mouth_a)),
@@ -264,7 +224,6 @@ impl PipeInside {
         }
     }
 
-    // A vector across the pipe at `from` carried round the bend to `to`.
     pub fn carried(&self, v: V3, from: f64, to: f64) -> V3 {
         match self.bend {
             None => v,
@@ -290,15 +249,13 @@ fn radiation(ka: f64) -> Complex64 {
     Complex64::new(resistance, reactance)
 }
 
+// Class C: heuristic blend towards twice the incident pressure on axis.
 pub fn received(ka: f64, cos_inward: f64) -> f64 {
     let blend = ka * ka / (1.0 + ka * ka);
     1.0 + blend * cos_inward.max(0.0)
 }
 
-// Pressure and ρc times the particle velocity away from the driven mouth, at
-// `along` metres from it, per unit blocked pressure there, with the far mouth
-// open; normalised impedances (ρc/S = 1). A first-order microphone in the pipe
-// hears a·p − (1 − a)·(facing · direction of travel)·ρc v.
+// Normalised impedances, ρc/S = 1.
 pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, bend_ratio: f64) -> (Complex64, Complex64) {
     if frequency_hz <= 0.0 {
         return (Complex64::new(1.0 - along / length, 0.0), Complex64::new(0.0, 0.0));
@@ -309,10 +266,6 @@ pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64
     (pressure, velocity * faster)
 }
 
-// One mode with axial wavenumber `axial`·k, in its own impedance k/k_z. A
-// bend's plane mode runs at `axial` = 1/F with `admittance` F times the
-// straight pipe's: the mouths' loads are F times larger in the line's own
-// impedance, and ρc times the velocity is F times the line's own variable.
 fn guided(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, axial: f64, admittance: f64) -> (Complex64, Complex64) {
     let j = Complex64::new(0.0, 1.0);
     let k = 2.0 * PI * frequency_hz / speed_of_sound;

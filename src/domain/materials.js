@@ -1,16 +1,11 @@
 import { planeReflectionMagnitude } from '../shared/domain/ground.js';
 
-// Octave-band absorption 125 Hz–4 kHz, random incidence, from the RoomTreat
-// table (CC BY 4.0, roomtreat.com/data/absorption-coefficients), which
-// aggregates Vorländer, Cox & D'Antonio, Bies & Hansen, and ISO 354 data.
-// Class B; 63 Hz and 8 kHz repeat the nearest band.
+// RoomTreat absorption table (CC BY 4.0); 63 Hz and 8 kHz repeat the nearest band.
 
 export const MATERIAL_ATTRIBUTION = 'Absorption coefficients: RoomTreat, CC BY 4.0 (aggregated from Vorländer, Cox & D\'Antonio, Bies & Hansen, ISO 354 data). Grounds: Delany–Bazley impedance with flow resistivities from Embleton et al.';
 
 const TABLE_BANDS_HZ = [125, 250, 500, 1000, 2000, 4000];
 
-// Porous grounds from tect-shared's Delany–Bazley model at normal incidence
-// (class B; the angle dependence is left out).
 const fromGround = groundType => TABLE_BANDS_HZ.map(hz => 1 - planeReflectionMagnitude(hz, groundType, 1) ** 2);
 
 const WATER_REFLECTION = (1.48e6 - 413) / (1.48e6 + 413);

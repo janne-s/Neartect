@@ -1,17 +1,11 @@
-// A surface bent into a circular cylinder (class A geometry). Its polygon is
-// the surface laid flat: plane coordinates along `along` are arc length, and
-// the straight direction across them runs along the cylinder's axis. The
-// polygon's plane touches the cylinder on the line where the arc length from
-// `start` is zero, and a positive curvature bends the surface towards the
-// polygon's normal, so that it is concave seen from that side.
+// Plane coordinates along `along` are arc length; positive curvature bends towards the polygon’s normal.
 
 use crate::geom::{add, dot, norm, scale, sub, Polygon, V3};
 
 const FLAT_CURVATURE: f64 = 1e-9;
 const SPECULAR_STEPS: usize = 96;
 const SPECULAR_ITERATIONS: usize = 60;
-// Next to a focus the ray-tube factor grows without bound; the true gain is
-// limited by the arc's aperture against the wavelength (class C limit).
+// Class C limit at a focus.
 pub const MOST_FOCUS_GAIN: f64 = 4.0;
 
 #[derive(Clone, Copy, Debug)]
@@ -33,8 +27,6 @@ impl Bend {
         Bend { curvature: 0.0, along: [1.0, 0.0], start: 0.0 }
     }
 
-    // From a curvature, the arc's direction in space, and a point on the
-    // line where the surface touches its polygon's plane.
     pub fn new(polygon: &Polygon, curvature: f64, direction: V3, touching: V3) -> Bend {
         let along = [dot(direction, polygon.u), dot(direction, polygon.v)];
         let length = (along[0] * along[0] + along[1] * along[1]).sqrt();
@@ -83,8 +75,6 @@ impl Bend {
         add(flat, add(scale(e, sin / k - s), scale(polygon.normal, (1.0 - cos) / k)))
     }
 
-    // `w` turned as the surface turns at `q`: the arc direction and the
-    // normal rotate about the axis, the axis stays.
     pub fn rotate(&self, polygon: &Polygon, q: [f64; 2], w: V3) -> V3 {
         if !self.is_bent() {
             return w;
@@ -116,8 +106,6 @@ impl Bend {
         [self.along[0] * s + a[0] * t, self.along[1] * s + a[1] * t]
     }
 
-    // Plane coordinates of the point on the surface nearest `p` and the
-    // signed distance from it along the surface's normal there.
     pub fn locate(&self, polygon: &Polygon, p: V3) -> ([f64; 2], f64) {
         if !self.is_bent() {
             return (polygon.to_plane(p), polygon.signed_distance(p));
@@ -127,8 +115,6 @@ impl Bend {
         (self.plane_of(polygon, p, radial), gap)
     }
 
-    // Every crossing of the ray with the cylinder within `max_length`,
-    // nearest first, as distance along the ray and plane coordinates.
     pub fn crossings(&self, polygon: &Polygon, from: V3, direction: V3, max_length: f64) -> Vec<(f64, [f64; 2])> {
         let axis = self.axis_space(polygon);
         let f = self.radial(polygon, from);
@@ -155,11 +141,6 @@ impl Bend {
             .collect()
     }
 
-    // Specular points on the arc between `to` and either a point `source` or
-    // a plane wave arriving from `towards_source`, with each one's ray-tube
-    // gain against a flat mirror there (Kuttruff, Room Acoustics, curved
-    // reflectors: 1/s + 1/s' = 2/(R cos θ) in the plane across the axis; the
-    // axis direction stays flat). `range` is the arc length span to search.
     pub fn specular(&self, polygon: &Polygon, range: (f64, f64), to: V3, source: Option<V3>, towards_source: V3) -> Vec<Specular> {
         let k = self.curvature;
         let e = self.along_space(polygon);
@@ -245,8 +226,6 @@ impl Bend {
             .collect()
     }
 
-    // Points along the surface's outline in space, each edge split so that
-    // its arcs are followed.
     pub fn outline(&self, polygon: &Polygon, pieces: usize) -> Vec<V3> {
         let n = polygon.points.len();
         let mut points = Vec::new();
@@ -265,7 +244,6 @@ impl Bend {
         polygon.points.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &q| (lo.min(self.arc(q)), hi.max(self.arc(q))))
     }
 
-    // Whether the edge from `a` to `b` (plane coordinates) runs along the arc.
     pub fn follows_arc(&self, a: [f64; 2], b: [f64; 2]) -> bool {
         let d = [b[0] - a[0], b[1] - a[1]];
         let l = (d[0] * d[0] + d[1] * d[1]).sqrt();

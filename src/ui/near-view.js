@@ -134,8 +134,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return free ? value : Math.round(value / step) * step;
   }
 
-  // A segment that passes behind the camera is cut at the near plane, so long
-  // lines such as the grid keep their visible part.
   function clipped(a, b) {
     const { forward, eye } = basis();
     const da = dot(sub(a, eye), forward) - NEAR_METRES;
@@ -172,7 +170,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   const activeObjectId = () => (selection?.type === 'object' ? selection.id : !selection && hover?.type === 'object' ? hover.id : null);
   const focusing = () => Boolean(drag?.handle) || Boolean(selection?.type);
 
-  // Microphones and a point source share one kind of marker and handles.
   function points() {
     const list = space.microphones.map((point, index) => ({ key: `microphone:${point.id}`, type: 'microphone', id: point.id, index, point }));
     (space.rigs ?? []).forEach((point, index) => list.push({ key: `rig:${point.id}`, type: 'rig', id: point.id, index: RIG_COLOUR_START + index, point }));
@@ -186,8 +183,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   const isSelected = item => (selection?.type === item.type && (item.type === 'source' || selection.id === item.id)) || inGroup(item.key);
   const itemKey = item => (item.type === 'source' ? 'source' : item.type === 'microphone' || item.type === 'rig' ? `${item.type}:${item.id}` : null);
 
-  // A group moves and turns as one; points bound to an object in the group
-  // follow it, other points keep their own binding at their new place.
   function groupCentre() {
     const group = grouped();
     const places = [
@@ -234,8 +229,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
   const placed = (face, p) => bentPoint(face.bend, p);
 
-  // A bent face is drawn as strips across its arc; each strip strokes only
-  // the outline pieces it holds.
   function faceParts(face) {
     if (!face.bend) return [{ world: face.vertices, edges: null, first: true }];
     const [a, b, c, d] = face.vertices;
@@ -377,9 +370,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     });
   }
 
-  // The relief as it is: each patch of the face is shaded by its height,
-  // lighter where it rises and darker where it sinks, and a few profiles show
-  // the true shape across it when you come close.
   function drawRelief(context, object, face, outline, color) {
     const normal = faceNormal(face.vertices);
     const relief = faceRelief(object, normal, object.relief.speedMetresPerSecond * reliefTime);
@@ -447,9 +437,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return live && live.id === handle.id;
   }
 
-  // Move arrows are short hollow arrows that start at the edge of the turning
-  // ring (or just out from a marker without one) and fade in towards their
-  // tips, so the centre, the marker, and its aim stay readable inside them.
   function moveHandles(context, colors, centre, target, axes = WORLD_AXES, startPixels = POINT_ARROW_START_PIXELS) {
     const c = project(centre);
     if (!c) return;
@@ -727,7 +714,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     }
   }
 
-  // The ground grid is fixed to metres, with tenths when you come close.
   function drawGrid(context, colors) {
     const reach = Math.min(GRID_MOST_METRES, Math.max(GRID_LEAST_METRES, Math.ceil(camera.distance * 3)));
     const cx = Math.round(camera.target[0]);
@@ -756,9 +742,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     context.fillText(fine ? '▦ 1 m · 10 cm' : '▦ 1 m', 10, size.height - 10);
   }
 
-  // A rig shows its front as a bold arrow; capsules at one point fan out
-  // from it with their names at the tips, spaced capsules sit at their
-  // places, and a head is drawn as a head with a nose and its ears.
   function drawRig(context, rig, color) {
     const centre = rig.position;
     const { front, right } = rigFrame(space, rig);
@@ -994,8 +977,6 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     return degrees(Math.atan2(d[2], d[0] * Math.sin(yaw) + d[1] * Math.cos(yaw)));
   }
 
-  // Shift is free movement everywhere but on size handles, where it scales in
-  // proportion, Alt grows about the centre, and Cmd or Ctrl is free.
   function dragTo(point, keys) {
     const free = drag.handle.type === 'size' ? keys.command : keys.shift;
     const { handle, snapshot, centre, start } = drag;

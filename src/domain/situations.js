@@ -56,10 +56,6 @@ export const SITUATIONS = Object.freeze({
   }
 });
 
-// A situation adds its objects to those already built and keeps the
-// microphones and the source: the first microphone goes to the situation's
-// place, the others and a point source keep where they were relative to it,
-// and all microphones are bound to the situation's main object.
 export function situationSpace(id, current) {
   const { objects: added, microphone, arrival } = SITUATIONS[id];
   const objects = [...current.objects, ...added];

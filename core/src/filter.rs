@@ -7,10 +7,6 @@ use crate::spectrum::{angular_frequency, minimum_phase, Fft};
 use rustfft::num_complex::Complex64;
 use std::f64::consts::PI;
 
-// Scattering that arrives after the filter's end reaches only discarded
-// samples, except through the few samples the interpolation compensation and
-// the head's spectra reach backwards, and through a pipe mouth that hears the
-// sound before the microphone does (`lead_seconds`).
 const HORIZON_MARGIN_SAMPLES: f64 = 256.0;
 const DEPTH_CLASSES_PER_OCTAVE: f64 = 2.0;
 
@@ -38,9 +34,6 @@ pub fn near_spectrum_part(scene: &Scene, part: Part) -> Vec<Complex64> {
     near_spectra_part(scene, part).swap_remove(0)
 }
 
-// A part's share of each capsule's spectrum: its Kirchhoff cells, and in
-// part 0 also the direct sound, the specular paths, and the inside of a pipe
-// whole.
 pub fn near_spectra_part(scene: &Scene, part: Part) -> Vec<Vec<Complex64>> {
     let scene = &scene.off_surfaces();
     let mut spectra = match scene.pipe {
@@ -142,9 +135,6 @@ fn outside_spectrum(scene: &Scene, lead_seconds: f64, part: Part) -> Vec<Vec<Com
     let reflection: Vec<Vec<Complex64>> = scene.surfaces.iter().map(|s| minimum_phase(&s.reflection, n, fs, &mut fft)).collect();
     let j = Complex64::new(0.0, 1.0);
 
-    // Surfaces of one material and of about one screen depth (`edge`) share
-    // their histograms; each group is filled, transformed, and freed before
-    // the next, so only one is held at a time.
     let traversals = traversals(scene);
     let floor = relief_floor(scene, &traversals, horizon);
     let depths: Vec<(f64, f64)> = traversals.iter().map(|&(index, also)| edge_depth(scene, index, also.map(|v| v.surface), horizon)).collect();

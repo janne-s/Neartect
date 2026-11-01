@@ -5,8 +5,6 @@ use crate::spectrum::BAND_COUNT;
 use rustfft::num_complex::Complex64;
 
 const NEAREST_SOURCE_METRES: f64 = 1e-3;
-// A point microphone closer to a surface than this hears from this gap on the
-// sound's side: on the surface itself the gradient's near field is singular.
 pub const SMALLEST_GAP_METRES: f64 = 1e-4;
 
 #[derive(Clone)]
@@ -32,8 +30,6 @@ impl Surface {
         self.bend.point(&self.polygon, q)
     }
 
-    // The surface's normal and its two plane directions at `q`, turned with
-    // the bend.
     pub fn frame(&self, q: [f64; 2]) -> (V3, V3, V3) {
         let p = &self.polygon;
         (self.bend.rotate(p, q, p.normal), self.bend.rotate(p, q, p.u), self.bend.rotate(p, q, p.v))
@@ -43,9 +39,7 @@ impl Surface {
         self.bend.locate(&self.polygon, p)
     }
 
-    // The nearest crossing of the ray with the surface within `max_length`,
-    // as distance and plane coordinates (the polygon's outline, not its
-    // pattern).
+    // Outline only; callers check the pattern.
     pub fn ray_hit(&self, from: V3, direction: V3, max_length: f64) -> Option<(f64, [f64; 2])> {
         if !self.is_bent() {
             let t = self.polygon.ray_hit(from, direction, max_length)?;
@@ -77,9 +71,6 @@ pub struct Scene {
     pub quality: Quality,
 }
 
-// Relief detail is elements per shortest relief length (period or grain);
-// the element limit caps the elements the relief asks for, shared by area over
-// all surfaces with relief. Neither changes a flat surface.
 #[derive(Clone, Copy, Debug)]
 pub struct Quality {
     pub relief_detail: f64,
@@ -92,14 +83,6 @@ impl Default for Quality {
     }
 }
 
-// What hears the field. A first-order microphone takes a + (1 − a) cos θ of
-// each arrival, and its gradient part grows by 1 + 1/(jkr) for a wave from a
-// distance r (the proximity effect; a rigid Kirchhoff element's dipole field
-// is differentiated exactly in `kirchhoff`). An ear on a spherical head (Brown and
-// Duda 1998) takes a head shadow (1 + jαω/2ω0)/(1 + jω/2ω0), ω0 = c/a, with α
-// set by the angle from the ear's axis, and Woodworth's delay. An ear on the
-// measured head takes the arrival in its head frame: `outward` points to its
-// own side, so the right ear reads the left ear's table mirrored.
 #[derive(Clone, Copy, Debug)]
 pub enum Listener {
     Microphone { pattern: f64, facing: V3 },
@@ -116,8 +99,6 @@ const SHADOW_DEEPEST_RADIANS: f64 = 150.0 * std::f64::consts::PI / 180.0;
 
 const PAIR: usize = 2;
 
-// A first-order capsule's plain pickup and its proximity part for an arrival
-// `from` at `distance` metres.
 fn first_order(pattern: f64, facing: V3, from: V3, distance: f64) -> [f64; 2] {
     let gradient = (1.0 - pattern) * crate::geom::dot(facing, from);
     let near = if distance.is_finite() { gradient / distance.max(1e-3) } else { 0.0 };
@@ -130,10 +111,6 @@ impl Listener {
     }
 }
 
-// The incident wave at a point, relative to the direct sound at the
-// microphone: amplitude, extra path in metres, and the unit vector towards
-// the source. A far source is a plane wave from `arrival`; a point source
-// spreads spherically.
 pub struct Incident {
     pub amplitude: f64,
     pub extra_metres: f64,
@@ -142,10 +119,6 @@ pub struct Incident {
 }
 
 impl Scene {
-    // Weights a listener puts on an arrival `from` (a unit vector towards where
-    // it comes from) at `distance` metres, one per spectral set, and the extra
-    // delay in seconds. Sets: a microphone's plain pickup and its proximity
-    // part; an ear's two halves of the head-shadow filter.
     pub fn sets(&self) -> usize {
         match self.listener {
             Listener::Microphone { pattern, .. } if pattern >= 1.0 => 1,
@@ -155,8 +128,6 @@ impl Scene {
         }
     }
 
-    // A pair of first-order capsules at one point shares one traversal of
-    // the geometry; each capsule has its own two sets and its own spectrum.
     pub fn capsules(&self) -> usize {
         if matches!(self.listener, Listener::Pair { .. }) {
             PAIR
@@ -173,7 +144,6 @@ impl Scene {
         }
     }
 
-    // The sets that hear a first-order gradient, with its pattern and facing.
     pub fn gradients(&self) -> Vec<(usize, f64, V3)> {
         match self.listener {
             Listener::Microphone { pattern, facing } if pattern < 1.0 => vec![(1, pattern, facing)],

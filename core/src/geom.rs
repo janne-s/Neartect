@@ -129,8 +129,6 @@ impl Polygon {
             .fold(f64::INFINITY, f64::min)
     }
 
-    // `q` mirrored across the line of its nearest edge, and that edge's unit
-    // normal in plane coordinates.
     pub fn mirror_across_nearest_edge(&self, q: [f64; 2]) -> ([f64; 2], [f64; 2]) {
         let n = self.points.len();
         let mut best = (f64::INFINITY, q, [0.0, 0.0]);

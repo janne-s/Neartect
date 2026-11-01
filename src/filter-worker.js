@@ -1,8 +1,7 @@
 import { loadCore } from './domain/core.js';
 import { runJob } from './domain/near-filter.js';
 
-// A trap leaves the core's memory in an unknown state, so the pool replaces
-// this worker; in the core a trap is almost always a failed allocation.
+// A trap leaves the core’s memory unknown, so the pool replaces this worker.
 self.addEventListener('message', async ({ data: { id, job } }) => {
   const core = await loadCore();
   try {

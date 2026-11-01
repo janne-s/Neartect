@@ -70,16 +70,9 @@ const view = createNearView($('near-view'), {
   ownAxes: () => preferences.ownAxes
 });
 
-// Channels, and the parts of a channel with relief, are shared by a pool of
-// workers. A build that an edit has made stale drops its jobs that have not
-// started, unless the build before it was dropped too, so that a continuous
-// drag still shows every other result.
 const WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
 const pool = createPool(new URL('./filter-worker.js', import.meta.url), WORKERS, jobBytes);
 
-// A tab the browser stops, as when it runs out of memory, runs no code, so a
-// mark written before each build and removed after it outlives the tab; the
-// next start finds it and does not build the same filter again by itself.
 const filterMarker = createRenderMarker(localStorage, 'neartect.filterUnfinished');
 const unfinishedFilter = filterMarker.take();
 window.addEventListener('pagehide', () => filterMarker.suspend());
@@ -109,12 +102,8 @@ async function timedFilter(space, purpose, build = Symbol('build')) {
   }
 }
 
-// While relief moves or something is dragged, the preview drops to the
-// moving detail; the export and the settled preview use the full detail.
 let dragging = false;
 
-// Relief with a speed moves while the preview plays: each new filter takes
-// the relief where it is now and glides in over the time since the last one.
 function moving(space) {
   return space.objects.some(o => o.relief.speedMetresPerSecond !== 0 && (o.relief.shape !== 'flat' || o.relief.roughMetres > 0));
 }
@@ -333,8 +322,6 @@ const PATTERN_LABELS = Object.freeze({ omni: 'Omni', wide: 'Wide cardioid', card
 const removeIcon = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
 const RIG_COLOUR_START = 3;
 
-// A card is a header that opens it and, when open, captioned groups of
-// controls, so that place, shape, surface, and pickup read apart.
 function cardHeader(card, { lead, name, kind, selected, onToggle, onRemove, removeLabel }) {
   const header = element('div', 'card-header');
   header.tabIndex = 0;
@@ -726,8 +713,6 @@ function layoutSelect(macros, chosen, onPick) {
   });
 }
 
-// Changing the layout of a selected microphone or layout keeps its place,
-// binding, and aim; only the capsules change.
 function changeLayout(point, kind) {
   const space = state.space;
   const isRig = space.rigs.includes(point);
@@ -757,8 +742,6 @@ function changeLayout(point, kind) {
   changed({ panel: true });
 }
 
-// Adding a layout while a lone microphone is all there is puts the layout
-// in its place: same binding, same spot, and its aim if it had one.
 function addListener(kind) {
   const space = state.space;
   const model = activeListener();

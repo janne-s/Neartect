@@ -1,10 +1,4 @@
-// First-order scattering by one surface in the Kirchhoff (physical optics)
-// approximation, in the time domain: Rayleigh II for the rigid part and
-// Rayleigh I for the pressure-release part, exact for an infinite plane
-// (class B for finite surfaces; Cox 2015 JASA EL for the surface-element form).
-// A point source adds the spherical wave's near term to the normal velocity,
-// cos θ1 (jk + 1/r1), and spreads as r0/r1 (Sakurai 2017 for the same far and
-// near terms in a rigid panel's time-domain response).
+// Class B: time-domain Kirchhoff sum (Cox 2015), exact for an infinite plane.
 
 use crate::geom::{dot, norm, scale, sub, Polygon, V3};
 use crate::scene::Scene;
@@ -23,10 +17,6 @@ const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
 
-// One of `count` fixed shares of the Kirchhoff work: every traversal's
-// quadtree is cut into cells at a fixed level, and the cells are dealt to the
-// parts in turn. The parts' spectra sum to the whole one, and the cut does not
-// depend on how many workers compute them.
 #[derive(Clone, Copy, Debug)]
 pub struct Part {
     pub index: usize,
@@ -46,9 +36,6 @@ pub const SOFT_FAR: usize = 2;
 pub const SOFT_NEAR: usize = 3;
 pub const LISTS: usize = 4;
 
-// Four histograms per listener set (rigid far and near, soft far and near),
-// each element weighted by the set's weight for its arrival, stored bin by
-// bin so that one element's deposit into every set is contiguous.
 pub struct Histograms {
     sets: usize,
     bins: usize,
@@ -72,8 +59,6 @@ impl Histograms {
         self.sets * LISTS
     }
 
-    // The rigid lists through the edge correction (`edge`), τ in bins, by
-    // the bilinear transform.
     pub fn edge_correct_rigid(&mut self, tau_bins: f64) {
         if !tau_bins.is_finite() {
             return;
@@ -97,14 +82,7 @@ impl Histograms {
     }
 }
 
-// A second reflection on a flat surface on the way to or from a surface with
-// relief. `receiver` puts it between the relief and the microphone (the
-// relief heard from the microphone's image), otherwise between the source
-// and the relief (the relief lit from the source's image). A joined surface
-// has no `cutoff_hz`: it is held by the join's extension; an unjoined one is
-// an unbounded mirror times its own finite-size factor, the design frequency
-// of the flat image path and its edge correction, which gives the images
-// again as the relief flattens.
+// No cutoff_hz on a joined surface: the join extension holds it.
 #[derive(Clone, Copy, Debug)]
 pub struct Via {
     pub surface: usize,
@@ -112,10 +90,6 @@ pub struct Via {
     pub cutoff_hz: Option<f64>,
 }
 
-// At a right-angled join the relief is lit from the source's image in the
-// flat surface, and its extension across the join (the relief mirrored) holds
-// the other order. A flat surface elsewhere takes each order whose flat image
-// path exists. Higher orders keep the images with Eckart's factor.
 pub fn via_pairs(scene: &Scene) -> Vec<(usize, Via)> {
     if scene.max_order < 2 || scene.pipe.is_some() {
         return Vec::new();
@@ -192,10 +166,6 @@ impl Context<'_> {
         }
     }
 
-    // Whether the leg from `x` towards an image in the via surface passes the
-    // surface (where it is solid, for a joined one; anywhere on its plane for
-    // an unjoined one, whose size is its own factor) and is otherwise clear on
-    // both sides.
     fn through_via(&self, via: Via, x: V3, direction: V3, length: f64) -> bool {
         let j = via.surface;
         let surface = &self.scene.surfaces[j];
@@ -223,8 +193,6 @@ impl Context<'_> {
     }
 }
 
-// Each surface's own scattering, then the second-order pairs that `via_pairs`
-// gives to the Kirchhoff sum.
 pub fn traversals(scene: &Scene) -> Vec<(usize, Option<Via>)> {
     let single = scene.surfaces.iter().enumerate().filter(|(_, s)| s.strength > 0.0).map(|(i, _)| (i, None));
     single.chain(via_pairs(scene).into_iter().map(|(i, via)| (i, Some(via)))).collect()
@@ -234,19 +202,12 @@ fn extension(scene: &Scene, bins: usize) -> f64 {
     (scene.speed_of_sound * bins as f64 / (scene.sample_rate * OVERSAMPLING as f64)).min(LONGEST_EXTENSION_METRES)
 }
 
-// The smallest relief element that keeps all traversals of surfaces with
-// relief, extensions past joined edges included, within the element limit.
-// Where it binds, the quadtree's root is sized so that leaves take exactly
-// this size; halving the bounding square instead gave up to four times the
-// limit.
 pub fn relief_floor(scene: &Scene, traversals: &[(usize, Option<Via>)], bins: usize) -> f64 {
     let reach = extension(scene, bins);
     let area: f64 = traversals.iter().filter(|&&(i, _)| !scene.surfaces[i].relief.is_flat()).map(|&(i, via)| domain(scene, i, reach, via.map(|v| v.surface)).area).sum();
     (area / scene.quality.element_limit).sqrt()
 }
 
-// The screen depth Φ of surface `index` as heard at the microphone, in
-// metres (`edge`), over its domain with joined edges extended.
 fn same_edge((a, b): (V3, V3), (c, d): (V3, V3)) -> bool {
     let close = |p: V3, q: V3| norm(sub(p, q)) < JOIN_TOLERANCE_METRES;
     (close(a, c) && close(b, d)) || (close(a, d) && close(b, c))
@@ -260,8 +221,6 @@ fn shares(scene: &Scene, index: usize, edge: (V3, V3)) -> bool {
     scene.surfaces.iter().enumerate().any(|(j, other)| j != index && has_edge(&other.polygon, edge))
 }
 
-// Half the middle extent of the body that surface `index` belongs to through
-// shared edges: the scale the air flows round instead of a shared edge.
 fn body_scale(scene: &Scene, index: usize) -> f64 {
     let mut body = vec![index];
     let mut at = 0;
@@ -294,9 +253,6 @@ fn body_scale(scene: &Scene, index: usize) -> f64 {
     extents[1] / 2.0
 }
 
-// The surface as a screen for the edge correction: joined edges extended as
-// for the Kirchhoff sum, and edges shared with the rest of a body continued
-// by the body's scale, since the air flows round the body there.
 fn screen(scene: &Scene, index: usize, bins: usize, via: Option<usize>) -> Polygon {
     let polygon = &scene.surfaces[index].polygon;
     let reach = extension(scene, bins);
@@ -326,9 +282,6 @@ pub fn edge_depth(scene: &Scene, index: usize, via: Option<usize>, bins: usize) 
     crate::edge::effective_depth(&domain, &surface.pattern, |q| surface.point(q), |x| crate::edge::harmonic_reach(x, scene.microphone, scene.incident(x).source_distance))
 }
 
-// Adds surface `index`'s scattering, times `strength`, to `histograms` and
-// returns the number of elements it took; none when the surface is seen
-// edge-on from the source.
 #[allow(clippy::too_many_arguments)]
 pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<Via>, strength: f64, relief_floor: f64, part: Part, histograms: &mut Histograms) -> Option<usize> {
     let surface = &scene.surfaces[index];
@@ -377,11 +330,6 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<V
     Some(context.elements)
 }
 
-// An edge shared with another surface at a right angle, where the other
-// surface stands on the microphone's side (a concave join), is extended past
-// the join, so that a right-angled wedge or corner keeps its exact image
-// solution instead of diffracting from the join. Convex joins, such as the
-// outside of a box, and other angles keep their edges (class B diffraction).
 fn domain(scene: &Scene, index: usize, extension: f64, via: Option<usize>) -> Polygon {
     let polygon = &scene.surfaces[index].polygon;
     let distances: Vec<f64> = (0..polygon.points.len()).map(|i| if joined(scene, index, i, via) { extension } else { 0.0 }).collect();
@@ -397,8 +345,6 @@ pub fn extended_edges(scene: &Scene, index: usize) -> usize {
     (0..polygon.points.len()).filter(|&i| joined(scene, index, i, None)).count()
 }
 
-// A bent surface joins only along its arcs, to a flat surface across its
-// axis: past such an edge the cylinder continues as its own mirror image.
 fn joined(scene: &Scene, index: usize, e: usize, only: Option<usize>) -> bool {
     let surface = &scene.surfaces[index];
     let this = &surface.polygon;
@@ -491,8 +437,6 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let relief = &surface.relief;
     let bent = surface.is_bent();
     let shaped = !relief.is_flat();
-    // An element past a joined edge stands for the surface's mirror image in
-    // the joining surface, so it carries the relief mirrored across that edge.
     let (height, slope) = if !shaped {
         (0.0, [0.0, 0.0])
     } else if virtual_element {
@@ -506,7 +450,6 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let (normal, along_u, along_v) = surface.frame(centre);
     let x = crate::geom::add(surface.point(centre), scale(normal, height));
     let incident = context.incident(x);
-    // A bent sheet is lit on whichever face turns to the source there.
     let side = if bent {
         let towards = dot(normal, incident.towards_source);
         if towards == 0.0 {
@@ -573,10 +516,6 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     for (set, weight) in weights.iter().enumerate().take(sets) {
         values[set] = [rigid_far * weight, rigid_near * weight, soft * weight, soft_near * weight];
     }
-    // A first-order microphone's gradient part hears the rigid element's
-    // dipole field exactly: the radial part takes 2/(jkR) where a spherical
-    // wave takes 1/(jkR), and the field across the radius adds
-    // (n·f − (n·u)(u·f)) (1 + 1/(jkR)) / R².
     for &(set, pattern, facing) in &context.gradients {
         let toward_facing = -dot(direction, facing);
         let across = (dot(tilted, facing) + cos_scatter * toward_facing) * area / (2.0 * PI * distance * distance);

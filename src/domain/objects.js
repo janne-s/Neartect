@@ -1,6 +1,4 @@
-// Objects are what the user builds; each expands into planar surfaces for the
-// core. Local frame: x across, y the front normal, z up; the object is tilted
-// about x, then turned to its facing (compass yaw) about the vertical.
+// Local frame: x across, y front, z up; tilted about x, then turned about the vertical.
 
 import { bendOf, bentNormal, bentPoint, bentTangent, flatPoint } from './bend.js';
 
@@ -106,8 +104,6 @@ function planePattern(object) {
   return { kind: 'solid', values: [0, 0, 0, 0, 0, 0] };
 }
 
-// An opening kept inside its wall: no wider or taller than the wall, and
-// moved in from an edge it would cross.
 export function fittedOpening(opening, [w, , h]) {
   const sizeMetres = opening.sizeMetres.map((s, i) => Math.min(s, [w, h][i]));
   const offsetMetres = opening.offsetMetres.map((d, i) => {
@@ -126,9 +122,6 @@ export function seedOf(id) {
   return hash % 1000003;
 }
 
-// The relief's direction lies in the object's across–up plane (0° along
-// across, 90° along up) and its field is anchored at the object's position,
-// so every face of the object shares one field.
 export function reliefValues(object, shift = 0) {
   const r = object.relief ?? FLAT_RELIEF;
   const { across, up } = objectFrame(object);
@@ -145,7 +138,6 @@ export function objectBend(object) {
   return bendOf(object, objectFrame(object));
 }
 
-// A point in the object's flat frame on its bent surface, and back.
 export function surfacePoint(object, local) {
   return bentPoint(objectBend(object), toWorld(object, local));
 }
@@ -154,8 +146,6 @@ export function surfaceLocal(object, point) {
   return toLocal(object, flatPoint(objectBend(object), point));
 }
 
-// The object's frame where a point bound to it sits: on a bent surface its
-// across or up follows the arc and its front the arc's normal.
 export function surfaceFrame(object, local) {
   const frame = objectFrame(object);
   const bend = objectBend(object);
@@ -167,7 +157,6 @@ export function surfaceFrame(object, local) {
   return object.bend.axis === 'up' ? { across: tangent, front: normal, up: frame.up } : { across: frame.across, front: normal, up: tangent };
 }
 
-// A bent pipe's outside: rings of planar pieces along its arc.
 function bentPipeFaces(object, bend) {
   const [w, d] = object.size;
   const radius = w / 2;
@@ -184,8 +173,6 @@ function bentPipeFaces(object, bend) {
   return faces;
 }
 
-// A bent pipe's centreline as the core takes it: its mouths, the centre of
-// the arc, and the axis turning from mouth A towards mouth B.
 export function pipeCentreline(object) {
   const [, d] = object.size;
   const bend = objectBend(object);
@@ -250,8 +237,6 @@ export function anchor(object) {
   return [0, 0, 0];
 }
 
-// Microphones and a point source are bound points: an offset from an
-// object's anchor, or a plain position when bound to the world.
 export function referenceObject(space, point) {
   const id = point.reference;
   return id ? space.objects.find(o => o.id === id) ?? null : null;
@@ -264,8 +249,6 @@ export function pointPosition(space, point) {
   return surfacePoint(object, point.offset.map((v, i) => v + base[i]));
 }
 
-// The offset that puts a bound point at its object's middle: a flat object
-// keeps the gap (a wall centres on its opening), a solid one takes its centre.
 export function centredOffset(object, offset) {
   const { min, max } = objectBounds(object);
   const base = anchor(object);
@@ -275,9 +258,6 @@ export function centredOffset(object, offset) {
   return [centre[0] + opening[0], offset[1], centre[2] + opening[1]];
 }
 
-// Points bound to a resized object keep their place in it: inside its
-// extent along an axis they keep their fraction of it, outside they keep
-// their distance to the nearest face.
 export function followResize(space, before, after, offsets = null) {
   const [was, now] = [objectBounds(before), objectBounds(after)];
   const [baseWas, baseNow] = [anchor(before), anchor(after)];
@@ -293,8 +273,6 @@ export function followResize(space, before, after, offsets = null) {
   });
 }
 
-// The position that keeps a resized object's centre (`keep` true for an
-// axis) or the face opposite the handle on `side` in place.
 export function resizedPosition(before, size, keep, side) {
   const was = objectBounds(before);
   const now = objectBounds({ ...before, size });
@@ -313,9 +291,6 @@ export function referTo(space, point, id) {
   if (facing) aimAt(space, point, facing);
 }
 
-// A microphone's aim is a compass-style azimuth and an elevation in its
-// reference frame: the object's across, front, and up when bound, east,
-// north, and up otherwise.
 export function aimVector(space, microphone) {
   const az = microphone.aim.azimuthDegrees * Math.PI / 180;
   const el = microphone.aim.elevationDegrees * Math.PI / 180;
@@ -364,9 +339,7 @@ export function releaseObject(space, id) {
   boundPoints(space).forEach(point => { if (point.reference === id) referTo(space, point, null); });
 }
 
-// The inside model's share for a point on a pipe's axis region near a
-// mouth: 1 deeper than the radius inside, 0 as far outside, and a smoothstep
-// between, so that the filter changes smoothly through the mouth (class C).
+// Class C: smoothstep blend through the mouth.
 export function pipeShare(space, point) {
   for (const object of space.objects) {
     if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
