@@ -14,7 +14,7 @@ export const RANGES = Object.freeze({
   positionMetres: [-50, 50],
   sizeMetres: [0.01, 50],
   yawDegrees: [0, 360],
-  tiltDegrees: [-90, 90],
+  tiltDegrees: [-180, 180],
   strength: [0, 2],
   azimuthDegrees: [0, 360],
   elevationDegrees: [-90, 90],
@@ -51,6 +51,12 @@ function angle(value, fallback) {
   return ((n % 360) + 360) % 360;
 }
 
+export const signedTurn = degrees => degrees - 360 * Math.round(degrees / 360);
+
+function signedAngle(value, fallback) {
+  return signedTurn(typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+}
+
 function position(value, fallback) {
   const list = Array.isArray(value) && value.length === 3 ? value : fallback;
   return list.map((v, i) => number(v, RANGES.positionMetres, fallback[i]));
@@ -82,7 +88,7 @@ function readObject(value, index = 0) {
     name: typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 60) : `Object ${index + 1}`,
     position: position(o.position, [0, 0, 1]),
     yawDegrees: angle(o.yawDegrees, 0),
-    tiltDegrees: number(o.tiltDegrees, RANGES.tiltDegrees, 0),
+    tiltDegrees: signedAngle(o.tiltDegrees, 0),
     size,
     material: Object.hasOwn(MATERIALS, o.material) ? o.material : DEFAULT_MATERIAL,
     strength: number(o.strength, RANGES.strength, 1)

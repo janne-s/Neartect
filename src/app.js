@@ -430,7 +430,7 @@ function objectCard(container, object) {
       });
     });
     macro(shape, { label: 'Facing', title: 'Compass direction the front faces', range: [0, 360], format: degrees, fallback: 0, read: () => current().yawDegrees, write: v => { current().yawDegrees = v % 360; } });
-    macro(shape, { label: 'Tilt', title: 'Tilt (90° faces up)', range: [-90, 90], format: degrees, fallback: FLAT_KINDS.includes(object.kind) ? current().tiltDegrees : 0, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
+    macro(shape, { label: 'Tilt', title: 'Tilt (90° faces up)', range: RANGES.tiltDegrees, format: degrees, fallback: FLAT_KINDS.includes(object.kind) ? current().tiltDegrees : 0, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
     if (object.kind === 'grating') {
       macro(shape, { label: 'Bar spacing', range: [0.002, 0.5], log: true, format: formatGap, fallback: 0.034, read: () => current().pattern.periodMetres[0], write: v => { const p = current().pattern; p.periodMetres = p.periodMetres.map(x => (x > 0 ? v : 0)); p.barMetres = p.barMetres.map(b => Math.min(b, v)); } });
       macro(shape, { label: 'Bar width', range: [0.001, 0.2], log: true, format: formatGap, fallback: 0.004, read: () => current().pattern.barMetres[0], write: v => { const p = current().pattern; p.barMetres = p.barMetres.map((b, i) => (p.periodMetres[i] > 0 ? Math.min(v, p.periodMetres[i]) : 0)); } });

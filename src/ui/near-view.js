@@ -1,5 +1,5 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
-import { arrivalVector } from '../domain/space.js';
+import { arrivalVector, signedTurn } from '../domain/space.js';
 import { aimAt, aimVector, expandObject, objectBounds, objectFrame, placePointAt, pointPosition, referenceObject, toWorld } from '../domain/objects.js';
 import { faceNormal, nearestSurface } from '../domain/placement.js';
 import { faceRelief, hasRelief } from '../domain/relief.js';
@@ -907,9 +907,9 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (drag.aim && handle.which === 'tilt') {
       const angle = aimAngle(handle, centre, point);
       if (angle === null) return;
-      const elevation = Math.max(-90, Math.min(90, snap(start.elevation + angle - start.angle, ANGLE_SNAP_DEGREES, free)));
-      readout = { x: point[0], y: point[1], text: `Tilt ${Math.round(elevation)}°` };
-      const e = elevation * Math.PI / 180;
+      const turned = snap(start.elevation + angle - start.angle, ANGLE_SNAP_DEGREES, free);
+      const e = turned * Math.PI / 180;
+      readout = { x: point[0], y: point[1], text: `Tilt ${Math.round(degrees(Math.asin(Math.sin(e))))}°` };
       const h = handle.heading;
       onEdit(next => aimAt(next, findPoint(next, handle.key), [h[0] * Math.cos(e), h[1] * Math.cos(e), Math.sin(e)]));
       return;
@@ -985,7 +985,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
         readout = { x: point[0], y: point[1], text: `↻ ${Math.round(value)}°` };
         onEdit(next => { next.objects.find(o => o.id === drag.objectId).yawDegrees = value; });
       } else {
-        const value = Math.max(-90, Math.min(90, snap(snapshot.tiltDegrees + delta, ANGLE_SNAP_DEGREES, free)));
+        const value = signedTurn(snap(snapshot.tiltDegrees + delta, ANGLE_SNAP_DEGREES, free));
         readout = { x: point[0], y: point[1], text: `⤢ ${Math.round(value)}°` };
         onEdit(next => { next.objects.find(o => o.id === drag.objectId).tiltDegrees = value; });
       }

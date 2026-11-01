@@ -29,6 +29,15 @@ test('a plane tilted 90 degrees faces up and one turned to 90 faces east', () =>
   assert.deepEqual(round(objectFrame({ yawDegrees: 90, tiltDegrees: 0 }).front), [1, 0, 0]);
 });
 
+test('tilt turns a full circle about the across axis and reads back into −180…180', () => {
+  const space = readSpace({ kind: 'neartect.space', objects: [{ kind: 'plane', tiltDegrees: 270 }, { kind: 'plane', tiltDegrees: -200 }] });
+  assert.deepEqual(space.objects.map(o => o.tiltDegrees), [-90, 160]);
+  const over = objectFrame({ yawDegrees: 0, tiltDegrees: 120 });
+  assert.deepEqual(round(over.front), round([0, Math.cos(2 * Math.PI / 3), Math.sin(2 * Math.PI / 3)]));
+  assert.deepEqual(round(over.across), [1, 0, 0]);
+  assert.deepEqual(round(objectFrame({ yawDegrees: 0, tiltDegrees: 180 }).front), [0, -1, 0]);
+});
+
 test('objects expand into the expected faces', () => {
   const count = kind => expandObject(defaultObject(kind)).length;
   assert.deepEqual(['plane', 'disc', 'grating', 'wall', 'box', 'corner', 'recess', 'pipe'].map(count), [1, 1, 1, 1, 6, 3, 6, 16]);
