@@ -26,7 +26,8 @@ WebAssembly and heard live through a crossfading convolver.
   material from published absorption tables or a porous ground model, and a
   creative strength (1 is physical).
 - **Bend** — a plane, wall, or grating bends into an arc about its up or
-  across axis, concave or convex at the front. A concave wall gathers its
+  across axis, concave or convex at the front, and a pipe bends along its
+  length. A concave wall gathers its
   reflection towards its focus, a convex one spreads it; a microphone bound to
   it keeps its gap along the arc.
 - **Situations** — start from a microphone by a wall, in a corner, in a niche,
@@ -109,7 +110,10 @@ control class C. Both heads are class B: the measured one as minimum-phase
 responses with delays interpolated between directions, the sphere as Brown
 and Duda's model. A bent surface's first order is class B (Kirchhoff on the arc); its higher
 orders take the specular points on the arc with the ray-tube gain (class B),
-limited near a focus (class C), and paths over two bent surfaces are left out. The pipe interior is class B, with its cross modes' coupling at the mouth
+limited near a focus (class C), and paths over two bent surfaces are left out.
+A bent pipe's plane mode runs a little faster in the long-wave limit (class
+B, after Keefe and Benade, which overstates their measurement), and the bend
+reflects nothing (Cummings measured near-full transmission). The pipe interior is class B, with its cross modes' coupling at the mouth
 and the blend between outside and inside within a radius of the mouth
 class C. Not modelled: the
 microphone capsule's own size, room modes
