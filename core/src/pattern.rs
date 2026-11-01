@@ -44,15 +44,16 @@ fn near_opening_edge(q: [f64; 2], size: f64, centre: [f64; 2], half: [f64; 2], r
     }
 }
 
+// Bars are centred on the lines k·period, so a wider bar grows to both sides.
 fn on_bar(x: f64, period: f64, bar: f64) -> bool {
-    period > 0.0 && x.rem_euclid(period) < bar
+    period > 0.0 && (x + bar / 2.0).rem_euclid(period) < bar
 }
 
 fn crosses(x: f64, size: f64, period: f64, bar: f64) -> bool {
     if period <= 0.0 {
         return false;
     }
-    let a = (x - size / 2.0).rem_euclid(period);
+    let a = (x + bar / 2.0 - size / 2.0).rem_euclid(period);
     let b = a + size;
     size >= period.min(bar).min(period - bar) || (a < bar && b > bar) || b > period
 }
@@ -157,15 +158,15 @@ mod tests {
     #[test]
     fn grid_is_solid_on_bars_and_open_between() {
         let p = Pattern::Grid { period: [0.04, 0.04], bar: [0.01, 0.01], thickness: 0.002 };
-        assert!(p.is_solid([0.005, 0.02]));
-        assert!(!p.is_solid([0.02, 0.02]));
+        assert!(p.is_solid([0.004, 0.02]) && p.is_solid([0.036, 0.02]));
+        assert!(!p.is_solid([0.02, 0.02]) && !p.is_solid([0.006, 0.02]));
         assert!((p.solid_area(1.0) - 0.4375).abs() < 1e-12);
     }
 
     #[test]
     fn slats_have_bars_along_one_axis() {
         let p = Pattern::Grid { period: [0.04, 0.0], bar: [0.02, 0.0], thickness: 0.01 };
-        assert!(!p.is_solid([0.03, 0.0]) && p.is_solid([0.01, 0.5]));
+        assert!(!p.is_solid([0.02, 0.0]) && p.is_solid([0.009, 0.5]) && p.is_solid([0.031, 0.5]));
         assert!((p.solid_area(1.0) - 0.5).abs() < 1e-12);
     }
 

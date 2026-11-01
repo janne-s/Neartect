@@ -347,8 +347,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const step = Math.max(1, Math.ceil(count / MOST_BARS_DRAWN));
       context.fillStyle = color;
       for (let i = 0; i <= count; i += step) {
-        const from = Math.min(i * period, span);
-        const to = Math.min(i * period + bar, span);
+        const from = Math.max(0, Math.min(i * period - bar / 2, span));
+        const to = Math.max(0, Math.min(i * period + bar / 2, span));
         const start = add(origin, scale(along, from));
         if (face.bend) {
           const middle = add(start, scale(along, (to - from) / 2));
