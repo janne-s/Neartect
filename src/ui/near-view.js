@@ -38,6 +38,7 @@ const WORLD_AXES = Object.freeze([[1, 0, 0], [0, 1, 0], [0, 0, 1]]);
 const AXIS_NAMES = Object.freeze(['East', 'North', 'Up']);
 const SIZE_NAMES = Object.freeze(['W', 'D', 'H']);
 const OFFSET_NAMES = Object.freeze(['Across', 'Gap', 'Up']);
+const OWN_AXIS_NAMES = Object.freeze(['Across', 'Front', 'Up']);
 const DIMMED = 0.3;
 const SURFACE_SNAP_PIXELS = 10;
 const ZOOM_PER_PIXEL = 0.003;
@@ -87,7 +88,7 @@ function insidePolygon([x, y], corners) {
   return inside;
 }
 
-export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true, scrollPans = () => false }) {
+export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true, scrollPans = () => false, ownAxes = () => false }) {
   const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
@@ -682,7 +683,8 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const centre = objectCentre(object);
       rotationHandles(context, colors, object, centre);
       sizeHandles(context, colors, object);
-      moveHandles(context, colors, centre, 'object', WORLD_AXES, RING_PIXELS + 3);
+      const { across, front, up } = objectFrame(object);
+      moveHandles(context, colors, centre, 'object', ownAxes() ? [across, front, up] : WORLD_AXES, RING_PIXELS + 3);
     }
 
     if (grouped()) {
@@ -1048,6 +1050,10 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const value = snap(snapshot.offset[handle.axis] + alongAxis(start, point), step, free);
       readout = { x: point[0], y: point[1], text: `${OFFSET_NAMES[handle.axis]} ${formatGap(value)}` };
       onEdit(next => { findPoint(next, handle.target).offset[handle.axis] = value; });
+    } else if (handle.type === 'move' && !drag.bound && ownAxes()) {
+      const delta = snap(alongAxis(start, point), step, free);
+      readout = { x: point[0], y: point[1], text: `${OWN_AXIS_NAMES[handle.axis]} ${delta >= 0 ? '+' : '−'}${formatGap(Math.abs(delta))}` };
+      onEdit(next => { next.objects.find(o => o.id === drag.objectId).position = add(snapshot.position, scale(handle.vector, delta)); });
     } else if (handle.type === 'move') {
       let value = snap(snapshot.position[handle.axis] + alongAxis(start, point), step, free);
       if (!drag.bound && snapSurfaces() && !free) value = surfaceSnap(drag.objectId, handle.axis, value, space.objects.find(o => o.id === drag.objectId).position[handle.axis]);

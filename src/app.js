@@ -66,7 +66,8 @@ const view = createNearView($('near-view'), {
   onAreaEnd: () => setAreaSelect(false),
   snapSurfaces: () => preferences.snapSurfaces,
   showGrid: () => preferences.showGrid,
-  scrollPans: () => preferences.scrollPans
+  scrollPans: () => preferences.scrollPans,
+  ownAxes: () => preferences.ownAxes
 });
 
 // Channels, and the parts of a channel with relief, are shared by a pool of
@@ -1117,7 +1118,7 @@ $('attribution-button').addEventListener('click', () => {
 });
 $('view-reset').addEventListener('click', () => view.reset());
 
-const preferences = { panelWidth: 340, resultsHeight: 220, snapSurfaces: false, showGrid: true, scrollPans: false, ...(readStored(PREFERENCES_KEY) ?? {}) };
+const preferences = { panelWidth: 340, resultsHeight: 220, snapSurfaces: false, showGrid: true, scrollPans: false, ownAxes: false, ...(readStored(PREFERENCES_KEY) ?? {}) };
 function syncScrollIcon() {
   const button = $('scroll-pans');
   button.title = preferences.scrollPans ? 'Scrolling pans' : 'Scrolling zooms';
@@ -1130,6 +1131,13 @@ $('scroll-pans').addEventListener('click', () => {
   preferences.scrollPans = !preferences.scrollPans;
   syncScrollIcon();
   writeStored(PREFERENCES_KEY, preferences);
+});
+$('own-axes').setAttribute('aria-pressed', String(preferences.ownAxes));
+$('own-axes').addEventListener('click', () => {
+  preferences.ownAxes = !preferences.ownAxes;
+  $('own-axes').setAttribute('aria-pressed', String(preferences.ownAxes));
+  writeStored(PREFERENCES_KEY, preferences);
+  view.update(state.space, state.selection);
 });
 $('show-grid').setAttribute('aria-pressed', String(preferences.showGrid));
 $('show-grid').addEventListener('click', () => {

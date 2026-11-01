@@ -33,10 +33,18 @@ WebAssembly and heard live through a crossfading convolver.
   under a grating, at a pipe mouth, in a doorway, by a curved wall, by a corrugated wall, over
   moving waves, or over water.
 - **Handles** — hover or select an object to move it along east, north, and
-  up, resize it from its faces, and turn or tilt it a full circle on its rings; values snap
-  to the grid and to 5°, and Shift moves freely; the magnet snaps an object's sides to other objects.
-  Everything else dims while you work. Exact values sit in Details,
+  up (or its own across, front, and up with the cube button), resize it from
+  its faces, and turn or tilt it a full circle on its rings; values snap to
+  the grid and to 5°, and Shift moves freely. On a face, Shift resizes in
+  proportion, Alt about the centre, and Cmd or Ctrl freely; bound microphones
+  keep their place in the object. The magnet snaps an object's sides to other
+  objects. Everything else dims while you work. Exact values sit in Details,
   and Undo steps back.
+- **Binding** — a microphone, layout, or point source bound to an object moves
+  with it, and the target button centres it on the object (a wall on its
+  opening, at the same gap).
+- **Scrolling** — the mouse/hand button chooses whether scrolling zooms or
+  pans; a pinch always zooms.
 - **Selecting several** — arm the area tool and drag a rectangle, or
   Shift-click to add or remove one. The selection moves along east, north,
   and up and turns on its ring as one; microphones bound to a selected object
