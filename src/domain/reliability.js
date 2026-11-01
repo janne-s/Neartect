@@ -14,6 +14,8 @@ export function reliabilityOf(space) {
   }
   if (objects.some(o => o.relief && (o.relief.shape !== 'flat' || o.relief.roughMetres > 0))) components.relief = 'B';
   if (objects.some(o => o.kind === 'grating')) components.gratingLowFrequency = 'C';
+  if (objects.some(o => o.bend?.angleDegrees)) components.bend = 'B';
+  if (objects.filter(o => o.bend?.angleDegrees).length > 0 && space.render.order > 1) components.bendFocusLimit = 'C';
   if (objects.some(o => o.kind === 'pipe')) components.pipeInterior = 'B';
   if (space.objects.some(o => o.strength !== 1)) components.strength = 'C';
   if (space.microphones.some(m => m.pattern !== 'omni') || space.rigs.length) components.pickup = 'A';

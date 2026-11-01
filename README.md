@@ -25,11 +25,15 @@ WebAssembly and heard live through a crossfading convolver.
   boxes, corners, niches, and pipes, added from a menu of shapes. Each has a
   material from published absorption tables or a porous ground model, and a
   creative strength (1 is physical).
+- **Bend** — a plane, wall, or grating bends into an arc about its up or
+  across axis, concave or convex at the front. A concave wall gathers its
+  reflection towards its focus, a convex one spreads it; a microphone bound to
+  it keeps its gap along the arc.
 - **Situations** — start from a microphone by a wall, in a corner, in a niche,
-  under a grating, at a pipe mouth, in a doorway, by a corrugated wall, over
+  under a grating, at a pipe mouth, in a doorway, by a curved wall, by a corrugated wall, over
   moving waves, or over water.
 - **Handles** — hover or select an object to move it along east, north, and
-  up, resize it from its faces, and turn or tilt it on its rings; values snap
+  up, resize it from its faces, and turn or tilt it a full circle on its rings; values snap
   to the grid and to 5°, and Shift moves freely; the magnet snaps an object's sides to other objects.
   Everything else dims while you work. Exact values sit in Details,
   and Undo steps back.
@@ -95,7 +99,9 @@ finite-size correction class B, the grating's low-frequency blend, the
 continuation of joined edges at other than right angles, and the strength
 control class C. Both heads are class B: the measured one as minimum-phase
 responses with delays interpolated between directions, the sphere as Brown
-and Duda's model. The pipe interior is class B, with its cross modes' coupling at the mouth
+and Duda's model. A bent surface's first order is class B (Kirchhoff on the arc); its higher
+orders take the specular points on the arc with the ray-tube gain (class B),
+limited near a focus (class C), and paths over two bent surfaces are left out. The pipe interior is class B, with its cross modes' coupling at the mouth
 and the blend between outside and inside within a radius of the mouth
 class C. Not modelled: the
 microphone capsule's own size, room modes
