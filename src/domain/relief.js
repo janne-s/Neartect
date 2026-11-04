@@ -1,4 +1,4 @@
-import { objectFrame, seedOf } from './objects.js';
+import { objectFrame, pipeReliefDirection, seedOf } from './objects.js';
 
 // Mirrors core/src/relief.rs; keep the two in step.
 const ROUGH_COMPONENTS = 32;
@@ -27,11 +27,11 @@ export function hasRelief(object) {
   return Boolean(r) && (r.shape !== 'flat' || r.roughMetres > 0);
 }
 
-export function faceRelief(object, normal, shift = 0) {
+export function faceRelief(object, normal, shift = 0, vertices = null) {
   const r = object.relief;
   const { across, up } = objectFrame(object);
   const a = r.directionDegrees * Math.PI / 180;
-  const wanted = across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
+  const wanted = object.kind === 'pipe' && vertices ? pipeReliefDirection(object, vertices) : across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
   let along = sub(wanted, normal.map(v => v * dot(wanted, normal)));
   if (Math.hypot(...along) < 1e-6) along = Math.hypot(...cross(normal, [0, 0, 1])) > 1e-6 ? cross(normal, [0, 0, 1]) : [1, 0, 0];
   along = normalize(along);

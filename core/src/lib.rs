@@ -26,7 +26,7 @@ pub const RELIEF_VALUES: usize = 13;
 pub const BEND_VALUES: usize = 8;
 // listenerKind: 0 microphone, 1 ear on the sphere, 2 ear on the measured head,
 // 3 two capsules at one point. A pipe radius of 0 means no pipe.
-pub const SETTINGS: [&str; 47] = [
+pub const SETTINGS: [&str; 63] = [
     "sampleRateHz",
     "speedOfSoundMetresPerSecond",
     "lengthSamples",
@@ -74,6 +74,32 @@ pub const SETTINGS: [&str; 47] = [
     "secondFacingX",
     "secondFacingY",
     "secondFacingZ",
+    "pipeReflection63Hz",
+    "pipeReflection125Hz",
+    "pipeReflection250Hz",
+    "pipeReflection500Hz",
+    "pipeReflection1000Hz",
+    "pipeReflection2000Hz",
+    "pipeReflection4000Hz",
+    "pipeReflection8000Hz",
+    "pipeReliefShape",
+    "pipeReliefHeightMetres",
+    "pipeReliefPeriodMetres",
+    "pipeReliefRadians",
+    "pipeReliefOffsetMetres",
+    "pipeRoughMetres",
+    "pipeGrainMetres",
+    "pipeReliefSeed",
+];
+const PIPE_REFLECTIONS: [&str; BAND_COUNT] = [
+    "pipeReflection63Hz",
+    "pipeReflection125Hz",
+    "pipeReflection250Hz",
+    "pipeReflection500Hz",
+    "pipeReflection1000Hz",
+    "pipeReflection2000Hz",
+    "pipeReflection4000Hz",
+    "pipeReflection8000Hz",
 ];
 const MOST_COARSE_RELIEF_DETAIL: f64 = 1.0;
 const MOST_FINE_RELIEF_DETAIL: f64 = 24.0;
@@ -131,6 +157,20 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
             mouth_a: vector("pipeMouthA"),
             mouth_b: vector("pipeMouthB"),
             bend: (geom::norm(vector("pipeBendAxis")) > 0.5).then(|| pipe::PipeBend { centre: vector("pipeBendCentre"), axis: normalize(vector("pipeBendAxis")) }),
+            wall: pipe::PipeWall {
+                reflection: std::array::from_fn(|i| get(PIPE_REFLECTIONS[i]).clamp(0.0, 1.0)),
+                relief: relief::Relief::new(
+                    get("pipeReliefShape"),
+                    get("pipeReliefHeightMetres"),
+                    get("pipeReliefPeriodMetres"),
+                    [get("pipeReliefRadians").cos(), get("pipeReliefRadians").sin()],
+                    [0.0, 0.0],
+                    get("pipeReliefOffsetMetres"),
+                    get("pipeRoughMetres"),
+                    get("pipeGrainMetres"),
+                    get("pipeReliefSeed"),
+                ),
+            },
         }),
         listener: match get("listenerKind").round() as i64 {
             3 => scene::Listener::Pair { patterns: [get("pattern"), get("secondPattern")], facings: [normalize(vector("facing")), normalize(vector("secondFacing"))] },

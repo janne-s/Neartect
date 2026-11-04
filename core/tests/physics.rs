@@ -271,7 +271,7 @@ fn hidden_back_of_a_box_is_not_extended() {
 
 fn inside_pipe(along: f64, arrival: V3) -> Vec<Complex64> {
     let mut s = scene(vec![], [0.0, along, 0.0], arrival, 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None, wall: neartect_core::pipe::PipeWall::rigid() });
     near_spectrum(&s)
 }
 
@@ -396,7 +396,7 @@ fn cardioid_facing_away_from_a_floor_hears_less_of_its_reflection() {
 #[test]
 fn figure_eight_across_a_pipe_hears_nothing_inside_it() {
     let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None, wall: neartect_core::pipe::PipeWall::rigid() });
     let h = near_spectrum(&aimed(s, 0.0, [1.0, 0.0, 0.0]));
     assert!(h.iter().all(|x| x.norm() < 1e-9));
 }
@@ -665,13 +665,13 @@ fn second_order_through_a_barely_relieved_wall_matches_the_images() {
 
 fn wide_pipe(microphone: V3, arrival: V3) -> Vec<Complex64> {
     let mut s = scene(vec![], microphone, arrival, 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 2.0, 0.0], radius: 0.3, bend: None });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 2.0, 0.0], radius: 0.3, bend: None, wall: neartect_core::pipe::PipeWall::rigid() });
     near_spectrum(&s)
 }
 
 #[test]
 fn bessel_overlaps_vanish_for_a_square_on_wave_and_are_whole_at_the_mode() {
-    let (p, _) = neartect_core::pipe::CrossModes::new(0.5, 1.0).at(2000.0, C, 0.3, 2.0, 0.5, 0.0);
+    let (p, _) = neartect_core::pipe::CrossModes::new(0.5, 1.0).at(2000.0, C, 0.3, 2.0, 0.5, 0.0, &neartect_core::pipe::PipeWall::rigid().medium(2000.0, C, 0.3));
     assert!(p.norm() < 1e-4, "{p}");
     assert!((neartect_core::pipe::plane_share(5.0, 0.0) - 1.0).abs() < 1e-12);
     assert!(neartect_core::pipe::plane_share(5.0, 0.8) < 0.5);
@@ -781,7 +781,8 @@ fn a_coincident_pair_hears_what_its_capsules_hear_alone() {
     let facings = [normalize([0.7, 0.7, 0.0]), normalize([-0.7, 0.7, 0.0])];
     let mut piped = base.clone();
     piped.microphone = [0.0, 0.3, 0.6];
-    piped.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.6], mouth_b: [0.0, 1.0, 0.6], radius: 0.05, bend: None });
+    piped.pipe =
+        Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.6], mouth_b: [0.0, 1.0, 0.6], radius: 0.05, bend: None, wall: neartect_core::pipe::PipeWall::rigid() });
     for base in [base, piped] {
         let mut pair = base.clone();
         pair.listener = Listener::Pair { patterns, facings };
@@ -1033,6 +1034,7 @@ fn bent_pipe(turn: f64, length: f64, radius: f64) -> neartect_core::pipe::PipeIn
         mouth_b: [bend_radius * turn.cos(), bend_radius * turn.sin(), 0.0],
         radius,
         bend: Some(neartect_core::pipe::PipeBend { centre: [0.0, 0.0, 0.0], axis: [0.0, 0.0, 1.0] }),
+        wall: neartect_core::pipe::PipeWall::rigid(),
     }
 }
 
@@ -1075,7 +1077,7 @@ fn resonance(h: &[Complex64]) -> f64 {
 #[test]
 fn a_nearly_straight_bend_resonates_as_the_straight_pipe() {
     let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius: 0.05, bend: None, wall: neartect_core::pipe::PipeWall::rigid() });
     let straight = resonance(&near_spectrum(&s));
     let bent = resonance(&bent_inside(1e-3, 0.05));
     assert!((bent / straight - 1.0).abs() < 2e-3, "straight {straight} Hz, bent {bent} Hz");
@@ -1086,10 +1088,91 @@ fn a_sharp_bend_raises_the_resonance_by_at_most_its_long_wave_speed() {
     let turn = std::f64::consts::PI;
     let radius = 0.2;
     let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
-    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius, bend: None });
+    s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius, bend: None, wall: neartect_core::pipe::PipeWall::rigid() });
     let straight = resonance(&near_spectrum(&s));
     let bent = resonance(&bent_inside(turn, radius));
     let most = neartect_core::pipe::bend_speed_ratio(1e-6, radius, radius / (1.0 / turn));
     let rise = bent / straight;
     assert!(rise > 1.002 && rise < most + 0.005, "rise {rise}, long-wave speed {most}");
+}
+
+fn pipe_wall(absorption: f64, relief: neartect_core::relief::Relief) -> neartect_core::pipe::PipeWall {
+    neartect_core::pipe::PipeWall { reflection: [(1.0f64 - absorption).sqrt(); 8], relief }
+}
+
+fn corrugated(height: f64, period: f64) -> neartect_core::relief::Relief {
+    neartect_core::relief::Relief::new(1.0, height, period, [0.0, 1.0], [0.0, 0.0], 0.0, 0.0, 0.05, 1.0)
+}
+
+#[test]
+fn a_lined_duct_mode_solves_its_wall_equation_from_a_hard_wall_to_a_soft_one() {
+    let small = neartect_core::pipe::lined_eigenvalue(0.5, 1e-4);
+    assert!((small - Complex64::new(0.0, 2.0 * 0.5 * 1e-4)).norm() < 1e-7, "{small}");
+    let soft = neartect_core::pipe::lined_eigenvalue(2.0, 1e4);
+    assert!((soft - Complex64::new(2.4048 * 2.4048, 0.0)).norm() < 1e-2, "{soft}");
+}
+
+#[test]
+fn an_absorbing_wall_damps_the_pipe_resonance_and_decays_along_a_long_pipe() {
+    let peak = |absorption: f64| {
+        let mut s = scene(vec![], [0.0, 0.5, 0.0], [1.0, 0.0, 0.0], 8192, 1);
+        s.pipe = Some(neartect_core::pipe::PipeInside {
+            mouth_a: [0.0, 0.0, 0.0],
+            mouth_b: [0.0, 1.0, 0.0],
+            radius: 0.05,
+            bend: None,
+            wall: pipe_wall(absorption, neartect_core::relief::Relief::flat()),
+        });
+        let h = near_spectrum(&s);
+        let n = spectrum_size(8192);
+        ((100.0 * n as f64 / FS) as usize..=(250.0 * n as f64 / FS) as usize).map(|i| h[i].norm()).fold(0.0, f64::max)
+    };
+    let (rigid, concrete, wool) = (peak(0.0), peak(0.02), peak(0.9));
+    assert!(concrete < rigid && wool < 0.5 * concrete, "rigid {rigid} concrete {concrete} wool {wool}");
+
+    let f = 1000.0;
+    let medium = pipe_wall(0.02, neartect_core::relief::Relief::flat()).medium(f, C, 0.1);
+    let beta = (1.0 - 0.98f64.sqrt()) / (1.0 + 0.98f64.sqrt());
+    let far = |along: f64| neartect_core::pipe::transfer(&medium, &[(40.0, 0.1)], along, 1.0).0.norm();
+    let decay = (far(10.0) / far(20.0)).ln() / 10.0;
+    let expected = beta / 0.1 + 2.96e-5 * f.sqrt() / 0.1;
+    assert!((decay / expected - 1.0).abs() < 0.1, "decay {decay} Np/m, expected {expected}");
+}
+
+#[test]
+fn an_even_profile_in_pieces_matches_the_whole_pipe() {
+    let medium = neartect_core::pipe::PipeWall::rigid().medium(700.0, C, 0.05);
+    let whole = neartect_core::pipe::transfer(&medium, &[(1.3, 0.05)], 0.4, 1.0);
+    let pieces = neartect_core::pipe::transfer(&medium, &[(1.3 / 37.0, 0.05); 37], 0.4, 1.0);
+    assert!((whole.0 - pieces.0).norm() < 1e-9 && (whole.1 - pieces.1).norm() < 1e-9, "{whole:?} {pieces:?}");
+}
+
+#[test]
+fn a_corrugated_pipe_stops_the_bragg_band_and_slows_long_waves() {
+    let (radius, length, period) = (0.05, 2.0, 0.1);
+    let profile = pipe_wall(0.0, corrugated(0.3 * radius, period)).profile(radius, length);
+    assert!(profile.len() > 100);
+    let through = |f: f64, profile: &[(f64, f64)]| neartect_core::pipe::transfer(&neartect_core::pipe::PipeWall::rigid().medium(f, C, radius), profile, length, 1.0).0.norm();
+    let bragg = C / (2.0 * period);
+    let stopped = through(bragg, &profile) / through(bragg, &[(length, radius)]);
+    let beside = through(0.7 * bragg, &profile) / through(0.7 * bragg, &[(length, radius)]);
+    assert!(stopped < 0.3 && beside > 0.5, "stopped {stopped} beside {beside}");
+
+    let first = |profile: &[(f64, f64)]| (500..1200).map(|i| i as f64 * 0.2).max_by(|&a, &b| through(a, profile).partial_cmp(&through(b, profile)).unwrap()).unwrap();
+    let (smooth, slow) = (first(&[(length, radius)]), first(&profile));
+    assert!(slow < smooth, "corrugated {slow} Hz, smooth {smooth} Hz");
+}
+
+#[test]
+fn a_rough_wide_pipe_damps_its_cross_modes() {
+    let level = |rough: f64| {
+        let relief = neartect_core::relief::Relief::new(0.0, 0.0, 1.0, [1.0, 0.0], [0.0, 0.0], 0.0, rough, 0.02, 3.0);
+        let mut s = scene(vec![], [0.2, 1.0, 0.0], normalize([1.0, 1.0, 0.0]), 8192, 1);
+        s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 2.0, 0.0], radius: 0.3, bend: None, wall: pipe_wall(0.0, relief) });
+        let h = near_spectrum(&s);
+        let n = spectrum_size(8192);
+        ((2000.0 * n as f64 / FS) as usize..(6000.0 * n as f64 / FS) as usize).map(|i| h[i].norm_sqr()).sum::<f64>()
+    };
+    let (smooth, rough) = (level(0.0), level(0.005));
+    assert!(rough < 0.9 * smooth, "smooth {smooth} rough {rough}");
 }

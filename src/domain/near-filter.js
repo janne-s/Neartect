@@ -1,6 +1,6 @@
 import { loadCore } from './core.js';
 import { reflectionBands } from './materials.js';
-import { aimVector, expandObject, pipeAround, pipeShare, pointPosition } from './objects.js';
+import { aimVector, expandObject, pipeAround, pipeShare, pointPosition, RELIEF_SHAPES, seedOf } from './objects.js';
 import { bendValues } from './bend.js';
 import { faceNormal } from './placement.js';
 import { rigMembers } from './rigs.js';
@@ -23,10 +23,31 @@ export const SETTING_NAMES = Object.freeze([
   'listenerKind', 'headRadiusMetres',
   'reliefDetail', 'elementLimit',
   'headFrontX', 'headFrontY', 'headFrontZ', 'headUpX', 'headUpY', 'headUpZ',
-  'secondPattern', 'secondFacingX', 'secondFacingY', 'secondFacingZ'
+  'secondPattern', 'secondFacingX', 'secondFacingY', 'secondFacingZ',
+  'pipeReflection63Hz', 'pipeReflection125Hz', 'pipeReflection250Hz', 'pipeReflection500Hz',
+  'pipeReflection1000Hz', 'pipeReflection2000Hz', 'pipeReflection4000Hz', 'pipeReflection8000Hz',
+  'pipeReliefShape', 'pipeReliefHeightMetres', 'pipeReliefPeriodMetres', 'pipeReliefRadians',
+  'pipeReliefOffsetMetres', 'pipeRoughMetres', 'pipeGrainMetres', 'pipeReliefSeed'
 ]);
+const PIPE_REFLECTION_NAMES = SETTING_NAMES.filter(name => name.startsWith('pipeReflection'));
 
 const vector = (name, v) => ({ [`${name}X`]: v[0], [`${name}Y`]: v[1], [`${name}Z`]: v[2] });
+
+function pipeWall(object) {
+  const bands = reflectionBands(object?.material);
+  const r = object?.relief;
+  return {
+    ...Object.fromEntries(PIPE_REFLECTION_NAMES.map((name, i) => [name, object ? bands[i] : 1])),
+    pipeReliefShape: r ? RELIEF_SHAPES.indexOf(r.shape) : 0,
+    pipeReliefHeightMetres: r && r.shape !== 'flat' ? r.heightMetres : 0,
+    pipeReliefPeriodMetres: r ? r.periodMetres : 1,
+    pipeReliefRadians: r ? r.directionDegrees * Math.PI / 180 : 0,
+    pipeReliefOffsetMetres: r ? r.offsetMetres : 0,
+    pipeRoughMetres: r ? r.roughMetres : 0,
+    pipeGrainMetres: r ? r.grainMetres : 1,
+    pipeReliefSeed: object ? seedOf(object.id) : 0
+  };
+}
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
@@ -93,7 +114,8 @@ export function packSpace(space, listener, aligned, longest, second = null, pipe
     ...vector('headFront', listener.ear?.front ?? [0, 1, 0]),
     ...vector('headUp', listener.ear?.up ?? [0, 0, 1]),
     secondPattern: second ? PATTERNS[second.pattern] : 1,
-    ...vector('secondFacing', second ? second.facing : [0, 1, 0])
+    ...vector('secondFacing', second ? second.facing : [0, 1, 0]),
+    ...pipeWall(pipe?.object)
   };
   const settings = Float64Array.from(SETTING_NAMES, name => values[name]);
   const surfaces = space.objects.filter(object => object !== pipe?.object).flatMap(expandObject);

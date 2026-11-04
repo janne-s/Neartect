@@ -39,7 +39,9 @@ processed sound itself.
   reflects and shades on its own, and fine gratings let bass through.
 - **Inside a pipe** — A waveguide: resonances at the end-corrected length, the
   open ends' radiation, the walls' losses, and in wide pipes the cross modes,
-  which depend on where across the pipe the microphone sits.
+  which depend on where across the pipe the microphone sits. The wall's
+  material absorbs along the way, roughness damps the cross modes, and rings
+  along the axis make a corrugated pipe with its stop bands.
 - **Situations** — By a wall, in a corner, in a niche, under a grating, at a
   pipe mouth, in a doorway, by a curved or corrugated wall, over moving waves,
   or over water. A situation adds to the objects already built and keeps the
@@ -117,6 +119,8 @@ B/C marks a part that combines the two.
 | Bent surface, first order | Kirchhoff on the arc or sphere | B |
 | Bent surface, higher orders | specular points with ray-tube gain, limited near a focus | B/C |
 | Pipe interior | waveguide with end correction, radiation, wall losses, cross modes | B |
+| Pipe wall | lined-duct mode from the material; corrugation as a radius profile | B |
+| Rough pipe wall | larger wall losses, Eckart loss of the cross modes | C |
 | Bent pipe | Cummings' equivalent rectangular bend; cross modes as straight | B/C |
 | Pipe mouth | cross-mode coupling, blend between outside and inside | C |
 | Grating at low frequencies | blend | C |

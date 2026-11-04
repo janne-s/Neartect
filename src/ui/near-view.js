@@ -384,7 +384,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
 
   function drawRelief(context, object, face, outline, color) {
     const normal = faceNormal(face.vertices);
-    const relief = faceRelief(object, normal, object.relief.speedMetresPerSecond * reliefTime);
+    const relief = faceRelief(object, normal, object.relief.speedMetresPerSecond * reliefTime, face.vertices);
     if (!(relief.range > 0)) return;
     const { along, sideways } = relief;
     const origin = face.vertices[0];

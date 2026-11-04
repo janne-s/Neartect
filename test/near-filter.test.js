@@ -92,6 +92,34 @@ test('a microphone inside a pipe hears the pipe resonate', async () => {
   assert.ok(Math.abs(frequencies[peak] / (343.2 / (2 * (1 + 2 * 0.6133 * 0.05))) - 1) < 0.05, `peak ${frequencies[peak]}`);
 });
 
+test('a pipe wall\'s material and relief reach the pipe interior', async () => {
+  const { magnitudeResponse } = await import('../src/domain/response.js');
+  const peakOf = async (material, relief) => {
+    const pipe = { kind: 'pipe', position: [0, 0, 1], size: [0.1, 1, 0.1], material, relief };
+    const space = readSpace({ kind: 'neartect.space', arrival: { azimuthDegrees: 90 }, render: { lengthMilliseconds: 200, order: 1 }, objects: [pipe], microphone: { position: [0, 0, 1] } });
+    const { samples, sampleRateHz } = await nearFilter(space);
+    const { frequencies, decibels } = magnitudeResponse(samples, sampleRateHz);
+    let peak = 0;
+    for (let k = 1; k < frequencies.length; k += 1) if (frequencies[k] > 100 && frequencies[k] < 250 && decibels[k] > decibels[peak]) peak = k;
+    return { hz: frequencies[peak], db: decibels[peak] };
+  };
+  const rigid = await peakOf('rigid');
+  const wool = await peakOf('mineralWool');
+  assert.ok(wool.db < rigid.db - 6, `rigid ${rigid.db} dB, wool ${wool.db} dB`);
+  const ringed = await peakOf('rigid', { shape: 'waves', heightMetres: 0.015, periodMetres: 0.05, directionDegrees: 90 });
+  assert.ok(ringed.hz < rigid.hz, `ringed ${ringed.hz} Hz, smooth ${rigid.hz} Hz`);
+});
+
+test('pipe relief at 90 degrees runs along the axis on every facet', async () => {
+  const { expandObject } = await import('../src/domain/objects.js');
+  const pipe = readSpace({ kind: 'neartect.space', objects: [{ kind: 'pipe', position: [0, 0, 1], size: [0.3, 2, 0.3], yawDegrees: 30, relief: { shape: 'waves', directionDegrees: 90 } }] }).objects[0];
+  const axis = [Math.sin(Math.PI / 6), Math.cos(Math.PI / 6), 0];
+  for (const face of expandObject(pipe)) {
+    const along = face.relief.slice(3, 6);
+    assert.ok(Math.abs(Math.abs(along[0] * axis[0] + along[1] * axis[1] + along[2] * axis[2]) - 1) < 1e-9, `${along}`);
+  }
+});
+
 test('two microphones keep the time and level difference from a point source', async () => {
   const space = readSpace({
     kind: 'neartect.space',

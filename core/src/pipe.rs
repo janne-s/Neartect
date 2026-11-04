@@ -1,4 +1,6 @@
 use crate::geom::{add, cross, dot, norm, normalize, scale, sub, V3};
+use crate::relief::Relief;
+use crate::spectrum::{band_magnitude, BAND_COUNT};
 use rustfft::num_complex::Complex64;
 use std::f64::consts::PI;
 
@@ -95,7 +97,8 @@ impl CrossModes {
         CrossModes { modes }
     }
 
-    pub fn at(&self, frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, sin_incidence: f64) -> (Complex64, Complex64) {
+    #[allow(clippy::too_many_arguments)]
+    pub fn at(&self, frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, sin_incidence: f64, medium: &Medium) -> (Complex64, Complex64) {
         let ka = 2.0 * PI * frequency_hz / speed_of_sound * radius;
         let mut pressure = Complex64::new(0.0, 0.0);
         let mut velocity = Complex64::new(0.0, 0.0);
@@ -113,7 +116,10 @@ impl CrossModes {
             let neumann = if m == 0 { 1.0 } else { 2.0 };
             let share = Complex64::from_polar(neumann * overlap / mode.norm, -PI / 2.0 * m as f64);
             let axial = (ka * ka - mode.zero * mode.zero).sqrt() / ka;
-            let (p, u) = guided(frequency_hz, speed_of_sound, radius, length, along, axial, 1.0);
+            let loss = medium.cross_mode_loss(mode.zero, axial, radius);
+            let wave = Complex64::new(medium.k * axial, -loss);
+            let load = radiation(ka) * axial;
+            let (p, u) = driven(&[Piece::new(length, wave, Complex64::new(1.0, 0.0), 1.0)], load, load, along);
             pressure += share * mode.shape * p * onset;
             velocity += share * mode.shape * u * onset * axial;
         }
@@ -131,12 +137,202 @@ pub struct PipeBend {
     pub axis: V3,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PipeInside {
     pub mouth_a: V3,
     pub mouth_b: V3,
     pub radius: f64,
     pub bend: Option<PipeBend>,
+    pub wall: PipeWall,
+}
+
+// The relief runs on the unrolled wall: first coordinate around the pipe, second along it from the middle.
+#[derive(Clone, Debug)]
+pub struct PipeWall {
+    pub reflection: [f64; BAND_COUNT],
+    pub relief: Relief,
+}
+
+const KINEMATIC_VISCOSITY: f64 = 1.5e-5;
+const AROUND_SAMPLES: usize = 64;
+const PROFILE_STEPS_PER_PERIOD: f64 = 12.0;
+const MOST_PROFILE_STEPS: usize = 2048;
+const NARROWEST_RADIUS_FRACTION: f64 = 0.1;
+const FIRST_PRESSURE_RELEASE_ZERO: f64 = 2.4048;
+const SERIES_TERMS: usize = 40;
+const NEWTON_STEPS: usize = 12;
+const SLOWEST_SCATTERING_AXIAL: f64 = 0.1;
+const REPEAT_FLOOR: f64 = 1e-3;
+const PIECE_KEY_METRES: f64 = 1e-9;
+
+impl PipeWall {
+    pub fn rigid() -> PipeWall {
+        PipeWall { reflection: [1.0; BAND_COUNT], relief: Relief::flat() }
+    }
+
+    // Class B: locally reacting wall, Morse and Ingard 1968.
+    fn admittance(&self, frequency_hz: f64) -> f64 {
+        let r = band_magnitude(&self.reflection, frequency_hz).clamp(0.0, 1.0);
+        (1.0 - r) / (1.0 + r)
+    }
+
+    // Class C.
+    fn rough_loss_factor(&self, frequency_hz: f64) -> f64 {
+        let sigma = self.relief.rough_height;
+        if sigma <= 0.0 {
+            return 1.0;
+        }
+        let layer_squared = 2.0 * KINEMATIC_VISCOSITY / (2.0 * PI * frequency_hz);
+        let area = (1.0 + 2.0 * self.relief.rough_slope() * self.relief.rough_slope()).sqrt();
+        1.0 + (area - 1.0) * sigma * sigma / (sigma * sigma + layer_squared)
+    }
+
+    // Class B for the plane mode: Webster, radius averaged around the wall.
+    pub fn profile(&self, radius: f64, length: f64) -> Vec<(f64, f64)> {
+        if self.relief.is_shapeless() {
+            return vec![(length, radius)];
+        }
+        let along = self.relief.direction[1].abs();
+        let repeat = if along > REPEAT_FLOOR { self.relief.period / along } else { self.relief.period };
+        let step = (repeat / PROFILE_STEPS_PER_PERIOD).max(length / MOST_PROFILE_STEPS as f64);
+        let whole = ((length / step) as usize).min(MOST_PROFILE_STEPS);
+        let rest = length - whole as f64 * step;
+        let around = 2.0 * PI * radius / AROUND_SAMPLES as f64;
+        let radius_at = |z: f64| {
+            let mean = (0..AROUND_SAMPLES).map(|j| self.relief.shape_at([j as f64 * around, z - 0.5 * length])).sum::<f64>() / AROUND_SAMPLES as f64;
+            (radius + mean).max(NARROWEST_RADIUS_FRACTION * radius)
+        };
+        let mut pieces: Vec<(f64, f64)> = (0..whole).map(|i| (step, radius_at((i as f64 + 0.5) * step))).collect();
+        if rest > 1e-9 * length || pieces.is_empty() {
+            pieces.push((rest.max(1e-9 * length), radius_at(length - 0.5 * rest)));
+        }
+        let (low, high) = pieces.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &(_, r)| (a.min(r), b.max(r)));
+        if high - low < 1e-9 * radius {
+            vec![(length, pieces[0].1)]
+        } else {
+            pieces
+        }
+    }
+
+    pub fn medium(&self, frequency_hz: f64, speed_of_sound: f64, radius: f64) -> Medium {
+        let k = 2.0 * PI * frequency_hz / speed_of_sound;
+        Medium {
+            k,
+            frequency_hz,
+            radius,
+            eigen: lined_eigenvalue(k * radius, self.admittance(frequency_hz)),
+            rough_loss: self.rough_loss_factor(frequency_hz),
+            rough_height: self.relief.rough_height,
+        }
+    }
+}
+
+pub struct Medium {
+    k: f64,
+    frequency_hz: f64,
+    radius: f64,
+    eigen: Complex64,
+    rough_loss: f64,
+    rough_height: f64,
+}
+
+impl Medium {
+    fn wall_loss(&self, radius: f64) -> f64 {
+        WALL_LOSS_PER_ROOT_HZ * self.frequency_hz.sqrt() / radius * self.rough_loss
+    }
+
+    fn lined_ratio(&self, radius: f64) -> Complex64 {
+        if self.eigen == Complex64::new(0.0, 0.0) {
+            return Complex64::new(1.0, 0.0);
+        }
+        (Complex64::new(1.0, 0.0) - self.eigen * (radius / self.radius) / (self.k * radius).powi(2)).sqrt()
+    }
+
+    // Class C: Eckart 1953 per wall hit.
+    fn cross_mode_loss(&self, zero: f64, axial: f64, radius: f64) -> f64 {
+        let lining = -self.k * self.lined_ratio(radius).im;
+        let kappa = zero / radius;
+        let hits_per_metre = kappa / (2.0 * radius * (self.k * axial).max(SLOWEST_SCATTERING_AXIAL * kappa));
+        let scattering = 2.0 * (kappa * self.rough_height).powi(2) * hits_per_metre;
+        self.wall_loss(radius) + lining + scattering
+    }
+}
+
+// Class B: Morse and Ingard 1968, lined circular duct, for s = (κa)².
+pub fn lined_eigenvalue(ka: f64, admittance: f64) -> Complex64 {
+    if admittance <= 0.0 || ka <= 0.0 {
+        return Complex64::new(0.0, 0.0);
+    }
+    let c = Complex64::new(0.0, ka * admittance);
+    let mut s = c / (0.5 + c / (FIRST_PRESSURE_RELEASE_ZERO * FIRST_PRESSURE_RELEASE_ZERO));
+    for _ in 0..NEWTON_STEPS {
+        let quarter = s / 4.0;
+        let (mut j0, mut x_j1, mut j0_slope) = (Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0));
+        let mut term = Complex64::new(1.0, 0.0);
+        for m in 0..SERIES_TERMS {
+            let next = term * (-quarter) / ((m + 1) as f64 * (m + 1) as f64);
+            j0 += term;
+            x_j1 -= next * 2.0 * ((m + 1) as f64);
+            j0_slope -= term / (4.0 * (m + 1) as f64);
+            term = next;
+        }
+        let step = (x_j1 - c * j0) / (j0 * 0.5 - c * j0_slope);
+        s -= step;
+        if step.norm() < 1e-12 * (1.0 + s.norm()) {
+            break;
+        }
+    }
+    s
+}
+
+#[derive(Clone, Copy)]
+struct Piece {
+    length: f64,
+    wave: Complex64,
+    impedance: Complex64,
+    area: f64,
+    pass: Complex64,
+}
+
+impl Piece {
+    fn new(length: f64, wave: Complex64, impedance: Complex64, area: f64) -> Piece {
+        Piece { length, wave, impedance, area, pass: (Complex64::new(0.0, -1.0) * wave * length).exp() }
+    }
+}
+
+// Written with decaying exponentials only, so long lossy pipes stay finite.
+fn driven(pieces: &[Piece], near_load: Complex64, far_load: Complex64, along: f64) -> (Complex64, Complex64) {
+    let j = Complex64::new(0.0, 1.0);
+    let one = Complex64::new(1.0, 0.0);
+    let mut reflections = Vec::with_capacity(pieces.len());
+    let mut load = far_load;
+    for piece in pieces.iter().rev() {
+        let at_end = (load - piece.impedance) / (load + piece.impedance);
+        reflections.push(at_end);
+        let at_start = at_end * piece.pass * piece.pass;
+        load = piece.impedance * (one + at_start) / (one - at_start);
+    }
+    reflections.reverse();
+    let flow = one / (near_load + load);
+    let (mut p, mut u) = (flow * load, flow);
+    let mut start = 0.0;
+    for (index, (piece, &at_end)) in pieces.iter().zip(&reflections).enumerate() {
+        let forward = 0.5 * (p + piece.impedance * u);
+        let last = along < start + piece.length || index + 1 == pieces.len();
+        let (ahead, back) = if last {
+            let x = (along - start).clamp(0.0, piece.length);
+            ((-j * piece.wave * x).exp(), at_end * (-j * piece.wave * (2.0 * piece.length - x)).exp())
+        } else {
+            (piece.pass, at_end * piece.pass)
+        };
+        let (inside_p, inside_u) = (forward * (ahead + back), forward * (ahead - back) / piece.impedance);
+        if last {
+            return (inside_p, inside_u / piece.area);
+        }
+        (p, u) = (inside_p, inside_u);
+        start += piece.length;
+    }
+    (p, u)
 }
 
 const EQUIVALENT_WIDTH_PER_DIAMETER: f64 = PI / 4.0;
@@ -290,26 +486,25 @@ pub fn received(ka: f64, cos_inward: f64) -> f64 {
     1.0 + blend * cos_inward.max(0.0)
 }
 
-// Normalised impedances, ρc/S = 1.
-pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, faster: f64) -> (Complex64, Complex64) {
-    if frequency_hz <= 0.0 {
+// Normalised impedances, ρc/S = 1 at the nominal radius; `profile` runs from the driven mouth.
+pub fn transfer(medium: &Medium, profile: &[(f64, f64)], along: f64, faster: f64) -> (Complex64, Complex64) {
+    let length: f64 = profile.iter().map(|&(l, _)| l).sum();
+    if medium.frequency_hz <= 0.0 {
         return (Complex64::new(1.0 - along / length, 0.0), Complex64::new(0.0, 0.0));
     }
-    let (pressure, velocity) = guided(frequency_hz, speed_of_sound, radius, length, along, 1.0 / faster, faster);
+    let key = |v: f64| (v / PIECE_KEY_METRES).round() as i64;
+    let mut made: std::collections::HashMap<(i64, i64), Piece> = std::collections::HashMap::new();
+    let pieces: Vec<Piece> = profile
+        .iter()
+        .map(|&(l, r)| {
+            *made.entry((key(l), key(r))).or_insert_with(|| {
+                let area = (r / medium.radius).powi(2);
+                let ratio = medium.lined_ratio(r);
+                Piece::new(l, medium.k * ratio / faster - Complex64::new(0.0, medium.wall_loss(r)), Complex64::new(1.0, 0.0) / (ratio * area), area)
+            })
+        })
+        .collect();
+    let end_load = |r: f64| radiation(medium.k * r) / (r / medium.radius).powi(2);
+    let (pressure, velocity) = driven(&pieces, end_load(profile[0].1), end_load(profile[profile.len() - 1].1), along);
     (pressure, velocity * faster)
-}
-
-fn guided(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, axial: f64, admittance: f64) -> (Complex64, Complex64) {
-    let j = Complex64::new(0.0, 1.0);
-    let k = 2.0 * PI * frequency_hz / speed_of_sound;
-    let loss = WALL_LOSS_PER_ROOT_HZ * frequency_hz.sqrt() / radius;
-    let wave = Complex64::new(k * axial, -loss);
-    let load = radiation(k * radius) * axial * admittance;
-    let t = (wave * length).tan();
-    let input = (load + j * t) / (Complex64::new(1.0, 0.0) + j * load * t);
-    let flow = Complex64::new(1.0, 0.0) / (load + input);
-    let mouth = flow * input;
-    let pressure = mouth * (wave * along).cos() - j * flow * (wave * along).sin();
-    let velocity = flow * (wave * along).cos() - j * mouth * (wave * along).sin();
-    (pressure, velocity)
 }

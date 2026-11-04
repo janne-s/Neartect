@@ -93,6 +93,14 @@ impl Relief {
         }
     }
 
+    pub fn is_shapeless(&self) -> bool {
+        self.shape == Shape::Flat
+    }
+
+    pub fn rough_slope(&self) -> f64 {
+        self.rough_slope
+    }
+
     pub fn is_flat(&self) -> bool {
         self.shape == Shape::Flat && self.components.is_empty()
     }
@@ -118,7 +126,7 @@ impl Relief {
         (shape * shape + self.rough_height * self.rough_height).sqrt()
     }
 
-    fn shape_height(&self, q: [f64; 2]) -> f64 {
+    pub fn shape_at(&self, q: [f64; 2]) -> f64 {
         let d = self.direction;
         let s = q[0] * d[0] + q[1] * d[1] + self.start[0] - self.offset;
         let t = -q[0] * d[1] + q[1] * d[0] + self.start[1];
@@ -157,7 +165,7 @@ impl Relief {
             if !inside(p) {
                 return false;
             }
-            if side * self.shape_height(p) > side * height + rise * travelled {
+            if side * self.shape_at(p) > side * height + rise * travelled {
                 return true;
             }
             travelled += step;

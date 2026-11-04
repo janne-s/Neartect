@@ -122,11 +122,20 @@ export function seedOf(id) {
   return hash % 1000003;
 }
 
-export function reliefValues(object, shift = 0) {
+// On a pipe 0° runs around the wall and 90° along it.
+export function pipeReliefDirection(object, vertices) {
+  const axial = normalize(sub(vertices[1], vertices[0]));
+  const edge = sub(vertices[3], vertices[0]);
+  const around = normalize(sub(edge, axial.map(v => v * dot(edge, axial))));
+  const a = (object.relief ?? FLAT_RELIEF).directionDegrees * Math.PI / 180;
+  return around.map((v, i) => v * Math.cos(a) + axial[i] * Math.sin(a));
+}
+
+export function reliefValues(object, shift = 0, faceDirection = null) {
   const r = object.relief ?? FLAT_RELIEF;
   const { across, up } = objectFrame(object);
   const a = r.directionDegrees * Math.PI / 180;
-  const direction = across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
+  const direction = faceDirection ?? across.map((v, i) => v * Math.cos(a) + up[i] * Math.sin(a));
   return [
     RELIEF_SHAPES.indexOf(r.shape), r.shape === 'flat' ? 0 : r.heightMetres, r.periodMetres,
     ...direction, ...object.position,
@@ -191,23 +200,29 @@ export function pipeCentreline(object) {
 export function expandObject(object) {
   const bend = objectBend(object);
   if (bend && object.kind === 'pipe') {
-    return bentPipeFaces(object, bend).map(({ local }) => ({
-      vertices: local.map(point => bentPoint(bend, toWorld(object, point))),
-      bend: null,
+    return bentPipeFaces(object, bend).map(({ local }) => {
+      const vertices = local.map(point => bentPoint(bend, toWorld(object, point)));
+      return {
+        vertices,
+        bend: null,
+        material: object.material,
+        strength: object.strength,
+        pattern: { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
+        relief: reliefValues(object, 0, pipeReliefDirection(object, vertices))
+      };
+    });
+  }
+  return localFaces(object).map(({ local, pattern }) => {
+    const vertices = local.map(point => toWorld(object, point));
+    return {
+      vertices,
+      bend,
       material: object.material,
       strength: object.strength,
-      pattern: { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
-      relief: reliefValues(object)
-    }));
-  }
-  return localFaces(object).map(({ local, pattern }) => ({
-    vertices: local.map(point => toWorld(object, point)),
-    bend,
-    material: object.material,
-    strength: object.strength,
-    pattern: pattern ?? { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
-    relief: reliefValues(object)
-  }));
+      pattern: pattern ?? { kind: 'solid', values: [0, 0, 0, 0, 0, 0] },
+      relief: reliefValues(object, 0, object.kind === 'pipe' ? pipeReliefDirection(object, vertices) : null)
+    };
+  });
 }
 
 export function expandObjects(space) {
@@ -225,6 +240,7 @@ export function objectBounds(object) {
 
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const normalize = a => { const n = Math.hypot(...a); return n > 0 ? a.map(v => v / n) : a; };
 
 export function toLocal(object, point) {
   const { across, front, up } = objectFrame(object);

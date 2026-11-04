@@ -36,7 +36,7 @@ pub fn near_spectrum_part(scene: &Scene, part: Part) -> Vec<Complex64> {
 
 pub fn near_spectra_part(scene: &Scene, part: Part) -> Vec<Vec<Complex64>> {
     let scene = &scene.off_surfaces();
-    let mut spectra = match scene.pipe {
+    let mut spectra = match &scene.pipe {
         Some(_) if part.index > 0 => return vec![vec![Complex64::new(0.0, 0.0); half_length(scene)]; scene.capsules()],
         Some(pipe) => inside_pipe(scene, pipe),
         None => outside_spectrum(scene, 0.0, part),
@@ -53,7 +53,7 @@ pub fn near_spectra_part(scene: &Scene, part: Part) -> Vec<Vec<Complex64>> {
     spectra
 }
 
-fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Vec<Complex64>> {
+fn inside_pipe(scene: &Scene, pipe: &PipeInside) -> Vec<Vec<Complex64>> {
     let n = spectrum_size(scene.length);
     let fs = scene.sample_rate;
     let c = scene.speed_of_sound;
@@ -64,6 +64,8 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Vec<Complex64>> {
     let offset = sub(offset, scale(axis, dot(offset, axis)));
     let radius_fraction = (crate::geom::norm(offset) / pipe.radius).min(1.0);
     let bend_ratio = pipe.bend_ratio();
+    let from_a_profile = pipe.wall.profile(pipe.radius, length);
+    let from_b_profile: Vec<(f64, f64)> = from_a_profile.iter().rev().copied().collect();
     let sideways = |travel: V3, at: f64| {
         let axis = pipe.tangent(at);
         let offset = pipe.carried(offset, along, at);
@@ -96,10 +98,11 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Vec<Complex64>> {
         let omega = angular_frequency(k, n, fs);
         let ka = 2.0 * PI * f / c * pipe.radius;
         let faster = bend_speed_ratio(2.0 * PI * f / c, pipe.radius, bend_ratio);
-        let (p_a, u_a) = transfer(f, c, pipe.radius, length, along, faster);
-        let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along, faster);
-        let (cross_p_a, cross_u_a) = modes_a.at(f, c, pipe.radius, length, along, sin_a);
-        let (cross_p_b, cross_u_b) = modes_b.at(f, c, pipe.radius, length, length - along, sin_b);
+        let medium = pipe.wall.medium(f, c, pipe.radius);
+        let (p_a, u_a) = transfer(&medium, &from_a_profile, along, faster);
+        let (p_b, u_b) = transfer(&medium, &from_b_profile, length - along, faster);
+        let (cross_p_a, cross_u_a) = modes_a.at(f, c, pipe.radius, length, along, sin_a, &medium);
+        let (cross_p_b, cross_u_b) = modes_b.at(f, c, pipe.radius, length, length - along, sin_b, &medium);
         let plane_a = received(ka, inward_a) * plane_share(ka, sin_a);
         let plane_b = received(ka, -inward_b) * plane_share(ka, sin_b);
         let (p_a, u_a) = (p_a * plane_a + cross_p_a, u_a * plane_a + cross_u_a);
