@@ -1,7 +1,7 @@
 use crate::geom::{dot, scale, sub, V3};
 use crate::images::specular_paths;
 use crate::kirchhoff::{edge_depth, plain_depth, relief_floor, scatter_into, traversals, Histograms, Part, OVERSAMPLING, RIGID_FAR, RIGID_NEAR, SOFT_FAR, SOFT_NEAR};
-use crate::pipe::{plane_share, received, transfer, CrossModes, PipeInside};
+use crate::pipe::{bend_speed_ratio, plane_share, received, transfer, CrossModes, PipeInside};
 use crate::scene::Scene;
 use crate::spectrum::{angular_frequency, minimum_phase, Fft};
 use rustfft::num_complex::Complex64;
@@ -95,8 +95,9 @@ fn inside_pipe(scene: &Scene, pipe: PipeInside) -> Vec<Vec<Complex64>> {
         let f = k as f64 * fs / n as f64;
         let omega = angular_frequency(k, n, fs);
         let ka = 2.0 * PI * f / c * pipe.radius;
-        let (p_a, u_a) = transfer(f, c, pipe.radius, length, along, bend_ratio);
-        let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along, bend_ratio);
+        let faster = bend_speed_ratio(2.0 * PI * f / c, pipe.radius, bend_ratio);
+        let (p_a, u_a) = transfer(f, c, pipe.radius, length, along, faster);
+        let (p_b, u_b) = transfer(f, c, pipe.radius, length, length - along, faster);
         let (cross_p_a, cross_u_a) = modes_a.at(f, c, pipe.radius, length, along, sin_a);
         let (cross_p_b, cross_u_b) = modes_b.at(f, c, pipe.radius, length, length - along, sin_b);
         let plane_a = received(ka, inward_a) * plane_share(ka, sin_a);

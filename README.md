@@ -111,9 +111,11 @@ responses with delays interpolated between directions, the sphere as Brown
 and Duda's model. A bent surface's first order is class B (Kirchhoff on the arc or sphere); its higher
 orders take the specular points on the arc or sphere with the ray-tube gain (class B),
 limited near a focus (class C), and paths over two bent surfaces are left out.
-A bent pipe's plane mode runs a little faster in the long-wave limit (class
-B, after Keefe and Benade, which overstates their measurement), and the bend
-reflects nothing (Cummings measured near-full transmission). The pipe interior is class B, with its cross modes' coupling at the mouth
+A bent pipe's main mode runs as in Cummings' equivalent rectangular bend
+(class B): a little faster than in a straight pipe for long waves, slower
+above half the first cross-mode cutoff, its wave admittance shifting with it;
+the bend's own reflection comes only through that admittance at the mouths,
+and its cross modes run as in a straight pipe without mixing (class C). The pipe interior is class B, with its cross modes' coupling at the mouth
 and the blend between outside and inside within a radius of the mouth
 class C. Not modelled: the
 microphone capsule's own size, room modes

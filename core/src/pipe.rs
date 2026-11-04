@@ -139,28 +139,70 @@ pub struct PipeInside {
     pub bend: Option<PipeBend>,
 }
 
-const SLICES: usize = 200;
+const EQUIVALENT_WIDTH_PER_DIAMETER: f64 = PI / 4.0;
+const BEND_NODES: usize = 64;
+const BISECTIONS: usize = 60;
+const LONG_WAVE: f64 = 1e-3;
 
 fn turned(v: V3, axis: V3, angle: f64) -> V3 {
     let (sin, cos) = angle.sin_cos();
     add(add(scale(v, cos), scale(cross(axis, v), sin)), scale(axis, dot(axis, v) * (1.0 - cos)))
 }
 
-// Class B: Keefe and Benade 1983 slice model, long waves; overstates their 4.7 % measurement.
-pub fn bend_speed_ratio(b: f64) -> f64 {
-    if b <= 0.0 {
+// Class B: Cummings 1974 via Rostafinski 1991 (§7, §14): a rectangular bend π/4 of the diameter wide.
+pub fn bend_speed_ratio(k: f64, radius: f64, bend_ratio: f64) -> f64 {
+    if bend_ratio <= 0.0 {
         return 1.0;
     }
-    let b = b.min(0.999);
-    let h = 2.0 / SLICES as f64;
-    let sum: f64 = (0..SLICES)
+    let centreline = radius / bend_ratio;
+    let half_width = EQUIVALENT_WIDTH_PER_DIAMETER * radius;
+    rectangular_bend_speed_ratio(k, centreline - half_width, centreline + half_width)
+}
+
+pub fn rectangular_bend_speed_ratio(k: f64, inner: f64, outer: f64) -> f64 {
+    let k = k.max(LONG_WAVE / (outer - inner));
+    k * 0.5 * (inner + outer) / angular_wavenumber(k, inner, outer)
+}
+
+fn angular_wavenumber(k: f64, inner: f64, outer: f64) -> f64 {
+    let h = (outer - inner) / BEND_NODES as f64;
+    let r = |i: f64| inner + i * h;
+    let weight = |i: usize| if i == 0 || i == BEND_NODES { 0.5 * h } else { h };
+    let mass: Vec<f64> = (0..=BEND_NODES).map(|i| weight(i) / r(i as f64)).collect();
+    let diagonal: Vec<f64> = (0..=BEND_NODES)
         .map(|i| {
-            let u = -1.0 + (i as f64 + 0.5) * h;
-            let w = b * (1.0 - u * u).sqrt();
-            ((1.0 + w) / (1.0 - w)).ln()
+            let below = if i > 0 { r(i as f64 - 0.5) / h } else { 0.0 };
+            let above = if i < BEND_NODES { r(i as f64 + 0.5) / h } else { 0.0 };
+            (k * k * r(i as f64) * weight(i) - below - above) / mass[i]
         })
-        .sum();
-    (sum * h / (PI * b)).sqrt()
+        .collect();
+    let off: Vec<f64> = (0..BEND_NODES).map(|i| r(i as f64 + 0.5) / h / (mass[i] * mass[i + 1]).sqrt()).collect();
+    let below_count = |x: f64| {
+        let mut count = 0;
+        let mut d = 1.0;
+        for i in 0..=BEND_NODES {
+            d = diagonal[i] - x - if i > 0 { off[i - 1] * off[i - 1] / d } else { 0.0 };
+            if d == 0.0 {
+                d = 1e-300;
+            }
+            if d < 0.0 {
+                count += 1;
+            }
+        }
+        count
+    };
+    let reach = |i: usize| (if i > 0 { off[i - 1].abs() } else { 0.0 }) + (if i < BEND_NODES { off[i].abs() } else { 0.0 });
+    let mut lo = (0..=BEND_NODES).map(|i| diagonal[i] - reach(i)).fold(f64::INFINITY, f64::min);
+    let mut hi = (0..=BEND_NODES).map(|i| diagonal[i] + reach(i)).fold(f64::NEG_INFINITY, f64::max);
+    for _ in 0..BISECTIONS {
+        let middle = 0.5 * (lo + hi);
+        if below_count(middle) > BEND_NODES {
+            hi = middle;
+        } else {
+            lo = middle;
+        }
+    }
+    (0.5 * (lo + hi)).max(1e-30).sqrt()
 }
 
 impl PipeInside {
@@ -236,13 +278,6 @@ impl PipeInside {
     }
 }
 
-fn speed_ratio(ka: f64, bend_ratio: f64) -> f64 {
-    if bend_ratio <= 0.0 {
-        return 1.0;
-    }
-    1.0 + (bend_speed_ratio(bend_ratio) - 1.0) * (1.0 - ka).max(0.0)
-}
-
 fn radiation(ka: f64) -> Complex64 {
     let resistance = (ka * ka / 4.0) / (1.0 + ka * ka / 4.0);
     let reactance = END_CORRECTION_PER_RADIUS * ka / (1.0 + (END_CORRECTION_PER_RADIUS * ka).powi(2));
@@ -256,12 +291,10 @@ pub fn received(ka: f64, cos_inward: f64) -> f64 {
 }
 
 // Normalised impedances, ρc/S = 1.
-pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, bend_ratio: f64) -> (Complex64, Complex64) {
+pub fn transfer(frequency_hz: f64, speed_of_sound: f64, radius: f64, length: f64, along: f64, faster: f64) -> (Complex64, Complex64) {
     if frequency_hz <= 0.0 {
         return (Complex64::new(1.0 - along / length, 0.0), Complex64::new(0.0, 0.0));
     }
-    let k = 2.0 * PI * frequency_hz / speed_of_sound;
-    let faster = speed_ratio(k * radius, bend_ratio);
     let (pressure, velocity) = guided(frequency_hz, speed_of_sound, radius, length, along, 1.0 / faster, faster);
     (pressure, velocity * faster)
 }

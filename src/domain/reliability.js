@@ -15,7 +15,7 @@ export function reliabilityOf(space) {
   if (objects.some(o => o.bend?.angleDegrees)) components.bend = 'B';
   if (objects.filter(o => o.bend?.angleDegrees).length > 0 && space.render.order > 1) components.bendFocusLimit = 'C';
   if (objects.some(o => o.kind === 'pipe')) components.pipeInterior = 'B';
-  if (objects.some(o => o.kind === 'pipe' && o.bend?.angleDegrees)) components.pipeBendTransition = 'C';
+  if (objects.some(o => o.kind === 'pipe' && o.bend?.angleDegrees)) components.pipeBendModes = 'C';
   if (space.objects.some(o => o.strength !== 1)) components.strength = 'C';
   if (space.microphones.some(m => m.pattern !== 'omni') || space.rigs.length) components.pickup = 'A';
   if (space.rigs.some(r => r.kind === 'binaural')) components.head = 'B';

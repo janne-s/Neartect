@@ -1000,12 +1000,30 @@ fn a_second_order_path_over_a_floor_keeps_the_bend_factor() {
 }
 
 #[test]
-fn a_bend_speeds_the_long_wave_by_the_slice_model() {
+fn a_rectangular_bend_speeds_long_waves_by_the_averaged_radius() {
+    use neartect_core::pipe::rectangular_bend_speed_ratio;
+    for a in [1.25, 2.0, 5.0] {
+        let exact = 0.5 * (1.0 + a) / ((a * a - 1.0) / (2.0 * f64::ln(a))).sqrt();
+        let ratio = rectangular_bend_speed_ratio(1e-4, 1.0, a);
+        assert!((ratio - exact).abs() < 3e-4, "a {a}: {ratio} vs {exact}");
+    }
+}
+
+#[test]
+fn a_rectangular_bend_slows_its_wave_above_half_the_first_cutoff_as_cummings_found() {
+    use neartect_core::pipe::rectangular_bend_speed_ratio;
+    for a in [1.587, 2.0] {
+        let at = |parameter: f64| rectangular_bend_speed_ratio(parameter * std::f64::consts::PI / (a - 1.0), 1.0, a);
+        assert!(at(0.3) > 1.0 && at(0.7) < 1.0, "a {a}: {} {}", at(0.3), at(0.7));
+        assert!((at(0.5) - 1.0).abs() < 0.01, "a {a}: {}", at(0.5));
+    }
+}
+
+#[test]
+fn a_tuning_slide_speeds_its_long_wave_less_than_the_slice_model_did() {
     use neartect_core::pipe::bend_speed_ratio;
-    let small = bend_speed_ratio(0.1);
-    assert!((small - (1.0 + 0.01 / 8.0)).abs() < 1e-4, "small bend {small}");
-    let slide = bend_speed_ratio(9.25 / 12.7);
-    assert!(slide > 1.085 && slide < 1.095, "tuning slide {slide}");
+    let slide = bend_speed_ratio(1e-6, 1.0, 9.25 / 12.7);
+    assert!(slide > 1.047 && slide < 1.08, "tuning slide {slide}");
 }
 
 fn bent_pipe(turn: f64, length: f64, radius: f64) -> neartect_core::pipe::PipeInside {
@@ -1071,7 +1089,7 @@ fn a_sharp_bend_raises_the_resonance_by_at_most_its_long_wave_speed() {
     s.pipe = Some(neartect_core::pipe::PipeInside { mouth_a: [0.0, 0.0, 0.0], mouth_b: [0.0, 1.0, 0.0], radius, bend: None });
     let straight = resonance(&near_spectrum(&s));
     let bent = resonance(&bent_inside(turn, radius));
-    let most = neartect_core::pipe::bend_speed_ratio(radius / (1.0 / turn));
+    let most = neartect_core::pipe::bend_speed_ratio(1e-6, radius, radius / (1.0 / turn));
     let rise = bent / straight;
     assert!(rise > 1.002 && rise < most + 0.005, "rise {rise}, long-wave speed {most}");
 }
