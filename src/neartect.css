@@ -148,6 +148,15 @@
 .panel section + section {
   margin-top: 22px;
 }
+@media (min-width: 701px) {
+  .panel section + section::before {
+    content: '';
+    display: block;
+    height: 4px;
+    margin: 0 -12px 16px;
+    background: var(--bg);
+  }
+}
 .results figcaption {
   left: auto;
   right: 10px;
@@ -163,4 +172,10 @@
 
 .row-button {
   justify-self: start;
+}
+
+@media (max-width: 700px) {
+  .bar .github-link {
+    margin-left: auto;
+  }
 }

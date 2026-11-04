@@ -100,6 +100,7 @@ export function createPreview() {
     get playing() { return Boolean(source); },
     get time() { return context ? context.currentTime : 0; },
     async play(samples, sampleRate) {
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
       const audio = ensure();
       await audio.resume();
       this.stop();
