@@ -1,7 +1,6 @@
 const CROSSFADE_SECONDS = 0.04;
 const OUTPUT_GAIN = 0.35;
 const BRANCHES = 4;
-const RELEASE_MARGIN_SECONDS = 0.05;
 
 export function stereo(channels, pans) {
   const length = channels[0].length;
@@ -24,13 +23,14 @@ export function createPreview() {
   let branches = [];
   let active = 0;
   let dry = null;
+  let output = null;
   let bypass = false;
   let pending = null;
 
   function ensure() {
     if (context) return context;
     context = new AudioContext();
-    const output = context.createGain();
+    output = context.createGain();
     output.gain.value = OUTPUT_GAIN;
     output.connect(context.destination);
     branches = Array.from({ length: BRANCHES }, () => {
@@ -39,7 +39,7 @@ export function createPreview() {
       const gain = context.createGain();
       gain.gain.value = 0;
       convolver.connect(gain).connect(output);
-      return { convolver, gain, silentFrom: Infinity };
+      return { convolver, gain, silentFrom: Infinity, clock: null, releaseTime: Infinity };
     });
     dry = context.createGain();
     dry.gain.value = 0;
@@ -59,6 +59,11 @@ export function createPreview() {
     branches.forEach((branch, index) => {
       const heard = !bypass && index === active && branch.convolver.buffer;
       const silent = branch.gain.gain.value === 0;
+      if (heard && branch.clock) {
+        const clock = branch.clock;
+        branch.clock = null;
+        clock.stop();
+      }
       ramp(branch.gain.gain, heard ? 1 : 0, time, fade);
       branch.silentFrom = heard ? Infinity : silent ? Math.min(branch.silentFrom, time) : time + fade;
     });
@@ -67,13 +72,30 @@ export function createPreview() {
   }
 
   function release() {
-    let wait = Infinity;
     branches.forEach((branch, index) => {
       if (index === active || !branch.convolver.buffer) return;
       if (context.currentTime >= branch.silentFrom) branch.convolver.buffer = null;
-      else wait = Math.min(wait, branch.silentFrom - context.currentTime);
+      else releaseAt(branch, branch.silentFrom);
     });
-    if (wait < Infinity) setTimeout(release, (wait + RELEASE_MARGIN_SECONDS) * 1000);
+  }
+
+  function releaseAt(branch, time) {
+    if (branch.clock && branch.releaseTime === time) return;
+    const clock = context.createConstantSource();
+    clock.offset.value = 0;
+    clock.connect(output);
+    clock.onended = () => {
+      clock.disconnect();
+      if (branch.clock !== clock) return;
+      branch.clock = null;
+      if (branches.indexOf(branch) !== active) branch.convolver.buffer = null;
+    };
+    const previous = branch.clock;
+    branch.clock = clock;
+    branch.releaseTime = time;
+    previous?.stop();
+    clock.start();
+    clock.stop(time);
   }
 
   function setFilter(filter, fade = CROSSFADE_SECONDS) {

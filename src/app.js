@@ -1066,11 +1066,11 @@ $('bypass').addEventListener('click', () => {
   preview.setBypass(on);
 });
 
+let downloadUrl = null;
 function download(name, blob) {
-  const url = URL.createObjectURL(blob);
-  const link = Object.assign(document.createElement('a'), { href: url, download: name });
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+  downloadUrl = URL.createObjectURL(blob);
+  Object.assign(document.createElement('a'), { href: downloadUrl, download: name }).click();
 }
 
 $('save').addEventListener('click', () => download('neartect-space.json', new Blob([`${JSON.stringify(withReliability(state.space), null, 2)}\n`], { type: 'application/json' })));
