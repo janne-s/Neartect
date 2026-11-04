@@ -162,3 +162,14 @@
 .row-button {
   justify-self: start;
 }
+
+.plugin-grip {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--muted) 50%, var(--muted) 58%, transparent 58%, transparent 72%, var(--muted) 72%, var(--muted) 80%, transparent 80%);
+  z-index: 100;
+}

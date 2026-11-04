@@ -19,6 +19,7 @@ import { computeFilter, hearing, jobBytes, listeners } from './domain/near-filte
 import { createRenderMarker, renderLoadText } from './shared/ui/render-marker.js';
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
+import { createPluginHost } from './plugin-host.js';
 
 const STORAGE_KEY = 'neartect.space';
 const PREFERENCES_KEY = 'neartect.preferences';
@@ -69,6 +70,23 @@ const view = createNearView($('near-view'), {
   showGrid: () => preferences.showGrid,
   scrollPans: () => preferences.scrollPans,
   ownAxes: () => preferences.ownAxes
+});
+
+const pluginHost = createPluginHost({
+  onSpace: json => {
+    try {
+      state.space = readSpace(JSON.parse(json));
+      state.selection = null;
+      view.centre(spaceCentre(state.space));
+      changed({ panel: true, compute: false });
+    } catch (error) {
+      setStatus(error instanceof SpaceError ? error.message : 'This file is not a Neartect space.', true);
+    }
+  },
+  onRate: hz => {
+    state.audioRate = hz;
+    refreshFilter();
+  }
 });
 
 const WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
@@ -150,6 +168,7 @@ async function refreshFilter() {
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
     const gliding = preview.playing && moving(space);
     preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, result.milliseconds / 1000) : undefined);
+    pluginHost?.filter(result);
     drawPlots();
     if (gliding) {
       dirty = true;
@@ -218,6 +237,7 @@ function undo() {
   if (state.selection?.type === 'rig' && !state.space.rigs.some(r => r.id === state.selection.id)) state.selection = null;
   $('undo').disabled = !history.length;
   writeStored(STORAGE_KEY, state.space);
+  pluginHost?.space(state.space);
   view.update(state.space, state.selection);
   refreshPanel();
   refreshFilter();
@@ -228,6 +248,7 @@ function changed({ save = true, panel = false, compute = true } = {}) {
   if (save) {
     writeStored(STORAGE_KEY, state.space);
     remember();
+    pluginHost?.space(state.space);
   }
   view.update(state.space, state.selection);
   if (panel) refreshPanel(); else syncLive();
@@ -1195,6 +1216,7 @@ $('results-toggle').addEventListener('click', () => {
 
 view.centre(spaceCentre(state.space));
 changed({ save: false, panel: true, compute: !unfinishedFilter });
+pluginHost?.ready();
 if (unfinishedFilter) {
   const stopped = unfinishedFilter.hidden === true
     ? 'The last filter stopped while the page was in the background'
