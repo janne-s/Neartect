@@ -588,6 +588,21 @@ function pointControls(macros, current, gapFallback) {
   }
 }
 
+function sourceDistanceRow(macros, current) {
+  if (state.space.source.kind !== 'point') return;
+  const value = element('span', 'macro-value');
+  const sync = () => {
+    const point = current();
+    if (!point) return;
+    const from = pointPosition(state.space, point);
+    const to = pointPosition(state.space, state.space.source);
+    value.textContent = formatGap(Math.hypot(...to.map((v, i) => v - from[i])));
+  };
+  macros.append(element('label', null, 'To source'), element('span', null), value);
+  live.push(sync);
+  sync();
+}
+
 function microphoneCard(container, microphone, index) {
   const selected = state.selection?.type === 'microphone' && state.selection.id === microphone.id;
   const card = element('div', 'card');
@@ -604,6 +619,7 @@ function microphoneCard(container, microphone, index) {
     const place = cardGroup(card, 'Place').macros;
     layoutSelect(place, 'mono', kind => changeLayout(current(), kind));
     pointControls(place, current, 0.3);
+    sourceDistanceRow(place, current);
     const { group, macros } = cardGroup(card, 'Pickup');
     tileRow(group, macros, {
       label: 'Pickup pattern', chosen: microphone.pattern,
@@ -669,6 +685,7 @@ function rigCard(container, rig, index) {
     const place = cardGroup(card, 'Place').macros;
     layoutSelect(place, rig.kind, kind => changeLayout(current(), kind));
     pointControls(place, current, 0.5);
+    sourceDistanceRow(place, current);
     const { macros } = cardGroup(card, rig.kind === 'binaural' ? 'Head' : 'Arrangement');
     macro(macros, { label: 'Facing', title: 'Facing around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
     macro(macros, { label: 'Tilt', title: 'Tilt up or down', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });

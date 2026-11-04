@@ -586,9 +586,17 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       context.strokeStyle = sourceColor;
       context.globalAlpha = 0.5;
       context.setLineDash([2, 4]);
-      [...space.microphones, ...(space.rigs ?? [])].forEach(m => line(context, source, m.position));
+      const listeners = [...space.microphones.map(m => ['microphone', m]), ...(space.rigs ?? []).map(r => ['rig', r])];
+      const labelled = [];
+      listeners.forEach(([type, m]) => {
+        const ends = line(context, source, m.position);
+        if (ends && (selection?.type === 'source' || (selection?.type === type && selection.id === m.id))) labelled.push([ends, m]);
+      });
       context.setLineDash([]);
       context.globalAlpha = 1;
+      context.fillStyle = colors.muted;
+      context.font = '11px system-ui, sans-serif';
+      labelled.forEach(([[a, b], m]) => context.fillText(formatGap(Math.hypot(...sub(m.position, source))), (a[0] + b[0]) / 2 + 6, (a[1] + b[1]) / 2 - 6));
     }
 
     const selectedPoint = grouped() ? null : points().find(isSelected);
