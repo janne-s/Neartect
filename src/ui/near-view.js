@@ -47,6 +47,7 @@ const MOST_RELIEF_CELLS = 2400;
 const MOST_RELIEF_CELLS_ALONG = 240;
 const MOST_PROFILE_POINTS = 400;
 const BEND_STRIPS = 24;
+const BEND_RINGS = 4;
 const BEND_PIECES = 16;
 
 const withAlpha = (color, alpha) => {
@@ -231,6 +232,16 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
 
   function faceParts(face) {
     if (!face.bend) return [{ world: face.vertices, edges: null, first: true }];
+    if (face.bend.sphere) {
+      const centre = face.bend.touching;
+      const rim = face.vertices;
+      return Array.from({ length: BEND_RINGS }, (_, i) => rim.map((v, j) => {
+        const w = rim[(j + 1) % rim.length];
+        const [t0, t1] = [i / BEND_RINGS, (i + 1) / BEND_RINGS];
+        const world = [lerp(centre, v, t0), lerp(centre, v, t1), lerp(centre, w, t1), lerp(centre, w, t0)].map(p => placed(face, p));
+        return { world, edges: [false, i === BEND_RINGS - 1, false, false], first: i === 0 && j === 0 };
+      })).flat();
+    }
     const [a, b, c, d] = face.vertices;
     const arcAcross = Math.abs(dot(normalize(sub(b, a)), face.bend.arc)) > 0.5;
     const [p0, p1, q0, q1] = arcAcross ? [a, b, d, c] : [a, d, b, c];

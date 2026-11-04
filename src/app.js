@@ -6,7 +6,7 @@ import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } fro
 import { aimAt, centredOffset, firstListener, fittedOpening, followResize, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
 import { SITUATIONS, situationSpace } from './domain/situations.js';
-import { BEND_KINDS } from './domain/bend.js';
+import { BEND_KINDS, SPHERE_KINDS } from './domain/bend.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
 import { SMALLEST_GAP_METRES, spaceCentre } from './domain/placement.js';
 import { DISPLAY, PARAMETERS } from './domain/parameters.js';
@@ -428,7 +428,7 @@ function objectCard(container, object) {
     macro(shape, { label: 'Tilt', title: 'Tilt (90° faces up)', range: RANGES.tiltDegrees, format: degrees, fallback: FLAT_KINDS.includes(object.kind) ? current().tiltDegrees : 0, read: () => current().tiltDegrees, write: v => { current().tiltDegrees = v; } });
     if (BEND_KINDS.includes(object.kind)) {
       macro(shape, { label: 'Bend', title: 'Bend (positive is concave at the front)', range: RANGES.bendDegrees, format: degrees, fallback: 0, read: () => current().bend.angleDegrees, write: v => { current().bend.angleDegrees = v; } });
-      selectRow(shape, {
+      if (!SPHERE_KINDS.includes(object.kind)) selectRow(shape, {
         label: 'Bend axis', title: 'Axis the surface bends about', value: object.bend.axis,
         options: [['up', 'Up'], ['across', 'Across']],
         onChange: v => { current().bend.axis = v; changed({ panel: true }); }
@@ -829,7 +829,7 @@ function openDetails(id) {
   const shape = group('Size');
   if (BEND_KINDS.includes(object.kind)) {
     fields.numberField(shape, { key: 'bendDegrees', value: object.bend.angleDegrees, onCommit: v => update(o => { o.bend.angleDegrees = v; }) });
-    fields.selectField(shape, { label: 'Bend axis', value: object.bend.axis, options: [['up', 'Up'], ['across', 'Across']], onCommit: v => update(o => { o.bend.axis = v; }, true) });
+    if (!SPHERE_KINDS.includes(object.kind)) fields.selectField(shape, { label: 'Bend axis', value: object.bend.axis, options: [['up', 'Up'], ['across', 'Across']], onCommit: v => update(o => { o.bend.axis = v; }, true) });
   }
   const sizeNames = { W: 'Width', D: 'Depth', H: 'Height', L: 'Length', '⌀': 'Diameter', '⌀↕': 'Diameter up' };
   SIZE_LABELS[object.kind].forEach((label, axis) => {

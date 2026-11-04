@@ -1,6 +1,6 @@
 // Local frame: x across, y front, z up; tilted about x, then turned about the vertical.
 
-import { bendOf, bentNormal, bentPoint, bentTangent, flatPoint } from './bend.js';
+import { bendOf, bentNormal, bentPoint, bentTangent, bentTurn, flatPoint } from './bend.js';
 
 export const OBJECT_KINDS = Object.freeze(['plane', 'disc', 'grating', 'wall', 'box', 'corner', 'recess', 'pipe']);
 export const DISC_SIDES = 48;
@@ -151,6 +151,7 @@ export function surfaceFrame(object, local) {
   const bend = objectBend(object);
   if (!bend) return frame;
   const flat = toWorld(object, local);
+  if (bend.sphere) return { across: bentTurn(bend, flat, frame.across), front: bentNormal(bend, flat), up: bentTurn(bend, flat, frame.up) };
   const tangent = bentTangent(bend, flat);
   const normal = bentNormal(bend, flat);
   if (object.kind === 'pipe') return object.bend.axis === 'up' ? { across: normal, front: tangent, up: frame.up } : { across: frame.across, front: tangent, up: normal };

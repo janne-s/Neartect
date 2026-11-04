@@ -1,6 +1,7 @@
 // Plane coordinates along `along` are arc length; positive curvature bends towards the polygon’s normal.
 
-use crate::geom::{add, dot, norm, scale, sub, Polygon, V3};
+use crate::geom::{add, cross, dot, norm, scale, sub, Polygon, V3};
+use std::f64::consts::PI;
 
 const FLAT_CURVATURE: f64 = 1e-9;
 const SPECULAR_STEPS: usize = 96;
@@ -13,6 +14,8 @@ pub struct Bend {
     pub curvature: f64,
     pub along: [f64; 2],
     pub start: f64,
+    pub sphere: bool,
+    pub touch: [f64; 2],
 }
 
 pub struct Specular {
@@ -24,10 +27,16 @@ pub struct Specular {
 
 impl Bend {
     pub fn flat() -> Bend {
-        Bend { curvature: 0.0, along: [1.0, 0.0], start: 0.0 }
+        Bend { curvature: 0.0, along: [1.0, 0.0], start: 0.0, sphere: false, touch: [0.0, 0.0] }
     }
 
-    pub fn new(polygon: &Polygon, curvature: f64, direction: V3, touching: V3) -> Bend {
+    pub fn new(polygon: &Polygon, curvature: f64, direction: V3, touching: V3, sphere: bool) -> Bend {
+        if sphere {
+            if curvature.is_nan() || curvature.abs() <= FLAT_CURVATURE {
+                return Bend::flat();
+            }
+            return Bend { curvature, along: [1.0, 0.0], start: 0.0, sphere, touch: polygon.to_plane(touching) };
+        }
         let along = [dot(direction, polygon.u), dot(direction, polygon.v)];
         let length = (along[0] * along[0] + along[1] * along[1]).sqrt();
         if curvature.is_nan() || curvature.abs() <= FLAT_CURVATURE || length < 1e-9 {
@@ -35,7 +44,7 @@ impl Bend {
         }
         let along = [along[0] / length, along[1] / length];
         let q = polygon.to_plane(touching);
-        Bend { curvature, along, start: q[0] * along[0] + q[1] * along[1] }
+        Bend { curvature, along, start: q[0] * along[0] + q[1] * along[1], sphere, touch: q }
     }
 
     pub fn is_bent(&self) -> bool {
@@ -60,7 +69,42 @@ impl Bend {
     }
 
     fn touching(&self, polygon: &Polygon) -> V3 {
+        if self.sphere {
+            return polygon.to_space(self.touch);
+        }
         polygon.to_space([self.along[0] * self.start, self.along[1] * self.start])
+    }
+
+    fn flatten(&self, polygon: &Polygon, w: V3) -> V3 {
+        if self.sphere {
+            return w;
+        }
+        let axis = self.axis_space(polygon);
+        sub(w, scale(axis, dot(w, axis)))
+    }
+
+    fn outward(&self, polygon: &Polygon, q: [f64; 2]) -> (V3, f64) {
+        if !self.sphere {
+            return (self.along_space(polygon), self.arc(q));
+        }
+        let d = [q[0] - self.touch[0], q[1] - self.touch[1]];
+        let rho = d[0].hypot(d[1]);
+        if rho < 1e-12 {
+            return (polygon.u, 0.0);
+        }
+        (add(scale(polygon.u, d[0] / rho), scale(polygon.v, d[1] / rho)), rho)
+    }
+
+    pub fn area_scale(&self, q: [f64; 2]) -> f64 {
+        if !self.sphere || !self.is_bent() {
+            return 1.0;
+        }
+        let x = self.curvature.abs() * (q[0] - self.touch[0]).hypot(q[1] - self.touch[1]);
+        if x < 1e-9 {
+            1.0
+        } else {
+            x.sin() / x
+        }
     }
 
     pub fn point(&self, polygon: &Polygon, q: [f64; 2]) -> V3 {
@@ -68,10 +112,9 @@ impl Bend {
         if !self.is_bent() {
             return flat;
         }
-        let s = self.arc(q);
+        let (e, s) = self.outward(polygon, q);
         let k = self.curvature;
         let (sin, cos) = (k * s).sin_cos();
-        let e = self.along_space(polygon);
         add(flat, add(scale(e, sin / k - s), scale(polygon.normal, (1.0 - cos) / k)))
     }
 
@@ -79,8 +122,8 @@ impl Bend {
         if !self.is_bent() {
             return w;
         }
-        let (sin, cos) = (self.curvature * self.arc(q)).sin_cos();
-        let e = self.along_space(polygon);
+        let (e, s) = self.outward(polygon, q);
+        let (sin, cos) = (self.curvature * s).sin_cos();
         let n = polygon.normal;
         let (we, wn) = (dot(w, e), dot(w, n));
         add(w, add(scale(add(scale(e, cos - 1.0), scale(n, sin)), we), scale(add(scale(n, cos - 1.0), scale(e, -sin)), wn)))
@@ -91,14 +134,23 @@ impl Bend {
     }
 
     fn radial(&self, polygon: &Polygon, p: V3) -> V3 {
-        let w = sub(p, self.centre(polygon));
-        let axis = self.axis_space(polygon);
-        sub(w, scale(axis, dot(w, axis)))
+        self.flatten(polygon, sub(p, self.centre(polygon)))
     }
 
     fn plane_of(&self, polygon: &Polygon, p: V3, radial: V3) -> [f64; 2] {
         let sign = self.curvature.signum();
         let r0 = scale(polygon.normal, -sign);
+        if self.sphere {
+            let height = dot(radial, r0);
+            let side = sub(radial, scale(r0, height));
+            let (du, dv) = (dot(side, polygon.u), dot(side, polygon.v));
+            let width = du.hypot(dv);
+            if width < 1e-15 {
+                return self.touch;
+            }
+            let rho = width.atan2(height) / self.curvature.abs();
+            return [self.touch[0] + rho * du / width, self.touch[1] + rho * dv / width];
+        }
         let r1 = scale(self.along_space(polygon), sign);
         let s = dot(radial, r1).atan2(dot(radial, r0)) / self.curvature + self.start;
         let a = self.across();
@@ -116,9 +168,8 @@ impl Bend {
     }
 
     pub fn crossings(&self, polygon: &Polygon, from: V3, direction: V3, max_length: f64) -> Vec<(f64, [f64; 2])> {
-        let axis = self.axis_space(polygon);
         let f = self.radial(polygon, from);
-        let d = sub(direction, scale(axis, dot(direction, axis)));
+        let d = self.flatten(polygon, direction);
         let a = dot(d, d);
         if a < 1e-18 {
             return Vec::new();
@@ -142,6 +193,9 @@ impl Bend {
     }
 
     pub fn specular(&self, polygon: &Polygon, range: (f64, f64), to: V3, source: Option<V3>, towards_source: V3) -> Vec<Specular> {
+        if self.sphere {
+            return self.sphere_specular(polygon, to, source, towards_source);
+        }
         let k = self.curvature;
         let e = self.along_space(polygon);
         let n = polygon.normal;
@@ -226,6 +280,86 @@ impl Bend {
             .collect()
     }
 
+    fn sphere_specular(&self, polygon: &Polygon, to: V3, source: Option<V3>, towards_source: V3) -> Vec<Specular> {
+        let radius = 1.0 / self.curvature.abs();
+        let centre = self.centre(polygon);
+        let to_centre = sub(to, centre);
+        let other = source.map_or(towards_source, |s| sub(s, centre));
+        let unit = |v: V3| {
+            let l = norm(v);
+            (l > 1e-12).then(|| scale(v, 1.0 / l))
+        };
+        let Some(normal_of_plane) = unit(cross(to_centre, other)).or_else(|| unit(cross(to_centre, polygon.normal))).or_else(|| unit(cross(polygon.normal, polygon.u))) else {
+            return Vec::new();
+        };
+        let towards_touching = scale(polygon.normal, -self.curvature.signum());
+        let Some(a) = unit(sub(towards_touching, scale(normal_of_plane, dot(towards_touching, normal_of_plane)))) else {
+            return Vec::new();
+        };
+        let b = cross(normal_of_plane, a);
+        let reach = polygon.points.iter().map(|q| (q[0] - self.touch[0]).hypot(q[1] - self.touch[1])).fold(0.0, f64::max);
+        let widest = (reach / radius * 1.05 + 0.01).min(PI);
+        let at = |phi: f64| {
+            let (sin, cos) = phi.sin_cos();
+            let out = add(scale(a, cos), scale(b, sin));
+            (add(centre, scale(out, radius)), out, add(scale(a, -sin), scale(b, cos)))
+        };
+        let legs = |p: V3| {
+            let (to_b, rb) = (sub(to, p), norm(sub(to, p)));
+            let to_b = scale(to_b, 1.0 / rb.max(1e-30));
+            let (to_a, ra) = match source {
+                Some(s) => {
+                    let ra = norm(sub(s, p));
+                    (scale(sub(s, p), 1.0 / ra.max(1e-30)), ra)
+                }
+                None => (towards_source, f64::INFINITY),
+            };
+            (to_a, ra, to_b, rb)
+        };
+        let condition = |phi: f64| {
+            let (p, out, tangent) = at(phi);
+            let (to_a, _, to_b, _) = legs(p);
+            (dot(tangent, add(to_a, to_b)), dot(to_a, out) * dot(to_b, out) > 0.0)
+        };
+        let step = 2.0 * widest / SPECULAR_STEPS as f64;
+        let mut found: Vec<f64> = Vec::new();
+        let mut previous = condition(-widest);
+        for i in 1..=SPECULAR_STEPS {
+            let phi = -widest + step * i as f64;
+            let here = condition(phi);
+            if previous.1 && here.1 && (previous.0 < 0.0) != (here.0 < 0.0) {
+                let (mut x0, mut x1) = (phi - step, phi);
+                let start_below = previous.0 < 0.0;
+                for _ in 0..SPECULAR_ITERATIONS {
+                    let middle = 0.5 * (x0 + x1);
+                    if (condition(middle).0 < 0.0) == start_below {
+                        x0 = middle;
+                    } else {
+                        x1 = middle;
+                    }
+                }
+                found.push(0.5 * (x0 + x1));
+            }
+            previous = here;
+        }
+        found.dedup_by(|x, y| (*x - *y).abs() < step * 0.5);
+        found
+            .into_iter()
+            .map(|phi| {
+                let (point, out, _) = at(phi);
+                let (_, ra, to_b, rb) = legs(point);
+                let cosine = dot(to_b, out).abs().max(1e-6);
+                let concave = -dot(to_b, out).signum() / radius;
+                let ratio = if ra.is_finite() { rb / ra } else { 0.0 };
+                let tangential = (1.0 + ratio - 2.0 * concave * rb / cosine).abs().max(1e-12);
+                let sagittal = (1.0 + ratio - 2.0 * concave * rb * cosine).abs().max(1e-12);
+                let gain = ((1.0 + ratio) / (tangential * sagittal).sqrt()).min(MOST_FOCUS_GAIN);
+                let plane = self.plane_of(polygon, point, sub(point, centre));
+                Specular { point, normal: self.rotate(polygon, plane, polygon.normal), plane, gain }
+            })
+            .collect()
+    }
+
     pub fn outline(&self, polygon: &Polygon, pieces: usize) -> Vec<V3> {
         let n = polygon.points.len();
         let mut points = Vec::new();
@@ -247,7 +381,7 @@ impl Bend {
     pub fn follows_arc(&self, a: [f64; 2], b: [f64; 2]) -> bool {
         let d = [b[0] - a[0], b[1] - a[1]];
         let l = (d[0] * d[0] + d[1] * d[1]).sqrt();
-        l > 0.0 && ((d[0] * self.along[0] + d[1] * self.along[1]) / l).abs() > 1.0 - 1e-6
+        !self.sphere && l > 0.0 && ((d[0] * self.along[0] + d[1] * self.along[1]) / l).abs() > 1.0 - 1e-6
     }
 
     pub fn axis_normal_cosine(&self, polygon: &Polygon, normal: V3) -> f64 {
@@ -262,7 +396,7 @@ mod tests {
     fn wall(curvature: f64) -> (Polygon, Bend) {
         let polygon = Polygon::new(&[[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [-1.0, 0.0, 1.0]]).unwrap();
         let normal = polygon.normal;
-        let bend = Bend::new(&polygon, curvature, [1.0, 0.0, 0.0], [0.0, 0.0, 0.5]);
+        let bend = Bend::new(&polygon, curvature, [1.0, 0.0, 0.0], [0.0, 0.0, 0.5], false);
         assert!(normal[1].abs() > 0.99);
         (polygon, bend)
     }
@@ -289,6 +423,46 @@ mod tests {
         let length = norm(to);
         let hits = bend.crossings(&polygon, from, scale(to, 1.0 / length), 10.0);
         assert!(hits.iter().any(|&(t, h)| (t - length).abs() < 1e-9 && (h[0] - q[0]).abs() < 1e-9 && (h[1] - q[1]).abs() < 1e-9));
+    }
+
+    #[test]
+    fn a_dome_point_lies_on_the_sphere_and_locates_back() {
+        let polygon = Polygon::new(&[[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [1.0, 1.0, 0.0], [-1.0, 1.0, 0.0]]).unwrap();
+        let bend = Bend::new(&polygon, -0.7, [1.0, 0.0, 0.0], [0.0, 0.0, 0.0], true);
+        let q = polygon.to_plane([0.6, -0.4, 0.0]);
+        let p = bend.point(&polygon, q);
+        let centre = scale(polygon.normal, -1.0 / 0.7);
+        assert!((norm(sub(p, centre)) - 1.0 / 0.7).abs() < 1e-12);
+        let (back, gap) = bend.locate(&polygon, p);
+        assert!(gap.abs() < 1e-12 && (back[0] - q[0]).abs() < 1e-12 && (back[1] - q[1]).abs() < 1e-12);
+        let normal = bend.rotate(&polygon, q, polygon.normal);
+        let (_, off) = bend.locate(&polygon, add(p, scale(normal, 0.05)));
+        assert!((off - 0.05).abs() < 1e-12, "gap {off}");
+        let from = add(p, [0.3, -0.2, 2.0]);
+        let to = sub(p, from);
+        let length = norm(to);
+        let hits = bend.crossings(&polygon, from, scale(to, 1.0 / length), 10.0);
+        assert!(hits.iter().any(|&(t, h)| (t - length).abs() < 1e-9 && (h[0] - q[0]).abs() < 1e-9 && (h[1] - q[1]).abs() < 1e-9));
+    }
+
+    #[test]
+    fn a_dome_spreads_a_plane_wave_in_both_directions_and_obeys_the_reflection_law() {
+        let radius = 2.0;
+        let polygon = Polygon::new(&[[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [1.0, 1.0, 0.0], [-1.0, 1.0, 0.0]]).unwrap();
+        let towards = polygon.normal[2].signum();
+        let bend = Bend::new(&polygon, -towards / radius, [1.0, 0.0, 0.0], [0.0, 0.0, 0.0], true);
+        let found = bend.specular(&polygon, (0.0, 0.0), [0.0, 0.0, 1.0], None, [0.0, 0.0, 1.0]);
+        assert_eq!(found.len(), 1);
+        assert!((found[0].gain - 1.0 / (1.0 + 2.0 / radius)).abs() < 1e-9, "gain {}", found[0].gain);
+        let to = [0.4, 0.2, 1.0];
+        let source = [-0.5, 0.3, 1.5];
+        let found = bend.specular(&polygon, (0.0, 0.0), to, Some(source), [0.0, 0.0, 1.0]);
+        assert_eq!(found.len(), 1);
+        let s = &found[0];
+        let unit = |v: V3| scale(v, 1.0 / norm(v));
+        let (a, b) = (unit(sub(source, s.point)), unit(sub(to, s.point)));
+        assert!((dot(a, s.normal) - dot(b, s.normal)).abs() < 1e-9 && norm(sub(add(a, b), scale(s.normal, dot(add(a, b), s.normal)))) < 1e-9);
+        assert!(bend.locate(&polygon, s.point).1.abs() < 1e-9);
     }
 
     #[test]

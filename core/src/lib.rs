@@ -22,8 +22,8 @@ pub const PATTERN_VALUES: usize = 6;
 // Relief: shape, height, period, direction xyz, anchor xyz, offset, rough
 // height, grain, seed.
 pub const RELIEF_VALUES: usize = 13;
-// Curvature (1/m), the arc's direction, and a point where it touches the plane.
-pub const BEND_VALUES: usize = 7;
+// Curvature (1/m), the arc's direction, a point where it touches the plane, and 1 for a sphere.
+pub const BEND_VALUES: usize = 8;
 // listenerKind: 0 microphone, 1 ear on the sphere, 2 ear on the measured head,
 // 3 two capsules at one point. A pipe radius of 0 means no pipe.
 pub const SETTINGS: [&str; 47] = [
@@ -109,7 +109,8 @@ pub fn read_scene(settings: &[f64], surfaces: &[f64]) -> Result<Scene, String> {
         let vertices: Vec<[f64; 3]> = r[SURFACE_HEADER..].chunks(3).map(|v| [v[0], v[1], v[2]]).collect();
         if let Some(polygon) = Polygon::new(&vertices) {
             let relief = surface_relief(&polygon, relief_values);
-            let bend = bend::Bend::new(&polygon, bend_values[0], [bend_values[1], bend_values[2], bend_values[3]], [bend_values[4], bend_values[5], bend_values[6]]);
+            let bend =
+                bend::Bend::new(&polygon, bend_values[0], [bend_values[1], bend_values[2], bend_values[3]], [bend_values[4], bend_values[5], bend_values[6]], bend_values[7] > 0.5);
             list.push(Surface { polygon, strength, reflection, pattern, relief, bend });
         }
         at += record;

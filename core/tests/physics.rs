@@ -860,8 +860,15 @@ fn bent_wall(radius: f64, concave_towards: V3, half_arc: f64, half_height: f64) 
 fn bent_wall_at(centre: V3, radius: f64, concave_towards: V3, half_arc: f64, half_height: f64) -> Surface {
     let polygon = rectangle(centre, [half_arc, 0.0, 0.0], [0.0, 0.0, half_height]);
     let towards = neartect_core::geom::dot(polygon.normal, concave_towards).signum();
-    let bend = neartect_core::bend::Bend::new(&polygon, towards / radius, [1.0, 0.0, 0.0], centre);
+    let bend = neartect_core::bend::Bend::new(&polygon, towards / radius, [1.0, 0.0, 0.0], centre, false);
     Surface { bend, ..surface(polygon, RIGID) }
+}
+
+fn bowl(radius: f64, concave_up: bool, half_width: f64) -> Surface {
+    let flat = disc(half_width);
+    let towards = flat.polygon.normal[2].signum() * if concave_up { 1.0 } else { -1.0 };
+    let bend = neartect_core::bend::Bend::new(&flat.polygon, towards / radius, [1.0, 0.0, 0.0], [0.0; 3], true);
+    Surface { bend, ..flat }
 }
 
 fn reflection_amplitude(surfaces: Vec<Surface>, microphone: V3, arrival: V3) -> f64 {
@@ -895,6 +902,87 @@ fn a_concave_wall_gathers_its_reflection_by_the_ray_tube_factor() {
     let d = reflection_amplitude(vec![bent_wall(radius, [0.0, 1.0, 0.0], 1.5, 3.0)], [0.0, 0.5, 0.0], [0.0, 1.0, 0.0]);
     let expected = (1.0_f64 / (1.0 - 2.0 * 0.5 / radius)).sqrt();
     assert!((d - expected).abs() < 0.12, "reflection {d}, ray tube {expected}");
+}
+
+#[test]
+fn a_nearly_flat_bowl_reflects_as_the_flat_disc() {
+    let microphone = [0.0, 0.0, 0.6];
+    let flat = reflection_amplitude(vec![disc(2.0)], microphone, [0.0, 0.0, 1.0]);
+    let bent = reflection_amplitude(vec![bowl(1e5, true, 2.0)], microphone, [0.0, 0.0, 1.0]);
+    assert!((flat - bent).abs() < 1e-3, "flat {flat} bent {bent}");
+}
+
+#[test]
+fn a_dome_spreads_its_reflection_in_both_directions() {
+    let radius = 2.0;
+    let d = reflection_amplitude(vec![bowl(radius, false, 1.5)], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]);
+    let expected = 1.0 / (1.0 + 2.0 * 1.0 / radius);
+    assert!((d - expected).abs() < 0.08, "reflection {d}, ray tube {expected}");
+}
+
+fn ring_integral_on_axis(radius: f64, height: f64, half_width: f64, concave: f64) -> f64 {
+    let rings = 1400;
+    let step = half_width / rings as f64;
+    let k_c = 1.0 / radius;
+    let bands: Vec<f64> = (0..400).map(|i| 3000.0 + 6000.0 * i as f64 / 399.0).collect();
+    let power: f64 = bands
+        .iter()
+        .map(|&hz| {
+            let k = std::f64::consts::TAU * hz / C;
+            let scattered: Complex64 = (0..rings)
+                .map(|i| {
+                    let theta = (i as f64 + 0.5) * step * k_c;
+                    let (r, h) = (theta.sin() / k_c, concave * (1.0 - theta.cos()) / k_c);
+                    let area = std::f64::consts::TAU * theta.sin() / k_c * step;
+                    let (dx, dz) = (-r, height - h);
+                    let d = dx.hypot(dz);
+                    let cosine = (-concave * theta.sin() * dx + theta.cos() * dz) / d;
+                    let incident = Complex64::from_polar(1.0, k * (height - h));
+                    -2.0 * incident * (Complex64::new(-1.0 / d, k)) * Complex64::from_polar(1.0 / d, k * d) * cosine * area / (4.0 * std::f64::consts::PI)
+                })
+                .sum();
+            (Complex64::new(1.0, 0.0) + scattered).norm_sqr()
+        })
+        .sum::<f64>()
+        / bands.len() as f64;
+    (power - 1.0).max(0.0).sqrt()
+}
+
+#[test]
+fn a_bowl_and_a_dome_on_their_axis_match_the_ring_integral() {
+    for (radius, height, half_width, concave) in [(2.0, 0.5, 1.5, true), (2.0, 0.25, 0.8, true), (2.0, 1.0, 1.5, false)] {
+        let d = reflection_amplitude(vec![bowl(radius, concave, half_width)], [0.0, 0.0, height], [0.0, 0.0, 1.0]);
+        let exact = ring_integral_on_axis(radius, height, half_width, if concave { 1.0 } else { -1.0 });
+        assert!((d / exact - 1.0).abs() < 0.05, "R {radius} z {height}: reflection {d}, ring integral {exact}");
+    }
+}
+
+#[test]
+fn a_second_order_path_over_a_dome_and_a_floor_finds_a_true_reflection_point() {
+    let radius = 2.0;
+    let mut dome = bowl(radius, false, 1.2);
+    let tilt = |p: V3| [p[0], p[2], 3.0 + p[1]];
+    let points: Vec<V3> = dome.polygon.points.iter().map(|&q| tilt(dome.polygon.to_space(q))).collect();
+    dome.polygon = Polygon::new(&points).unwrap();
+    let towards = dome.polygon.normal[1].signum();
+    dome.bend = neartect_core::bend::Bend::new(&dome.polygon, -towards / radius, [1.0, 0.0, 0.0], [0.0, 0.0, 3.0], true);
+    let microphone = [0.3, 1.0, 1.2];
+    let arrival = normalize([0.2, 1.0, 0.5]);
+    let s = scene(vec![dome.clone(), floor(10.0)], microphone, arrival, 2048, 2);
+    let order = |paths: Vec<neartect_core::images::Path>| {
+        let mut paths: Vec<_> = paths.into_iter().map(|p| (p.reflections.iter().map(|r| r.surface).collect::<Vec<_>>(), p.gain, p.delay_seconds)).collect();
+        paths.sort_by(|a, b| a.0.cmp(&b.0));
+        paths
+    };
+    let bent = order(neartect_core::images::specular_paths(&s));
+    let wide = disc(3.0);
+    let points: Vec<V3> = wide.polygon.points.iter().map(|&q| tilt(wide.polygon.to_space(q))).collect();
+    let flat = surface(Polygon::new(&points).unwrap(), RIGID);
+    let flat = order(neartect_core::images::specular_paths(&scene(vec![flat, floor(10.0)], microphone, arrival, 2048, 2)));
+    assert!(bent.iter().all(|p| p.1 > 0.2 && p.1 < 1.0), "{bent:?}");
+    let first_dome = |paths: &[(Vec<usize>, f64, f64)]| paths.iter().find(|p| p.0 == [0, 1]).map(|p| p.2);
+    let (dome_delay, flat_delay) = (first_dome(&bent).unwrap(), first_dome(&flat).unwrap());
+    assert!(dome_delay > flat_delay, "dome {dome_delay} flat {flat_delay}");
 }
 
 #[test]

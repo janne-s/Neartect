@@ -505,7 +505,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
         return;
     }
     let unshaded = if shaped { relief.rough_shadowing(dot(normal, incident.towards_source).abs()) * relief.rough_shadowing(dot(normal, direction).abs()) } else { 1.0 };
-    let area = size * size * incident.amplitude * unshaded;
+    let area = size * size * surface.bend.area_scale(centre) * incident.amplitude * unshaded;
     let rigid_far = cos_scatter * area / (2.0 * PI * distance);
     let rigid_near = rigid_far / distance;
     let cos_incidence = dot(tilted, incident.towards_source).max(0.0);
