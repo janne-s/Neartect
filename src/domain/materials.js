@@ -8,11 +8,15 @@ const TABLE_BANDS_HZ = [125, 250, 500, 1000, 2000, 4000];
 
 const fromGround = groundType => TABLE_BANDS_HZ.map(hz => 1 - planeReflectionMagnitude(hz, groundType, 1) ** 2);
 
-const WATER_REFLECTION = (1.48e6 - 413) / (1.48e6 + 413);
+const AIR_IMPEDANCE = 413;
+const reflectionOf = impedance => (impedance - AIR_IMPEDANCE) / (impedance + AIR_IMPEDANCE);
+const WATER_REFLECTION = reflectionOf(1.48e6);
+const ALUMINIUM_REFLECTION = reflectionOf(2700 * 6320);
 
 export const MATERIALS = Object.freeze({
   rigid: { label: 'Rigid', absorption: [0, 0, 0, 0, 0, 0], reliability: 'A' },
   water: { label: 'Still water', absorption: Array(6).fill(1 - WATER_REFLECTION ** 2), reliability: 'A' },
+  metal: { label: 'Metal', absorption: Array(6).fill(1 - ALUMINIUM_REFLECTION ** 2), reliability: 'A' },
   concrete: { label: 'Concrete', absorption: [0.01, 0.01, 0.01, 0.02, 0.02, 0.02], reliability: 'B' },
   tile: { label: 'Glazed tile', absorption: [0.01, 0.01, 0.01, 0.01, 0.02, 0.02], reliability: 'B' },
   plaster: { label: 'Plaster', absorption: [0.01, 0.01, 0.02, 0.03, 0.04, 0.05], reliability: 'B' },
