@@ -1,3 +1,4 @@
+import { createActionMenu } from './shared/ui/action-menu.js';
 import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav } from './shared/domain/wav.js';
@@ -1118,6 +1119,10 @@ $('export-processed').addEventListener('click', async () => {
     $('export-error').hidden = false;
   }
 });
+
+createActionMenu($('more'), () => ['open', 'save', 'export'].map(id => ({
+  id, label: { open: 'Open…', save: 'Save', export: 'Export…' }[id], disabled: $(id).disabled, action: () => $(id).click()
+})));
 
 $('attribution-text').textContent = `${MATERIAL_ATTRIBUTION} ${HEAD_ATTRIBUTION}`;
 $('attribution-button').addEventListener('click', () => {
