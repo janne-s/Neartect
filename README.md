@@ -1,140 +1,171 @@
 # Neartect: Design the near space
 
 Neartect designs what a microphone's surroundings do to sound. Build walls,
-floors, niches, pipes, and gratings around a microphone, give each a material, place
-the microphone anywhere among them, even a millimetre from a surface, and hear
-the boundary's lift, the comb of a nearby wall, a corner's bass, and the
-chirp of a grating. Export the near filter or the filtered sound as WAV. Made
-for sound design, built on physics.
+floors, niches, pipes, and gratings around microphones, give each a material,
+place the microphones anywhere among them, even a millimetre from a surface,
+and hear the boundary's lift, the comb of a nearby wall, a corner's bass, and
+the chirp of a grating. Export the impulse response or the filtered sound as
+WAV. Made for sound design, built on physics.
 
-Neartect is part of the Tect family with Boomtect, Rumbletect, and Echotect.
-It is in early development.
+See it live: [**https://janne-s.github.io/Neartect/**](https://janne-s.github.io/Neartect/)
+
+![Neartect interface](assets/screenshot.jpg)
 
 ## How it works
 
-Sound arrives as a plane wave from a chosen direction. Each surface scatters it
-as a sum of small surface elements in the Kirchhoff approximation, so a
-surface's size, its free edges, and the shadow behind it come from the same
-sum. Where two surfaces meet at a right angle in a corner the microphone can
-see, the edge is continued, so the corner keeps its exact image solution. Higher orders are specular images with a
-finite-size high-pass; a surface with relief keeps its lobes in the second
-order through a flat surface, joined or free. The filter is computed by a Rust core compiled to
-WebAssembly and heard live through a crossfading convolver.
+Sound arrives as a plane wave from a chosen direction or from a point source.
+Each surface scatters it as a sum of small surface elements in the Kirchhoff
+approximation, so a surface's size, its free edges, and the shadow behind it
+come from the same sum. Where two surfaces meet at a right angle in a corner
+the microphone can see, the edge is continued, so the corner keeps its exact
+image solution. Higher orders are specular images with a finite-size
+high-pass; a surface with relief keeps its lobes in the second order through a
+flat surface. The filter is computed by a Rust core compiled to WebAssembly
+and heard live through a crossfading convolver.
 
-- **Objects** — planes, discs, walls with a round or square opening, gratings,
-  boxes, corners, niches, and pipes, added from a menu of shapes. Each has a
-  material from published absorption tables or a porous ground model, and a
-  creative strength (1 is physical).
-- **Bend** — a plane, wall, or grating bends into an arc about its up or
-  across axis, a disc into a bowl or a dome, concave or convex at the front,
-  and a pipe bends along its length. A concave wall or bowl gathers its
-  reflection towards its focus, a convex one spreads it; a microphone bound to
-  it keeps its gap along the arc.
-- **Situations** — start from a microphone by a wall, in a corner, in a niche,
-  under a grating, at a pipe mouth, in a doorway, by a curved wall, by a corrugated wall, over
-  moving waves, or over water.
-- **Handles** — hover or select an object to move it along east, north, and
-  up (or its own across, front, and up with the cube button), resize it from
-  its faces, and turn or tilt it a full circle on its rings; values snap to
-  the grid and to 5°, and Shift moves freely. On a face, Shift resizes in
-  proportion, Alt about the centre, and Cmd or Ctrl freely; bound microphones
-  keep their place in the object. The magnet snaps an object's sides to other
-  objects. Everything else dims while you work. Exact values sit in Details,
-  and Undo steps back.
-- **Binding** — a microphone, layout, or point source bound to an object moves
-  with it, and the target button centres it on the object (a wall on its
-  opening, at the same gap).
-- **Scrolling** — the mouse/hand button chooses whether scrolling zooms or
-  pans; a pinch always zooms.
-- **Selecting several** — arm the area tool and drag a rectangle, or
-  Shift-click to add or remove one. The selection moves along east, north,
-  and up and turns on its ring as one; microphones bound to a selected object
-  follow it. Delete removes the selection.
-- **Situations** add their objects to those you have built and keep your
-  microphones and point source, moving them with the first microphone.
-- **Relief** — any object's faces can be waves, arches, scallops, or an egg
-  crate at a set height, period, and direction, plus random roughness with a
-  height and grain. Each piece of the surface moves to its height and tilts to
-  its slope, so rough surfaces lose their coherent treble and scatter it, and
-  repeating shapes send their own lobes. A speed moves the relief while the
-  preview plays (moving water), and each new filter glides in over the time
-  since the last one. The view shades the relief by height, lighter where it
-  rises and darker where it sinks, with true-scale profiles across it.
-- **Gratings** — bars or slats at a set period, width, and thickness; each bar
+## Objects
+
+- **Kinds** — Plane, disc, wall with a round or square opening, grating, box,
+  corner, niche, and pipe.
+- **Material** — From published absorption tables or a porous ground model,
+  with a creative strength (1 is physical).
+- **Bend** — A plane, wall, or grating bends into an arc about its up or
+  across axis, a disc into a bowl or a dome, and a pipe along its length. A
+  concave surface gathers its reflection towards its focus, a convex one
+  spreads it.
+- **Relief** — Waves, arches, scallops, or an egg crate at a set height,
+  period, and direction, plus random roughness with a height and grain. Rough
+  surfaces lose their coherent treble and scatter it; repeating shapes send
+  their own lobes. A speed moves the relief while the preview plays (moving
+  water), each new filter gliding in.
+- **Gratings** — Bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
-- **Microphones** — up to eight, each bound to an object of your choice and
-  moving with it, or free in the world. Across, gap, and up are signed (a
-  negative gap is behind the face or inside the object) on sliders from 1 mm
-  to 5 m. Microphones keep their time and level differences; the preview
-  spreads them from left to right, and export writes one channel each. Each
-  has a pickup pattern — omni, wide cardioid, cardioid, supercardioid,
-  hypercardioid, or figure of eight — aimed on its ring or sliders; a new
-  pattern starts aimed at the source. Directional patterns have the proximity
-  effect: a near source or a near reflection lifts their bass.
+- **Inside a pipe** — A waveguide: resonances at the end-corrected length, the
+  open ends' radiation, the walls' losses, and in wide pipes the cross modes,
+  which depend on where across the pipe the microphone sits.
+- **Situations** — By a wall, in a corner, in a niche, under a grating, at a
+  pipe mouth, in a doorway, by a curved or corrugated wall, over moving waves,
+  or over water. A situation adds to the objects already built and keeps the
+  microphones and the point source.
+
+## Scene
+
+- **Handles** — Move along east, north, and up, or along the object's own
+  axes; resize from the faces; turn and tilt on the rings. Values snap to the
+  grid and to 5°; Shift moves freely. On a face, Shift resizes in proportion,
+  Alt about the centre, and Cmd or Ctrl freely. The magnet snaps an object's
+  sides to other objects.
+- **Binding** — A microphone, layout, or point source bound to an object moves
+  with it and keeps its gap, along the arc on a bent surface. The target
+  button centres it on the object, a wall on its opening.
+- **Selecting several** — Drag a rectangle with the area tool, or Shift-click.
+  The selection moves and turns as one, with its bound microphones.
+- **View** — Scrolling zooms or pans, by choice; a pinch always zooms. A metre
+  grid on the ground, with tenths when close.
+
+## Microphones
+
+- **Microphones** — Up to eight, bound to an object or free. Across, gap, and
+  up are signed (a negative gap is behind the face or inside the object), from
+  1 mm to 5 m. Time and level differences are kept.
+- **Patterns** — Omni, wide cardioid, cardioid, supercardioid, hypercardioid,
+  or figure of eight, with the proximity effect: a near source or a near
+  reflection lifts the bass of a directional pattern.
 - **Layouts** — XY, Blumlein, mid-side, ORTF, NOS, spaced pair, Decca tree,
-  and a head with two ears, either the measured KU100 (SADIE II) or a
-  spherical model of adjustable width; each is one element that binds, moves, and turns
-  as a whole, with its spacing and angle on sliders. Mid-side decodes to left
-  and right in the preview; export writes every capsule, or a stereo mix.
-  Microphones and layouts share one list: any of them can be removed, and a
-  layout added to a lone microphone takes its place. A layout shows its front
-  as a bold arrow, coincident capsules fan out with their names at the tips,
-  and a head is drawn with its nose and ears. A selected microphone or layout
-  can switch to another layout in place, keeping its spot, binding, and aim;
-  its aim turns on a level ring and tilts on an upright one.
-- **Inside a pipe** — the microphone hears the pipe as a waveguide: its
-  resonances at the end-corrected length, the open ends' radiation, the
-  walls' losses, and in wide pipes the cross modes, which depend on where
-  across the pipe the microphone sits.
-- **Source** — far away, as a plane wave from a direction (drag the arrow's
-  tail), or a point in the scene that can be bound to an object like a
-  microphone. A point source's level falls with distance (1 m reference)
-  unless 1/r is off.
-- **Listening** — pink noise, clicks, a sweep, or your own file, with a
+  and a head: the measured KU100 (SADIE II) or a spherical head of adjustable
+  width. A layout binds, moves, and turns as one, with its spacing and angle
+  adjustable, and switches to another layout in place.
+
+## Source and listening
+
+- **Source** — Far away, as a plane wave from a direction, or a point in the
+  scene, bound to an object like a microphone. A point source falls with
+  distance from a 1 m reference unless 1/r is off.
+- **Signal** — Pink noise, clicks, a sweep, or a sound file, with a
   free-field comparison.
-- **Quality** — relief detail and an element limit for surfaces with relief,
-  and a lower detail while relief moves or something is dragged; the
-  computation time shows in the corner of the view.
-- **Plots** — the near filter and its response relative to the free field.
-- **Grid** — a fixed metre grid on the ground, with tenths when close; the
-  grid button hides it.
-- **Export** — the impulse response (IR) for a convolution plugin, stereo as heard or one channel per capsule and optionally peak-normalised, or the filtered signal, as 32-bit float WAV, and
-  the space as JSON.
+- **Preview** — Microphones spread from left to right; mid-side decodes to
+  left and right; a head plays binaurally.
+- **Plots** — The near filter and its response relative to the free field.
+- **Quality** — Relief detail and an element limit, with lower detail while
+  relief moves or something is dragged.
 
-## Reliability
+## Export
 
-Specular reflection from rigid surfaces is class A for a plane wave and a point source alike, absorption tables and the
-finite-size correction class B, the grating's low-frequency blend, the
-continuation of joined edges at other than right angles, and the strength
-control class C. Both heads are class B: the measured one as minimum-phase
-responses with delays interpolated between directions, the sphere as Brown
-and Duda's model. A bent surface's first order is class B (Kirchhoff on the arc or sphere); its higher
-orders take the specular points on the arc or sphere with the ray-tube gain (class B),
-limited near a focus (class C), and paths over two bent surfaces are left out.
-A bent pipe's main mode runs as in Cummings' equivalent rectangular bend
-(class B): a little faster than in a straight pipe for long waves, slower
-above half the first cross-mode cutoff, its wave admittance shifting with it;
-the bend's own reflection comes only through that admittance at the mouths,
-and its cross modes run as in a straight pipe without mixing (class C). The pipe interior is class B, with its cross modes' coupling at the mouth
-and the blend between outside and inside within a radius of the mouth
-class C. Not modelled: the
-microphone capsule's own size, room modes
-of closed small spaces, edge diffraction into the shadow beyond the Kirchhoff
-approximation, angle-dependent absorption, and surface vibration. A panel
-small against the wavelength takes a low-frequency edge correction: exact
-in its limits (Lamb's disc), class C between.
+- **Impulse response** — For a convolution plugin: stereo as heard, or one
+  channel per capsule, optionally peak-normalised.
+- **Filtered signal** — Stereo as heard, or one channel per capsule.
 
-## Development
+Audio is 32-bit float WAV. The filter is normalised to the free field. Save
+writes the space as JSON.
 
-`npm start` serves the app at http://localhost:8003/. `npm test` runs the
-JavaScript tests, `npm run test:core` the Rust core tests, and
-`npm run build:core` rebuilds `src/core/` (Rust with the
-`wasm32-unknown-unknown` target, `wasm-bindgen`, and Binaryen's `wasm-opt`).
-`node tools/bench.mjs` times the core over the situations and can save and
-compare filters. `src/shared/` is a synced copy of tect-shared.
+## Model
+
+Every part of the model is marked with a class that says how far it can be
+trusted:
+
+- **A** — Derived from first principles.
+- **B** — An approximation from the literature, valid in the range its source
+  gives.
+- **C** — A heuristic or synthetic assumption, chosen to behave plausibly
+  rather than derived or measured.
+
+B/C marks a part that combines the two.
+
+| Part | Model | Class |
+|---|---|---|
+| Specular reflection, rigid surfaces | image sources, plane wave and point source | A |
+| Absorption | published tables, porous ground model | B |
+| Finite size, higher orders | high-pass by surface size | B |
+| Small panel at low frequencies | edge correction, exact in its limits (Lamb's disc), interpolated between | C |
+| Bent surface, first order | Kirchhoff on the arc or sphere | B |
+| Bent surface, higher orders | specular points with ray-tube gain, limited near a focus | B/C |
+| Pipe interior | waveguide with end correction, radiation, wall losses, cross modes | B |
+| Bent pipe | Cummings' equivalent rectangular bend; cross modes as straight | B/C |
+| Pipe mouth | cross-mode coupling, blend between outside and inside | C |
+| Grating at low frequencies | blend | C |
+| Joined edges, not at right angles | continued edges | C |
+| Heads | KU100 minimum-phase with interpolated delays; Brown & Duda sphere | B |
+| Strength | creative scaling | C |
+
+Not modelled: the capsule's own size, room modes of closed small spaces,
+diffraction into the shadow beyond the Kirchhoff approximation,
+angle-dependent absorption, surface vibration, and paths over two bent
+surfaces.
+
+Neartect is a creative tool. Where published models exist it follows them,
+but a result is a plausible sound, not a measurement.
+
+## Running locally
+
+```sh
+npm start
+```
+
+Open http://localhost:8003/. Run the JavaScript tests with `npm test` and the
+Rust core tests with `npm run test:core`. `npm run build:core` rebuilds
+`src/core/` (Rust with the `wasm32-unknown-unknown` target, `wasm-bindgen`,
+and Binaryen's `wasm-opt`). `node tools/bench.mjs` times the core over the
+situations.
+
+## Data
+
+Absorption coefficients: RoomTreat, CC BY 4.0. Measured head: SADIE II (KU100),
+© 2018 University of York, Apache License 2.0; the derived table is in
+`core/data/` with its license (Armstrong et al. 2018, Applied Sciences 8(11),
+2029).
+
+## Third-party code
+
+Icons are [Font Awesome Free](https://fontawesome.com) 7.3.1, solid style:
+font under the SIL OFL 1.1, CSS under the MIT License, icons under CC BY 4.0
+([license](assets/vendor/fontawesome/LICENSE.txt)).
 
 ## License
 
-MIT. Absorption coefficients: RoomTreat, CC BY 4.0. Measured head: SADIE II
-(KU100), © 2018 University of York, Apache 2.0, derived table in `core/data/`
-with its license (Armstrong et al. 2018, Applied Sciences 8(11), 2029).
+MIT
+
+## Support Neartect
+
+Support development through [GitHub Sponsors](https://github.com/sponsors/janne-s)
+or [Ko-fi](https://ko-fi.com/jannesarkela). See
+[Sanara Creations](https://www.sanaracreations.fi/) for related work.
