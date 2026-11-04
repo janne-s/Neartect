@@ -10,14 +10,6 @@
 .panel .subheading {
   margin-top: 14px;
 }
-#signal {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--raised);
-  padding: 3px 6px;
-  color: var(--ink);
-  font: inherit;
-}
 .export-choices {
   display: flex;
   flex-wrap: wrap;
@@ -37,13 +29,9 @@
   place-items: center;
   height: 30px;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--raised);
   color: var(--muted);
 }
 .build-button:hover {
-  border-color: var(--accent);
   color: var(--accent-hover);
 }
 .object-glyph {
@@ -63,10 +51,15 @@
   color: var(--accent);
 }
 .situations .build-button {
-  border-style: dashed;
+  border: 1px dashed var(--edge);
+  box-shadow: none;
+}
+.situations .build-button:hover {
+  border-color: var(--accent);
 }
 .build-button[aria-checked="true"],
 .build-button[aria-pressed="true"] {
+  --button-edge: var(--accent);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -133,12 +126,6 @@
 }
 .row-select {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--raised);
-  padding: 3px 6px;
-  color: var(--ink);
-  font: inherit;
 }
 .card-actions {
   margin-top: 12px;
