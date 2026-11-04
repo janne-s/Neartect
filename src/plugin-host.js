@@ -1,7 +1,5 @@
 import { stereo } from './audio/preview.js';
 
-const SPACE_DELAY_MS = 300;
-
 export function createPluginHost({ onSpace, onRate }) {
   if (typeof window.sendToPlugin !== 'function') return null;
   const send = message => window.sendToPlugin(message);
@@ -16,11 +14,9 @@ export function createPluginHost({ onSpace, onRate }) {
   window.addEventListener('unhandledrejection', event => send({ type: 'log', text: String(event.reason?.stack ?? event.reason) }));
   document.body.classList.add('in-plugin');
   addGrip(send);
-  let timer = 0;
   return {
     space(space) {
-      clearTimeout(timer);
-      timer = setTimeout(() => send({ type: 'space', json: JSON.stringify(space) }), SPACE_DELAY_MS);
+      send({ type: 'space', json: JSON.stringify(space) });
     },
     filter(result) {
       if (result.sampleRateHz !== rate) return;
