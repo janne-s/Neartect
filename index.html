@@ -143,19 +143,25 @@
     </dialog>
 
     <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-title" tabindex="-1">
-      <form method="dialog">
+      <form id="export-form" method="dialog">
         <header class="details-header">
           <h2 id="export-title">Export</h2>
+          <button type="button" id="export-all">Select all</button>
         </header>
-        <div class="export-body">
-          <div class="export-choices">
-            <button type="button" id="export-filter" title="For a convolution plugin in a DAW">Impulse response (IR) WAV</button>
-            <button type="button" id="export-processed">Filtered signal WAV</button>
+        <div class="export-scroll">
+          <div class="export-body">
+            <label class="export-name"><span>Name</span><input type="text" id="export-name" maxlength="80" required /></label>
+            <div class="export-list" id="export-list"></div>
+            <div class="export-list">
+              <label><span></span><span><strong>IR peak</strong></span><select id="export-peak"><option value="computed">As computed</option><option value="normalised">Normalised to 0 dB</option></select></label>
+            </div>
+            <p class="export-contract" id="export-contract"></p>
+            <div class="export-go">
+              <p class="export-summary" id="export-summary"></p>
+              <button type="submit" id="export-submit" class="primary" value="export">Export</button>
+            </div>
+            <p class="export-error" id="export-error" role="alert" hidden></p>
           </div>
-          <label class="export-mix"><input type="checkbox" id="export-mix" checked /> Stereo, as heard in the preview (off: one channel per capsule)</label>
-          <label class="export-mix"><input type="checkbox" id="export-normalise" /> Normalise the IR peak to 0 dB</label>
-          <p class="export-summary" id="export-summary"></p>
-          <p class="export-error" id="export-error" role="alert" hidden></p>
         </div>
         <footer class="export-actions">
           <button type="submit" value="cancel">Close</button>

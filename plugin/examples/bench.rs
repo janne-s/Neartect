@@ -36,7 +36,10 @@ fn main() {
             }
             let seconds = started.elapsed().as_secs_f64();
             let load = if gliding { "always gliding" } else { "steady" };
-            println!("IR {ir_seconds:>4} s {load:<14} {:>6.2} % of one core  ({sink:.1})", 100.0 * seconds / SECONDS_RUN as f64);
+            println!(
+                "IR {ir_seconds:>4} s {load:<14} {:>6.2} % of one core  ({sink:.1})",
+                100.0 * seconds / SECONDS_RUN as f64
+            );
         }
     }
 }

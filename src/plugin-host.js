@@ -1,14 +1,18 @@
 import { stereo } from './audio/preview.js';
 
-export function createPluginHost({ onSpace, onRate }) {
+export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
   if (typeof window.sendToPlugin !== 'function') return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
   window.onPluginMessage = message => {
-    if (message.type !== 'init') return;
-    rate = message.sampleRateHz;
-    if (message.space) onSpace(message.space);
-    onRate(rate);
+    if (message.type === 'init') {
+      rate = message.sampleRateHz;
+      if (message.space) onSpace(message.space);
+      onBypass(message.bypass);
+      onRate(rate);
+    }
+    if (message.type === 'opened') onOpen(message.text);
+    if (message.type === 'bypass') onBypass(message.on);
   };
   window.addEventListener('error', event => send({ type: 'log', text: `${event.message} ${event.filename}:${event.lineno}` }));
   window.addEventListener('unhandledrejection', event => send({ type: 'log', text: String(event.reason?.stack ?? event.reason) }));
@@ -25,6 +29,17 @@ export function createPluginHost({ onSpace, onRate }) {
     },
     ready() {
       send({ type: 'ready' });
+    },
+    bypass(on) {
+      send({ type: 'bypass', on });
+    },
+    open() {
+      send({ type: 'open' });
+    },
+    save(name, blob) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => send({ type: 'save', name, base64: reader.result.slice(reader.result.indexOf(',') + 1) }));
+      reader.readAsDataURL(blob);
     }
   };
 }

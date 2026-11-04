@@ -1,7 +1,8 @@
 import { createActionMenu } from './shared/ui/action-menu.js';
 import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
-import { encodeFloat32Wav } from './shared/domain/wav.js';
+import { encodeFloat32Wav, wavByteLength } from './shared/domain/wav.js';
+import { zipStore } from './shared/domain/zip.js';
 import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, centredOffset, firstListener, fittedOpening, followResize, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
@@ -72,17 +73,26 @@ const view = createNearView($('near-view'), {
   ownAxes: () => preferences.ownAxes
 });
 
+function openSpace(text, compute = true) {
+  try {
+    state.space = readSpace(JSON.parse(text));
+    state.selection = null;
+    view.centre(spaceCentre(state.space));
+    changed({ panel: true, compute });
+  } catch (error) {
+    setStatus(error instanceof SpaceError ? error.message : 'This file is not a Neartect space.', true);
+  }
+}
+
+function showBypass(on) {
+  $('bypass').setAttribute('aria-pressed', String(on));
+  preview.setBypass(on);
+}
+
 const pluginHost = createPluginHost({
-  onSpace: json => {
-    try {
-      state.space = readSpace(JSON.parse(json));
-      state.selection = null;
-      view.centre(spaceCentre(state.space));
-      changed({ panel: true, compute: false });
-    } catch (error) {
-      setStatus(error instanceof SpaceError ? error.message : 'This file is not a Neartect space.', true);
-    }
-  },
+  onSpace: text => openSpace(text, false),
+  onOpen: text => openSpace(text),
+  onBypass: showBypass,
   onRate: hz => {
     state.audioRate = hz;
     refreshFilter();
@@ -1062,82 +1072,165 @@ $('signal-file').addEventListener('change', async () => {
 });
 $('bypass').addEventListener('click', () => {
   const on = $('bypass').getAttribute('aria-pressed') !== 'true';
-  $('bypass').setAttribute('aria-pressed', String(on));
-  preview.setBypass(on);
+  showBypass(on);
+  pluginHost?.bypass(on);
 });
 
 let downloadUrl = null;
 function download(name, blob) {
+  if (pluginHost) {
+    pluginHost.save(name, blob);
+    return;
+  }
   if (downloadUrl) URL.revokeObjectURL(downloadUrl);
   downloadUrl = URL.createObjectURL(blob);
   Object.assign(document.createElement('a'), { href: downloadUrl, download: name }).click();
 }
 
 $('save').addEventListener('click', () => download('neartect-space.json', new Blob([`${JSON.stringify(withReliability(state.space), null, 2)}\n`], { type: 'application/json' })));
-$('open').addEventListener('click', () => $('open-file').click());
+$('open').addEventListener('click', () => (pluginHost ? pluginHost.open() : $('open-file').click()));
 $('open-file').addEventListener('change', async () => {
   const file = $('open-file').files[0];
   $('open-file').value = '';
-  if (!file) return;
-  try {
-    state.space = readSpace(JSON.parse(await file.text()));
-    state.selection = null;
-    view.centre(spaceCentre(state.space));
-    changed({ panel: true });
-  } catch (error) {
-    setStatus(error instanceof SpaceError ? error.message : 'This file is not a Neartect space.', true);
-  }
+  if (file) openSpace(await file.text());
 });
 
+const EXPORT_LABELS = Object.freeze({ space: 'Space (JSON)', stereo: 'Stereo IR', microphones: 'Microphone IRs', filtered: 'Filtered signal' });
+const EXPORT_STORAGE_KEY = 'neartect.export';
+const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
+const fileStem = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'neartect';
 const exportDialog = $('export-dialog');
-$('export').addEventListener('click', () => {
-  $('export-summary').textContent = `${state.space.render.sampleRateHz / 1000} kHz · 32-bit float · ${state.space.render.lengthMilliseconds} ms filter · ${state.filter?.channels.length ?? 1} ${state.filter?.channels.length === 1 ? 'channel' : 'channels'}`;
+let exportSignal = null;
+
+const exportSelection = () => new Set([...document.querySelectorAll('#export-list input:checked')].map(input => input.value));
+
+function exportFrames() {
+  return { filter: Math.round(state.space.render.lengthMilliseconds / 1000 * state.space.render.sampleRateHz), names: listeners(state.space).map(l => l.name) };
+}
+
+function exportSizes(selected) {
+  const { filter, names } = exportFrames();
+  const sizes = {
+    space: JSON.stringify(withReliability(state.space)).length,
+    stereo: wavByteLength(filter, 2),
+    microphones: names.length * wavByteLength(filter, 1),
+    filtered: exportSignal ? wavByteLength(exportSignal.samples.length + filter, 2) : 0
+  };
+  const count = [...selected].reduce((sum, item) => sum + (item === 'microphones' ? names.length : 1), 0);
+  return { sizes, count, bytes: [...selected].reduce((sum, item) => sum + sizes[item], 0) };
+}
+
+function updateExportSummary() {
+  const selected = exportSelection();
+  const { sizes, count, bytes } = exportSizes(selected);
+  for (const item of Object.keys(EXPORT_LABELS)) $(`export-size-${item}`).textContent = formatBytes(sizes[item]);
+  $('export-summary').textContent = selected.size ? `${count} file${count === 1 ? '' : 's'} · ≈ ${formatBytes(bytes)}${count > 1 ? ' · ZIP' : ''}` : '';
+  $('export-contract').textContent = `${state.space.render.sampleRateHz / 1000} kHz · 32-bit float · ${state.space.render.lengthMilliseconds} ms filter`;
+  $('export-submit').disabled = selected.size === 0 || !listeners(state.space).length && [...selected].some(item => item !== 'space');
+}
+
+$('export').addEventListener('click', async () => {
+  exportSignal = await signalSamples(state.space.render.sampleRateHz);
+  const stored = readStored(EXPORT_STORAGE_KEY) ?? {};
+  const chosen = new Set(stored.items ?? ['space', 'stereo']);
+  $('export-list').replaceChildren(...Object.entries(EXPORT_LABELS).map(([item, label]) => {
+    const row = element('label');
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox', value: item, checked: chosen.has(item) });
+    box.addEventListener('change', updateExportSummary);
+    const text = element('span');
+    text.append(element('strong', '', item === 'filtered' ? `${label}: ${$('signal').selectedOptions[0].textContent}` : label));
+    const size = element('small');
+    size.id = `export-size-${item}`;
+    row.append(box, text, size);
+    return row;
+  }));
+  $('export-name').value = stored.name ?? 'neartect';
+  $('export-peak').value = stored.peak === 'normalised' ? 'normalised' : 'computed';
   $('export-error').hidden = true;
+  updateExportSummary();
   exportDialog.showModal();
   exportDialog.focus();
 });
-$('export-filter').addEventListener('click', async () => {
-  if (!listeners(state.space).length) return;
-  const result = await timedFilter(clone(state.space), 'Filter export');
-  const channels = $('export-mix').checked ? stereo(result.channels, result.pans) : result.channels;
-  if ($('export-normalise').checked) {
-    const peak = Math.max(1e-9, ...channels.map(c => c.reduce((m, x) => Math.max(m, Math.abs(x)), 0)));
-    channels.forEach(c => c.forEach((x, i) => { c[i] = x / peak; }));
-  }
-  download('neartect-ir.wav', new Blob([encodeFloat32Wav(channels, result.sampleRateHz)], { type: 'audio/wav' }));
+
+$('export-all').addEventListener('click', () => {
+  document.querySelectorAll('#export-list input').forEach(input => { input.checked = true; });
+  updateExportSummary();
 });
-$('export-processed').addEventListener('click', async () => {
-  if (!listeners(state.space).length) return;
+
+function normalised(channels) {
+  const peak = Math.max(1e-9, ...channels.map(c => c.reduce((m, x) => Math.max(m, Math.abs(x)), 0)));
+  return channels.map(c => c.map(x => x / peak));
+}
+
+async function filteredSignal(filter, { samples, sampleRate }) {
+  const frames = samples.length + filter.channels[0].length - 1;
+  const offline = new OfflineAudioContext(filter.channels.length, frames, sampleRate);
+  const input = offline.createBuffer(1, samples.length, sampleRate);
+  input.copyToChannel(samples, 0);
+  const source = offline.createBufferSource();
+  source.buffer = input;
+  const merger = offline.createChannelMerger(filter.channels.length);
+  filter.channels.forEach((channel, index) => {
+    const response = offline.createBuffer(1, channel.length, sampleRate);
+    response.copyToChannel(channel, 0);
+    const convolver = offline.createConvolver();
+    convolver.normalize = false;
+    convolver.buffer = response;
+    source.connect(convolver).connect(merger, 0, index);
+  });
+  offline.destination.channelInterpretation = 'discrete';
+  merger.connect(offline.destination);
+  source.start();
+  const rendered = await offline.startRendering();
+  return stereo(filter.channels.map((_, index) => rendered.getChannelData(index).slice()), filter.pans);
+}
+
+$('export-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (event.submitter?.value === 'cancel') { exportDialog.close(); return; }
+  const name = $('export-name').value.trim();
+  if (!name) { $('export-name').reportValidity(); return; }
+  const selected = exportSelection();
+  if (!selected.size) return;
+  const peak = $('export-peak').value;
+  writeStored(EXPORT_STORAGE_KEY, { items: [...selected], name, peak });
+  const stem = fileStem(name);
+  $('export-submit').disabled = true;
+  $('export-error').hidden = true;
   try {
-    const { samples, sampleRate } = await signalSamples(state.space.render.sampleRateHz);
-    const space = clone(state.space);
-    space.render.sampleRateHz = sampleRate;
-    const filter = await timedFilter(space, 'Sound export');
-    const frames = samples.length + filter.channels[0].length - 1;
-    const offline = new OfflineAudioContext(filter.channels.length, frames, sampleRate);
-    const input = offline.createBuffer(1, samples.length, sampleRate);
-    input.copyToChannel(samples, 0);
-    const source = offline.createBufferSource();
-    source.buffer = input;
-    const merger = offline.createChannelMerger(filter.channels.length);
-    filter.channels.forEach((channel, index) => {
-      const response = offline.createBuffer(1, channel.length, sampleRate);
-      response.copyToChannel(channel, 0);
-      const convolver = offline.createConvolver();
-      convolver.normalize = false;
-      convolver.buffer = response;
-      source.connect(convolver).connect(merger, 0, index);
-    });
-    offline.destination.channelInterpretation = 'discrete';
-    merger.connect(offline.destination);
-    source.start();
-    const rendered = await offline.startRendering();
-    const raw = filter.channels.map((_, index) => rendered.getChannelData(index).slice());
-    const out = $('export-mix').checked ? stereo(raw, filter.pans) : raw;
-    download('neartect-filtered.wav', new Blob([encodeFloat32Wav(out, sampleRate)], { type: 'audio/wav' }));
+    const files = [];
+    const manifest = [];
+    const wav = (suffix, channels, sampleRate, description) => {
+      const file = `${stem}${suffix}.wav`;
+      files.push({ name: file, data: new Uint8Array(encodeFloat32Wav(channels, sampleRate)) });
+      manifest.push({ file, channels: channels.length, description });
+    };
+    const needsFilter = ['stereo', 'microphones'].some(item => selected.has(item));
+    const filter = needsFilter ? await timedFilter(clone(state.space), 'Export') : null;
+    const shaped = channels => (peak === 'normalised' ? normalised(channels) : channels);
+    if (selected.has('stereo')) wav('-ir-stereo', shaped(stereo(filter.channels, filter.pans)), filter.sampleRateHz, 'IR, stereo as heard in the preview');
+    if (selected.has('microphones')) {
+      const channels = shaped(filter.channels);
+      filter.names.forEach((label, index) => wav(`-ir-${fileStem(label)}`, [channels[index]], filter.sampleRateHz, `IR, ${label}`));
+    }
+    if (selected.has('filtered')) {
+      const space = clone(state.space);
+      space.render.sampleRateHz = exportSignal.sampleRate;
+      const signalFilter = filter && filter.sampleRateHz === exportSignal.sampleRate ? filter : await timedFilter(space, 'Export');
+      wav('-filtered', await filteredSignal(signalFilter, exportSignal), exportSignal.sampleRate, `${$('signal').selectedOptions[0].textContent} through the filter, stereo`);
+    }
+    if (selected.has('space')) {
+      const document = { ...withReliability(state.space), export: { files: manifest, sampleFormat: 'ieee-float32', irPeak: peak, exportedAt: new Date().toISOString() } };
+      files.unshift({ name: `${stem}.json`, data: new TextEncoder().encode(`${JSON.stringify(document, null, 2)}\n`) });
+    }
+    if (files.length === 1) download(files[0].name, new Blob([files[0].data], { type: files[0].name.endsWith('.json') ? 'application/json' : 'audio/wav' }));
+    else download(`${stem}.zip`, new Blob([zipStore(files)], { type: 'application/zip' }));
+    exportDialog.close();
   } catch (error) {
     $('export-error').textContent = error.message;
     $('export-error').hidden = false;
+  } finally {
+    updateExportSummary();
   }
 });
 

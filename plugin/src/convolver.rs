@@ -27,13 +27,20 @@ impl Filter {
             let end = ((p + 1) * BLOCK).min(side.len());
             frame[..end - start].copy_from_slice(&side[start..end]);
             let mut bins = forward.make_output_vec();
-            forward.process(&mut frame, &mut bins).expect("sizes match the plan");
+            forward
+                .process(&mut frame, &mut bins)
+                .expect("sizes match the plan");
             let scale = 1.0 / SIZE as f32;
             bins.iter_mut().for_each(|b| *b *= scale);
             bins
         };
-        let partitions = (0..count).map(|p| [spectrum(left, p), spectrum(right, p)]).collect();
-        Filter { sample_rate, partitions }
+        let partitions = (0..count)
+            .map(|p| [spectrum(left, p), spectrum(right, p)])
+            .collect();
+        Filter {
+            sample_rate,
+            partitions,
+        }
     }
 
     pub fn partitions(&self) -> usize {
@@ -65,6 +72,7 @@ pub struct Convolver {
     next: Option<Box<Filter>>,
     queued: Option<Box<Filter>>,
     fade: usize,
+    #[allow(clippy::vec_box)]
     retired: Vec<Box<Filter>>,
 }
 
@@ -142,9 +150,17 @@ impl Convolver {
 
     fn run_block(&mut self) {
         let silent = self.input.iter().all(|&x| x == 0.0);
-        self.quiet_blocks = if silent { self.quiet_blocks.saturating_add(1) } else { 0 };
+        self.quiet_blocks = if silent {
+            self.quiet_blocks.saturating_add(1)
+        } else {
+            0
+        };
         self.head = (self.head + 1) % self.history.len();
-        let longest = self.current.as_ref().map_or(0, |f| f.partitions()).max(self.next.as_ref().map_or(0, |f| f.partitions()));
+        let longest = self
+            .current
+            .as_ref()
+            .map_or(0, |f| f.partitions())
+            .max(self.next.as_ref().map_or(0, |f| f.partitions()));
         if self.quiet_blocks > longest {
             self.history[self.head].fill(Complex32::new(0.0, 0.0));
             self.frame.fill(0.0);
@@ -156,7 +172,13 @@ impl Convolver {
         self.frame[BLOCK..].copy_from_slice(&self.input);
         self.work.copy_from_slice(&self.frame);
         let head = self.head;
-        self.forward.process_with_scratch(&mut self.work, &mut self.history[head], &mut self.forward_scratch).expect("sizes match the plan");
+        self.forward
+            .process_with_scratch(
+                &mut self.work,
+                &mut self.history[head],
+                &mut self.forward_scratch,
+            )
+            .expect("sizes match the plan");
 
         if let Some(filter) = self.current.take() {
             let mut output = std::mem::take(&mut self.output);
@@ -212,7 +234,9 @@ impl Convolver {
             }
             sum[0].im = 0.0;
             sum[BINS - 1].im = 0.0;
-            self.inverse.process_with_scratch(sum, &mut self.time, &mut self.inverse_scratch).expect("sizes match the plan");
+            self.inverse
+                .process_with_scratch(sum, &mut self.time, &mut self.inverse_scratch)
+                .expect("sizes match the plan");
             output[ear].copy_from_slice(&self.time[BLOCK..]);
         }
     }

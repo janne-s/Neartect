@@ -1,3 +1,4 @@
+use base64::Engine;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use include_dir::{include_dir, Dir};
 use nih_plug::prelude::*;
@@ -6,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
 use std::io::Write;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
 pub mod convolver;
@@ -21,6 +22,7 @@ const WINDOW_SIZE: (u32, u32) = (1200, 760);
 const SMALLEST_WINDOW: (u32, u32) = (640, 420);
 const FILTER_QUEUE: usize = 4;
 const LOG_FILE: &str = "neartect-plugin.log";
+const BYPASS_SECONDS: f32 = 0.01;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 struct StoredFilter {
@@ -39,10 +41,15 @@ struct NeartectParams {
     mix: FloatParam,
     #[id = "output"]
     output: FloatParam,
+    #[id = "bypass"]
+    bypass: BoolParam,
+    bypass_changed: Arc<AtomicBool>,
 }
 
 impl Default for NeartectParams {
     fn default() -> Self {
+        let bypass_changed = Arc::new(AtomicBool::new(false));
+        let flag = bypass_changed.clone();
         Self {
             space: Arc::new(RwLock::new(String::new())),
             filter: Arc::new(RwLock::new(StoredFilter::default())),
@@ -51,11 +58,23 @@ impl Default for NeartectParams {
                 .with_unit(" %")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
-            output: FloatParam::new("Output", util::db_to_gain(0.0), FloatRange::Skewed { min: util::db_to_gain(-36.0), max: util::db_to_gain(12.0), factor: FloatRange::gain_skew_factor(-36.0, 12.0) })
-                .with_smoother(SmoothingStyle::Logarithmic(30.0))
-                .with_unit(" dB")
-                .with_value_to_string(formatters::v2s_f32_gain_to_db(1))
-                .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            output: FloatParam::new(
+                "Output",
+                util::db_to_gain(0.0),
+                FloatRange::Skewed {
+                    min: util::db_to_gain(-36.0),
+                    max: util::db_to_gain(12.0),
+                    factor: FloatRange::gain_skew_factor(-36.0, 12.0),
+                },
+            )
+            .with_smoother(SmoothingStyle::Logarithmic(30.0))
+            .with_unit(" dB")
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(1))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            bypass: BoolParam::new("Bypass", false)
+                .make_bypass()
+                .with_callback(Arc::new(move |_| flag.store(true, Ordering::Relaxed))),
+            bypass_changed,
         }
     }
 }
@@ -66,6 +85,7 @@ struct Neartect {
     dry: [Vec<f32>; 2],
     dry_at: usize,
     inputs: usize,
+    heard: f32,
     sample_rate: Arc<AtomicU32>,
     filters_in: Receiver<Box<Filter>>,
     filters_out: Sender<Box<Filter>>,
@@ -83,6 +103,7 @@ impl Default for Neartect {
             dry: [vec![0.0; BLOCK], vec![0.0; BLOCK]],
             dry_at: 0,
             inputs: 2,
+            heard: 1.0,
             sample_rate: Arc::new(AtomicU32::new(48000.0f32.to_bits())),
             filters_in,
             filters_out,
@@ -96,15 +117,38 @@ impl Default for Neartect {
 #[serde(tag = "type", rename_all = "camelCase")]
 enum Message {
     Ready,
-    Space { json: String },
+    Space {
+        json: String,
+    },
     #[serde(rename_all = "camelCase")]
-    Filter { sample_rate_hz: f32, left: Vec<f32>, right: Vec<f32> },
-    Resize { width: u32, height: u32 },
-    Log { text: String },
+    Filter {
+        sample_rate_hz: f32,
+        left: Vec<f32>,
+        right: Vec<f32>,
+    },
+    Resize {
+        width: u32,
+        height: u32,
+    },
+    Log {
+        text: String,
+    },
+    Bypass {
+        on: bool,
+    },
+    Open,
+    Save {
+        name: String,
+        base64: String,
+    },
 }
 
 fn log(text: &str) {
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join(LOG_FILE)) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::env::temp_dir().join(LOG_FILE))
+    {
         let _ = writeln!(file, "{text}");
     }
 }
@@ -151,8 +195,16 @@ impl Plugin for Neartect {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
-        AudioIOLayout { main_input_channels: NonZeroU32::new(2), main_output_channels: NonZeroU32::new(2), ..AudioIOLayout::const_default() },
-        AudioIOLayout { main_input_channels: NonZeroU32::new(1), main_output_channels: NonZeroU32::new(2), ..AudioIOLayout::const_default() },
+        AudioIOLayout {
+            main_input_channels: NonZeroU32::new(2),
+            main_output_channels: NonZeroU32::new(2),
+            ..AudioIOLayout::const_default()
+        },
+        AudioIOLayout {
+            main_input_channels: NonZeroU32::new(1),
+            main_output_channels: NonZeroU32::new(2),
+            ..AudioIOLayout::const_default()
+        },
     ];
 
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
@@ -164,15 +216,26 @@ impl Plugin for Neartect {
         self.params.clone()
     }
 
-    fn initialize(&mut self, layout: &AudioIOLayout, buffer_config: &BufferConfig, context: &mut impl InitContext<Self>) -> bool {
+    fn initialize(
+        &mut self,
+        layout: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        context: &mut impl InitContext<Self>,
+    ) -> bool {
         let rate = buffer_config.sample_rate;
         self.inputs = layout.main_input_channels.map_or(2, |n| n.get() as usize);
         self.sample_rate.store(rate.to_bits(), Ordering::Relaxed);
         self.convolver = Convolver::new(rate);
         self.dry = [vec![0.0; BLOCK], vec![0.0; BLOCK]];
-        let stored = self.params.filter.read().map(|f| f.clone()).unwrap_or_default();
+        let stored = self
+            .params
+            .filter
+            .read()
+            .map(|f| f.clone())
+            .unwrap_or_default();
         if stored.sample_rate == rate && !stored.left.is_empty() {
-            self.convolver.set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
+            self.convolver
+                .set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
         }
         context.set_latency_samples(BLOCK as u32);
         true
@@ -181,7 +244,12 @@ impl Plugin for Neartect {
     fn reset(&mut self) {
         let rate = f32::from_bits(self.sample_rate.load(Ordering::Relaxed));
         let mut fresh = Convolver::new(rate);
-        let stored = self.params.filter.read().map(|f| f.clone()).unwrap_or_default();
+        let stored = self
+            .params
+            .filter
+            .read()
+            .map(|f| f.clone())
+            .unwrap_or_default();
         if stored.sample_rate == rate && !stored.left.is_empty() {
             fresh.set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
         }
@@ -190,7 +258,12 @@ impl Plugin for Neartect {
         self.dry_at = 0;
     }
 
-    fn process(&mut self, buffer: &mut Buffer, _aux: &mut AuxiliaryBuffers, _context: &mut impl ProcessContext<Self>) -> ProcessStatus {
+    fn process(
+        &mut self,
+        buffer: &mut Buffer,
+        _aux: &mut AuxiliaryBuffers,
+        _context: &mut impl ProcessContext<Self>,
+    ) -> ProcessStatus {
         while let Ok(filter) = self.filters_in.try_recv() {
             self.convolver.offer(filter);
         }
@@ -200,11 +273,19 @@ impl Plugin for Neartect {
             }
         }
         let stereo_input = self.inputs > 1;
+        let rate = f32::from_bits(self.sample_rate.load(Ordering::Relaxed));
+        let step = 1.0 / (BYPASS_SECONDS * rate);
+        let target = if self.params.bypass.value() { 0.0 } else { 1.0 };
         for mut frame in buffer.iter_samples() {
-            let mix = self.params.mix.smoothed.next();
+            self.heard += (target - self.heard).clamp(-step, step);
+            let mix = self.params.mix.smoothed.next() * self.heard;
             let gain = self.params.output.smoothed.next();
             let left = *frame.get_mut(0).expect("a main channel");
-            let right = if stereo_input { *frame.get_mut(1).expect("a second channel") } else { left };
+            let right = if stereo_input {
+                *frame.get_mut(1).expect("a second channel")
+            } else {
+                left
+            };
             let wet = self.convolver.process(0.5 * (left + right));
             let slot = self.dry_at;
             self.dry_at = (self.dry_at + 1) % BLOCK;
@@ -234,14 +315,17 @@ impl Plugin for Neartect {
                 })
             })
             .with_keyboard_handler(|event| event.key == Key::Escape)
-            .with_event_loop(move |window, _setter, base| {
+            .with_event_loop(move |window, setter, base| {
                 while retired_in.try_recv().is_ok() {}
+                if params.bypass_changed.swap(false, Ordering::Relaxed) {
+                    window.send_json(json!({ "type": "bypass", "on": params.bypass.value() }));
+                }
                 while let Ok(value) = window.next_event() {
                     match serde_json::from_value::<Message>(value) {
                         Ok(Message::Ready) => {
                             let space = params.space.read().map(|s| s.clone()).unwrap_or_default();
                             let rate = f32::from_bits(sample_rate.load(Ordering::Relaxed));
-                            window.send_json(json!({ "type": "init", "sampleRateHz": rate, "space": if space.is_empty() { None } else { Some(space) } }));
+                            window.send_json(json!({ "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(), "space": if space.is_empty() { None } else { Some(space) } }));
                         }
                         Ok(Message::Space { json }) => {
                             if let Ok(mut space) = params.space.write() {
@@ -260,6 +344,30 @@ impl Plugin for Neartect {
                         }
                         Ok(Message::Resize { width, height }) => window.resize(base, width.max(SMALLEST_WINDOW.0), height.max(SMALLEST_WINDOW.1)),
                         Ok(Message::Log { text }) => log(&text),
+                        Ok(Message::Bypass { on }) => {
+                            setter.begin_set_parameter(&params.bypass);
+                            setter.set_parameter(&params.bypass, on);
+                            setter.end_set_parameter(&params.bypass);
+                            params.bypass_changed.store(false, Ordering::Relaxed);
+                        }
+                        Ok(Message::Open) => {
+                            if let Some(path) = rfd::FileDialog::new().add_filter("Neartect space", &["json"]).pick_file() {
+                                match std::fs::read_to_string(&path) {
+                                    Ok(text) => window.send_json(json!({ "type": "opened", "text": text })),
+                                    Err(error) => log(&format!("open {}: {error}", path.display())),
+                                }
+                            }
+                        }
+                        Ok(Message::Save { name, base64 }) => match base64::engine::general_purpose::STANDARD.decode(base64) {
+                            Ok(bytes) => {
+                                if let Some(path) = rfd::FileDialog::new().set_file_name(&name).save_file() {
+                                    if let Err(error) = std::fs::write(&path, bytes) {
+                                        log(&format!("save {}: {error}", path.display()));
+                                    }
+                                }
+                            }
+                            Err(error) => log(&format!("save {name}: {error}")),
+                        },
                         Err(error) => log(&format!("unreadable message: {error}")),
                     }
                 }
@@ -273,12 +381,17 @@ impl ClapPlugin for Neartect {
     const CLAP_DESCRIPTION: Option<&'static str> = Some("The near space around a microphone");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
-    const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::AudioEffect, ClapFeature::Stereo, ClapFeature::Reverb];
+    const CLAP_FEATURES: &'static [ClapFeature] = &[
+        ClapFeature::AudioEffect,
+        ClapFeature::Stereo,
+        ClapFeature::Reverb,
+    ];
 }
 
 impl Vst3Plugin for Neartect {
     const VST3_CLASS_ID: [u8; 16] = *b"NeartectNearSpce";
-    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[Vst3SubCategory::Fx, Vst3SubCategory::Reverb];
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
+        &[Vst3SubCategory::Fx, Vst3SubCategory::Reverb];
 }
 
 nih_export_clap!(Neartect);
