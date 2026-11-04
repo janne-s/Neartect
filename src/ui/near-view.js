@@ -48,6 +48,7 @@ const MOST_RELIEF_CELLS_ALONG = 240;
 const MOST_PROFILE_POINTS = 400;
 const BEND_STRIPS = 24;
 const BEND_RINGS = 4;
+const MUTED_ALPHA = 0.35;
 const BEND_PIECES = 16;
 
 const withAlpha = (color, alpha) => {
@@ -605,7 +606,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       if (!p) continue;
       const active = isSelected(item);
       const color = item.type === 'source' ? sourceColor : colors.mics[item.index % colors.mics.length] || colors.receiver;
-      context.globalAlpha = focusing() && !active ? 0.5 : 1;
+      context.globalAlpha = (focusing() && !active ? 0.5 : 1) * (item.point.on === false ? MUTED_ALPHA : 1);
       context.fillStyle = color;
       context.strokeStyle = color;
       if (item.type === 'rig') {

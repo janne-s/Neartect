@@ -255,3 +255,14 @@ test('the filter changes smoothly through a pipe mouth', async () => {
   const [outside, inside] = [await octaves(1.001), await octaves(0.999)];
   outside.forEach((level, band) => assert.ok(Math.abs(level - inside[band]) < 0.5, `octave ${band}: ${level} vs ${inside[band]}`));
 });
+
+test('a microphone or layout switched off is left out of the filter, and the reader keeps both on by default', () => {
+  const space = readSpace({
+    kind: 'neartect.space',
+    microphones: [{ name: 'A', position: [0, 0, 1] }, { name: 'B', position: [1, 0, 1], on: false }, { name: 'C', position: [2, 0, 1], on: 'yes' }],
+    rigs: [{ kind: 'xy', position: [0, 1, 1], on: false }]
+  });
+  assert.deepEqual(space.microphones.map(m => m.on), [true, false, true]);
+  assert.equal(space.rigs[0].on, false);
+  assert.deepEqual(listeners(space).map(l => l.name), ['A', 'C']);
+});

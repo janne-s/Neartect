@@ -30,9 +30,12 @@ const vector = (name, v) => ({ [`${name}X`]: v[0], [`${name}Y`]: v[1], [`${name}
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
+export const hearing = list => list.filter(point => point.on !== false);
+
 export function listeners(space) {
-  const count = space.microphones.length;
-  const free = space.microphones.map((m, index) => {
+  const microphones = hearing(space.microphones);
+  const count = microphones.length;
+  const free = microphones.map((m, index) => {
     const angle = count === 1 ? Math.PI / 4 : index / (count - 1) * Math.PI / 2;
     return {
       name: m.name,
@@ -42,7 +45,7 @@ export function listeners(space) {
       pan: count === 1 ? [1, 1] : [Math.cos(angle), Math.sin(angle)]
     };
   });
-  const rigged = (space.rigs ?? []).flatMap(rig => rigMembers(space, rig).map(member => ({ ...member, name: `${rig.name} ${member.name}` })));
+  const rigged = hearing(space.rigs ?? []).flatMap(rig => rigMembers(space, rig).map(member => ({ ...member, name: `${rig.name} ${member.name}` })));
   return [...free, ...rigged];
 }
 

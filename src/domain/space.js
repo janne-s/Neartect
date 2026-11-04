@@ -119,7 +119,8 @@ function readMicrophone(value, index) {
     name: typeof m.name === 'string' && m.name.trim() ? m.name.trim().slice(0, 60) : `Mic ${index + 1}`,
     ...readPoint(m, [0, 0, 1]),
     pattern: Object.hasOwn(PATTERNS, m.pattern) ? m.pattern : 'omni',
-    aim: readAim(m.aim)
+    aim: readAim(m.aim),
+    on: typeof m.on === 'boolean' ? m.on : true
   };
 }
 
@@ -146,7 +147,8 @@ function readRig(value) {
     aim: readAim(r.aim),
     spacingMetres: number(r.spacingMetres, RIG_SPACING_METRES, defaults.spacingMetres),
     angleDegrees: number(r.angleDegrees, RIG_ANGLE_DEGREES, defaults.angleDegrees ?? 0),
-    ...(kind === 'binaural' ? { head: choice(r.head, Object.keys(HEADS), 'measured') } : {})
+    ...(kind === 'binaural' ? { head: choice(r.head, Object.keys(HEADS), 'measured') } : {}),
+    on: typeof r.on === 'boolean' ? r.on : true
   };
 }
 

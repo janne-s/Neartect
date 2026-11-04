@@ -14,7 +14,7 @@ import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
-import { computeFilter, jobBytes, listeners } from './domain/near-filter.js';
+import { computeFilter, hearing, jobBytes, listeners } from './domain/near-filter.js';
 import { createRenderMarker, renderLoadText } from './shared/ui/render-marker.js';
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
@@ -136,7 +136,7 @@ async function refreshFilter() {
   if (!listeners(space).length) {
     state.filter = null;
     preview.silence();
-    setStatus('No microphone: add one from Layouts');
+    setStatus(space.microphones.length || space.rigs.length ? 'All microphones are off' : 'No microphone: add one from Layouts');
     drawPlots();
     busy = false;
     return;
@@ -170,15 +170,11 @@ function setStatus(text, error = false) {
   status.classList.toggle('error', error);
 }
 
-function shownMicrophone() {
-  const index = state.space.microphones.findIndex(m => state.selection?.type === 'microphone' && m.id === state.selection.id);
-  return Math.max(0, index);
-}
-
 function shownChannel() {
-  if (state.selection?.type !== 'rig') return shownMicrophone();
-  let channel = state.space.microphones.length;
-  for (const rig of state.space.rigs) {
+  const microphones = hearing(state.space.microphones);
+  if (state.selection?.type !== 'rig') return Math.max(0, microphones.findIndex(m => state.selection?.type === 'microphone' && m.id === state.selection.id));
+  let channel = microphones.length;
+  for (const rig of hearing(state.space.rigs)) {
     if (rig.id === state.selection.id) return channel;
     channel += rigMembers(state.space, rig).length;
   }
@@ -603,6 +599,19 @@ function sourceDistanceRow(macros, current) {
   sync();
 }
 
+function hearingBox(point) {
+  const box = element('input');
+  box.type = 'checkbox';
+  box.checked = point.on;
+  box.title = 'On';
+  box.addEventListener('click', event => event.stopPropagation());
+  box.addEventListener('change', () => {
+    point.on = box.checked;
+    changed({ panel: true });
+  });
+  return box;
+}
+
 function microphoneCard(container, microphone, index) {
   const selected = state.selection?.type === 'microphone' && state.selection.id === microphone.id;
   const card = element('div', 'card');
@@ -610,7 +619,7 @@ function microphoneCard(container, microphone, index) {
   const dot = element('span', 'mic-dot');
   dot.style.background = `var(--mic-${index % MOST_MICROPHONES + 1})`;
   cardHeader(card, {
-    lead: [dot], name: microphone.name, kind: PATTERN_LABELS[microphone.pattern], selected,
+    lead: [hearingBox(microphone), dot], name: microphone.name, kind: PATTERN_LABELS[microphone.pattern], selected,
     onToggle: () => select(selected ? null : { type: 'microphone', id: microphone.id }),
     onRemove: () => removeMicrophone(microphone.id), removeLabel: `Remove ${microphone.name}`
   });
@@ -676,7 +685,7 @@ function rigCard(container, rig, index) {
   const card = element('div', 'card');
   card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(`rig:${rig.id}`))));
   cardHeader(card, {
-    lead: [rigBadge(rig.kind, index)], name: rig.name, kind: rigMembers(state.space, rig).map(m => m.name).join(' '), selected,
+    lead: [hearingBox(rig), rigBadge(rig.kind, index)], name: rig.name, kind: rigMembers(state.space, rig).map(m => m.name).join(' '), selected,
     onToggle: () => select(selected ? null : { type: 'rig', id: rig.id }),
     onRemove: () => removeRig(rig.id), removeLabel: `Remove ${rig.name}`
   });
