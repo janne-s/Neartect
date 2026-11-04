@@ -14,14 +14,11 @@ See it live: [**https://janne-s.github.io/Neartect/**](https://janne-s.github.io
 ## How it works
 
 Sound arrives as a plane wave from a chosen direction or from a point source.
-Each surface scatters it as a sum of small surface elements in the Kirchhoff
-approximation, so a surface's size, its free edges, and the shadow behind it
-come from the same sum. Where two surfaces meet at a right angle in a corner
-the microphone can see, the edge is continued, so the corner keeps its exact
-image solution. Higher orders are specular images with a finite-size
-high-pass; a surface with relief keeps its lobes in the second order through a
-flat surface. The filter is computed by a Rust core compiled to WebAssembly
-and heard live through a crossfading convolver.
+Build the space from objects, put microphones where they should be, and
+listen to a test signal or your own sound through them while you move, bend,
+and resize things; the sound follows every change. When it sounds right,
+export the space's impulse response for a convolution plugin, or the
+processed sound itself.
 
 ## Objects
 
