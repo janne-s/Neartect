@@ -837,11 +837,20 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     context.fillStyle = colors.muted;
     context.font = '11px system-ui, sans-serif';
     if (reference) {
-      const { front } = pointFrame(reference, point);
       const gap = point.offset[1];
       context.setLineDash([3, 3]);
       context.strokeStyle = colors.muted;
-      line(context, point.position, sub(point.position, scale(front, gap)));
+      if (reference.bend?.angleDegrees) {
+        const pieces = Array.from({ length: BEND_PIECES + 1 }, (_, k) => project(pointPosition(space, { ...point, offset: [point.offset[0], gap * (1 - k / BEND_PIECES), point.offset[2]] })));
+        if (pieces.every(Boolean)) {
+          context.beginPath();
+          pieces.forEach(([x, y], k) => (k ? context.lineTo(x, y) : context.moveTo(x, y)));
+          context.stroke();
+        }
+      } else {
+        const { front } = pointFrame(reference, point);
+        line(context, point.position, sub(point.position, scale(front, gap)));
+      }
       context.setLineDash([]);
       context.fillText(`⟂ ${formatGap(gap)}`, p[0] + 9, p[1] + 14);
     } else {
