@@ -1176,3 +1176,58 @@ fn a_rough_wide_pipe_damps_its_cross_modes() {
     let (smooth, rough) = (level(0.0), level(0.005));
     assert!(rough < 0.9 * smooth, "smooth {smooth} rough {rough}");
 }
+
+#[test]
+fn a_screen_before_a_wall_follows_image_theory() {
+    let length = 4096;
+    let h = 0.3;
+    let arrival = normalize([0.5, 0.0, 0.866]);
+    let image_arrival = [arrival[0], arrival[1], -arrival[2]];
+    let screen = |z: f64| surface(rectangle([0.4, 0.0, z], [0.6, 0.0, 0.0], [0.0, 0.6, 0.0]), RIGID);
+    let microphone = [0.0, 0.0, h];
+    let modelled = near_spectrum(&scene(vec![floor(8.0), screen(1.0)], microphone, arrival, length, 1));
+    let direct = near_spectrum(&scene(vec![screen(1.0)], microphone, arrival, length, 1));
+    let image = near_spectrum(&scene(vec![screen(-1.0)], microphone, image_arrival, length, 1));
+    let n = spectrum_size(length);
+    let lag = 2.0 * h * arrival[2] / C;
+    let reference: Vec<Complex64> = (0..modelled.len()).map(|k| direct[k] + image[k] * Complex64::from_polar(1.0, -std::f64::consts::TAU * k as f64 * FS / n as f64 * lag)).collect();
+    for (lo, hi) in [(125.0, 250.0), (250.0, 500.0), (500.0, 1000.0), (1000.0, 2000.0), (2000.0, 4000.0)] {
+        let ours = 20.0 * mean_magnitude(&modelled, length, lo, hi).log10();
+        let theirs = 20.0 * mean_magnitude(&reference, length, lo, hi).log10();
+        assert!((ours - theirs).abs() < 0.5, "{lo}-{hi} Hz: {ours:.2} dB vs {theirs:.2} dB");
+    }
+}
+
+
+#[test]
+fn a_wall_behind_a_screen_keeps_its_material() {
+    let length = 4096;
+    let arrival = normalize([0.5, 0.0, 0.866]);
+    let screen = surface(rectangle([0.4, 0.0, 1.0], [0.6, 0.0, 0.0], [0.0, 0.6, 0.0]), RIGID);
+    let soft = surface(rectangle([0.0, 0.0, 0.0], [8.0, 0.0, 0.0], [0.0, 8.0, 0.0]), [0.1; 8]);
+    let level = |ground: Surface| 20.0 * mean_magnitude(&near_spectrum(&scene(vec![ground, screen.clone()], [0.0, 0.0, 0.3], arrival, length, 2)), length, 125.0, 250.0).log10();
+    let (rigid, absorbing) = (level(floor(8.0)), level(soft));
+    assert!(rigid - absorbing > 1.0, "rigid {rigid:.2} dB, absorbing {absorbing:.2} dB");
+}
+
+
+#[test]
+fn a_microphone_between_two_plates_follows_image_theory() {
+    let length = 4096;
+    let arrival = normalize([0.0, 0.5, 0.866]);
+    let image_arrival = [arrival[0], arrival[1], -arrival[2]];
+    let top = |z: f64| surface(rectangle([0.0, 1.0, z], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]), RIGID);
+    let bottom = surface(rectangle([0.0, 0.0, -0.6], [3.0, 0.0, 0.0], [0.0, 3.0, 0.0]), RIGID);
+    let microphone = [0.0, 0.0, -0.3];
+    let modelled = near_spectrum(&scene(vec![bottom.clone(), top(0.0)], microphone, arrival, length, 1));
+    let direct = near_spectrum(&scene(vec![top(0.0)], microphone, arrival, length, 1));
+    let image = near_spectrum(&scene(vec![top(-1.2)], microphone, image_arrival, length, 1));
+    let n = spectrum_size(length);
+    let lag = 2.0 * 0.3 * arrival[2] / C;
+    let reference: Vec<Complex64> = (0..modelled.len()).map(|k| direct[k] + image[k] * Complex64::from_polar(1.0, -std::f64::consts::TAU * k as f64 * FS / n as f64 * lag)).collect();
+    for (lo, hi) in [(125.0, 250.0), (250.0, 500.0), (500.0, 1000.0), (1000.0, 2000.0), (2000.0, 4000.0)] {
+        let db = |x: &[Complex64]| 20.0 * mean_magnitude(x, length, lo, hi).log10();
+        let (ours, theirs) = (db(&modelled), db(&reference));
+        assert!((ours - theirs).abs() < 1.0, "{lo}-{hi} Hz: {ours:.2} dB vs {theirs:.2} dB");
+    }
+}

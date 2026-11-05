@@ -122,13 +122,15 @@ B/C marks a part that combines the two.
 | Rough pipe wall | larger wall losses, Eckart loss of the cross modes | C |
 | Bent pipe | Cummings' equivalent rectangular bend; cross modes as straight | B/C |
 | Pipe mouth | cross-mode coupling, blend between outside and inside | C |
+| Reflection behind a screen | surface lit as if the screen were not there, the screen's Kirchhoff shadow of the reflected sound | B |
 | Grating at low frequencies | blend | C |
 | Joined edges, not at right angles | continued edges | C |
 | Heads | KU100 minimum-phase with interpolated delays; Brown & Duda sphere | B |
 | Strength | creative scaling | C |
 
 Not modelled: the capsule's own size, room modes of closed small spaces,
-diffraction into the shadow beyond the Kirchhoff approximation,
+diffraction into the shadow beyond the Kirchhoff approximation, shadowed
+reflections of order two and higher,
 angle-dependent absorption, surface vibration, and paths over two bent
 surfaces.
 

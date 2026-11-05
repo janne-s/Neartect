@@ -16,6 +16,7 @@ const MOST_SUBPOINTS: usize = 16;
 const DEEPEST_LEVEL: u32 = 40;
 const JOIN_TOLERANCE_METRES: f64 = 1e-3;
 const LONGEST_EXTENSION_METRES: f64 = 5.0;
+const SHADOW_PROBES: usize = 16;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Part {
@@ -88,6 +89,7 @@ pub struct Via {
     pub surface: usize,
     pub receiver: bool,
     pub cutoff_hz: Option<f64>,
+    pub shadow: bool,
 }
 
 pub fn via_pairs(scene: &Scene) -> Vec<(usize, Via)> {
@@ -104,17 +106,81 @@ pub fn via_pairs(scene: &Scene) -> Vec<(usize, Via)> {
                 continue;
             }
             if joined_with(scene, i, j) {
-                list.push((i, Via { surface: j, receiver: false, cutoff_hz: None }));
+                list.push((i, Via { surface: j, receiver: false, cutoff_hz: None, shadow: false }));
                 continue;
             }
             for (receiver, sequence) in [(false, [i, j]), (true, [j, i])] {
                 let Some(path) = crate::images::path_through(scene, &sequence) else { continue };
                 let cutoff_hz = path.reflections.iter().find(|r| r.surface == j).map(|r| r.cutoff_hz);
-                list.push((i, Via { surface: j, receiver, cutoff_hz }));
+                list.push((i, Via { surface: j, receiver, cutoff_hz, shadow: false }));
             }
         }
     }
     list
+}
+
+fn hits(surface: &crate::scene::Surface, from: V3, direction: V3, length: f64) -> bool {
+    surface.ray_hit(from, direction, length).is_some_and(|(_, q)| surface.pattern.is_solid(q))
+}
+
+fn screens_of(scene: &Scene, index: usize) -> Vec<(usize, bool)> {
+    let wall = &scene.surfaces[index];
+    if scene.pipe.is_some() || wall.strength <= 0.0 || wall.is_bent() {
+        return Vec::new();
+    }
+    let polygon = &wall.polygon;
+    let side = polygon.signed_distance(scene.microphone);
+    if side * scene.source_side(polygon) <= 0.0 {
+        return Vec::new();
+    }
+    let (lo, hi) = polygon.bounds();
+    let probes: Vec<V3> = (0..SHADOW_PROBES * SHADOW_PROBES)
+        .map(|n| [lo[0] + ((n / SHADOW_PROBES) as f64 + 0.5) / SHADOW_PROBES as f64 * (hi[0] - lo[0]), lo[1] + ((n % SHADOW_PROBES) as f64 + 0.5) / SHADOW_PROBES as f64 * (hi[1] - lo[1])])
+        .filter(|&q| wall.is_solid(q))
+        .map(|q| polygon.to_space(q))
+        .collect();
+    let blockers = |from: V3, direction: V3, length: f64| -> Vec<usize> { scene.surfaces.iter().enumerate().filter(|&(i, s)| i != index && hits(s, from, direction, length)).map(|(i, _)| i).collect() };
+    let mut screens: Vec<(usize, bool)> = Vec::new();
+    for &x in &probes {
+        let incident = scene.incident(x);
+        let to_microphone = sub(scene.microphone, x);
+        let reach = norm(to_microphone);
+        if reach <= 1e-9 {
+            continue;
+        }
+        let source_leg = blockers(x, incident.towards_source, incident.source_distance);
+        let microphone_leg = blockers(x, scale(to_microphone, 1.0 / reach), reach);
+        let single = match (source_leg.as_slice(), microphone_leg.as_slice()) {
+            ([i], []) => Some((*i, true)),
+            ([], [i]) => Some((*i, false)),
+            _ => None,
+        };
+        if let Some((i, receiver)) = single {
+            if scene.surfaces[i].strength > 0.0 && !screens.contains(&(i, receiver)) && !touches(scene, i, index) && in_front(scene, i, index, side) {
+                screens.push((i, receiver));
+            }
+        }
+    }
+    screens
+}
+
+fn in_front(scene: &Scene, screen: usize, wall: usize, side: f64) -> bool {
+    let surface = &scene.surfaces[screen];
+    let plane = &scene.surfaces[wall].polygon;
+    let n = surface.polygon.points.len();
+    (0..n).all(|e| {
+        let (a, b) = (surface.polygon.points[e], surface.polygon.points[(e + 1) % n]);
+        [a, [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0]].iter().all(|&q| plane.signed_distance(surface.point(q)) * side.signum() > JOIN_TOLERANCE_METRES)
+    })
+}
+
+fn touches(scene: &Scene, a: usize, b: usize) -> bool {
+    let polygon = &scene.surfaces[a].polygon;
+    (0..polygon.points.len()).any(|e| has_edge(&scene.surfaces[b].polygon, polygon.edge(e))) || joined_with(scene, a, b)
+}
+
+pub fn shadow_pairs(scene: &Scene) -> Vec<(usize, Via)> {
+    (0..scene.surfaces.len()).flat_map(|j| screens_of(scene, j).into_iter().map(move |(i, receiver)| (i, Via { surface: j, receiver, cutoff_hz: None, shadow: true }))).collect()
 }
 
 fn joined_with(scene: &Scene, index: usize, other: usize) -> bool {
@@ -138,6 +204,8 @@ struct Context<'a> {
     part: Part,
     traversal: usize,
     gradients: Vec<(usize, f64, V3)>,
+    source_skip: Vec<usize>,
+    microphone_skip: Vec<usize>,
 }
 
 fn element_size(distance: f64) -> f64 {
@@ -195,7 +263,7 @@ impl Context<'_> {
 
 pub fn traversals(scene: &Scene) -> Vec<(usize, Option<Via>)> {
     let single = scene.surfaces.iter().enumerate().filter(|(_, s)| s.strength > 0.0).map(|(i, _)| (i, None));
-    single.chain(via_pairs(scene).into_iter().map(|(i, via)| (i, Some(via)))).collect()
+    single.chain(via_pairs(scene).into_iter().chain(shadow_pairs(scene)).map(|(i, via)| (i, Some(via)))).collect()
 }
 
 fn extension(scene: &Scene, bins: usize) -> f64 {
@@ -305,7 +373,11 @@ pub fn scatter_into(scene: &Scene, traversal: usize, index: usize, via: Option<V
     let reach = extension(scene, histograms.bins());
     let relief = &surface.relief;
     let relief_element = if relief.is_flat() { 0.0 } else { (relief.finest() / scene.quality.relief_detail).max(relief_floor) };
+    let screens = if via.is_none() { screens_of(scene, index) } else { Vec::new() };
+    let skip = |receiver: bool| std::iter::once(index).chain(screens.iter().filter(|s| s.1 == receiver).map(|s| s.0)).collect();
     let mut context = Context {
+        source_skip: skip(true),
+        microphone_skip: skip(false),
         scene,
         index,
         via,
@@ -432,7 +504,6 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let scene = context.scene;
     let surface = &scene.surfaces[context.index];
     let real = &surface.polygon;
-    let skip = [context.index];
     let virtual_element = !real.contains(centre);
     let relief = &surface.relief;
     let bent = surface.is_bent();
@@ -475,7 +546,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let towards_source_clear = virtual_element
         || match context.via {
             Some(via) if !via.receiver => context.through_via(via, x, incident.towards_source, incident.source_distance),
-            _ => !scene.occluded(&skip, x, incident.towards_source, incident.source_distance),
+            _ => !scene.occluded(&context.source_skip, x, incident.towards_source, incident.source_distance),
         };
     if !towards_source_clear {
         return;
@@ -487,9 +558,22 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     let heard_via = context.via.filter(|v| v.receiver);
     let blocked = match heard_via {
         Some(via) => !context.through_via(via, x, direction, distance),
-        None => !virtual_element && scene.occluded(&skip, x, direction, distance),
+        None => !virtual_element && scene.occluded(&context.microphone_skip, x, direction, distance),
     };
-    if cos_scatter > 0.0 && blocked {
+    let skip = [context.index];
+    let seen_through = |list: &[usize], from: V3, towards: V3, length: f64| list.len() > 1 && scene.occluded(&skip, from, towards, length);
+    if heard_via.is_none()
+        && context.via.is_none()
+        && seen_through(&context.source_skip, x, incident.towards_source, incident.source_distance)
+        && seen_through(&context.microphone_skip, x, direction, distance)
+    {
+        return;
+    }
+    let shadow = context.via.is_some_and(|v| v.shadow);
+    if (cos_scatter > 0.0 || shadow) && blocked {
+        return;
+    }
+    if shadow && cos_scatter >= 0.0 {
         return;
     }
     if cos_scatter > 0.0 && shades(direction) {
