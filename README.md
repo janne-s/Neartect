@@ -1,11 +1,10 @@
 # Neartect: Design the near space
 
-Neartect designs what a microphone's surroundings do to sound. Build walls,
-floors, niches, pipes, and gratings around microphones, give each a material,
-place the microphones anywhere among them, even a millimetre from a surface,
-and hear the boundary's lift, the comb of a nearby wall, a corner's bass, and
-the chirp of a grating. Export the impulse response or the filtered sound as
-WAV. Made for sound design, built on physics.
+Neartect models how nearby walls, corners, pipes, and gratings colour a
+microphone's sound. Place microphones among them, from a millimetre to a few
+metres away, give each surface a material, and hear the combs, boundary lift,
+corner bass, and resonances they add. Listen live and export impulse responses
+or the filtered sound as WAV.
 
 See it live: [**https://janne-s.github.io/Neartect/**](https://janne-s.github.io/Neartect/)
 
