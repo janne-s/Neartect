@@ -5,10 +5,17 @@ use nih_plug::prelude::*;
 use nih_plug_webview::{http, HTMLSource, Key, WebViewEditor};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use raw_window_handle::{AppKitDisplayHandle, AppKitWindowHandle, DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle};
+use raw_window_handle_05::HasRawWindowHandle;
+use rfd::{AsyncFileDialog, FileHandle};
 use std::borrow::Cow;
+use std::future::Future;
 use std::io::Write;
+use std::pin::Pin;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use std::task::{Context, Poll, Waker};
 
 pub mod convolver;
 use convolver::{Convolver, Filter, BLOCK};
@@ -151,6 +158,68 @@ fn log(text: &str) {
     {
         let _ = writeln!(file, "{text}");
     }
+}
+
+type Chosen = Pin<Box<dyn Future<Output = Option<FileHandle>> + Send>>;
+
+enum Dialog {
+    Open(Chosen),
+    Save(Chosen, Vec<u8>),
+}
+
+struct Parent(RawWindowHandle);
+
+impl Parent {
+    fn of(window: &impl HasRawWindowHandle) -> Option<Parent> {
+        match window.raw_window_handle() {
+            raw_window_handle_05::RawWindowHandle::AppKit(handle) => NonNull::new(handle.ns_view).map(|view| Parent(RawWindowHandle::AppKit(AppKitWindowHandle::new(view)))),
+            _ => None,
+        }
+    }
+}
+
+impl HasWindowHandle for Parent {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        Ok(unsafe { WindowHandle::borrow_raw(self.0) })
+    }
+}
+
+impl HasDisplayHandle for Parent {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        Ok(unsafe { DisplayHandle::borrow_raw(RawDisplayHandle::AppKit(AppKitDisplayHandle::new())) })
+    }
+}
+
+fn dialog(window: &impl HasRawWindowHandle) -> AsyncFileDialog {
+    match Parent::of(window) {
+        Some(parent) => AsyncFileDialog::new().set_parent(&parent),
+        None => AsyncFileDialog::new(),
+    }
+}
+
+fn settle(dialog: &mut Dialog, editor: &nih_plug_webview::WindowHandler) -> bool {
+    let chosen = match dialog {
+        Dialog::Open(chosen) | Dialog::Save(chosen, _) => chosen,
+    };
+    let Poll::Ready(file) = chosen.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
+        return false;
+    };
+    let Some(file) = file else {
+        return true;
+    };
+    let path = file.path();
+    match dialog {
+        Dialog::Open(_) => match std::fs::read_to_string(path) {
+            Ok(text) => editor.send_json(json!({ "type": "opened", "text": text })),
+            Err(error) => log(&format!("open {}: {error}", path.display())),
+        },
+        Dialog::Save(_, bytes) => {
+            if let Err(error) = std::fs::write(path, bytes) {
+                log(&format!("save {}: {error}", path.display()));
+            }
+        }
+    }
+    true
 }
 
 fn content_type(path: &str) -> &'static str {
@@ -304,6 +373,7 @@ impl Plugin for Neartect {
         let sample_rate = self.sample_rate.clone();
         let filters_out = self.filters_out.clone();
         let retired_in = self.retired_in.clone();
+        let pending: Mutex<Option<Dialog>> = Mutex::new(None);
         let editor = WebViewEditor::new(HTMLSource::URL("neartect://localhost/index.html"), WINDOW_SIZE)
             .with_background_color((32, 32, 32, 255))
             .with_developer_mode(true)
@@ -317,6 +387,12 @@ impl Plugin for Neartect {
             .with_keyboard_handler(|event| event.key == Key::Escape)
             .with_event_loop(move |window, setter, base| {
                 while retired_in.try_recv().is_ok() {}
+                let Ok(mut pending) = pending.lock() else {
+                    return;
+                };
+                if pending.as_mut().is_some_and(|dialog| settle(dialog, window)) {
+                    *pending = None;
+                }
                 if params.bypass_changed.swap(false, Ordering::Relaxed) {
                     window.send_json(json!({ "type": "bypass", "on": params.bypass.value() }));
                 }
@@ -351,19 +427,14 @@ impl Plugin for Neartect {
                             params.bypass_changed.store(false, Ordering::Relaxed);
                         }
                         Ok(Message::Open) => {
-                            if let Some(path) = rfd::FileDialog::new().add_filter("Neartect space", &["json"]).pick_file() {
-                                match std::fs::read_to_string(&path) {
-                                    Ok(text) => window.send_json(json!({ "type": "opened", "text": text })),
-                                    Err(error) => log(&format!("open {}: {error}", path.display())),
-                                }
+                            if pending.is_none() {
+                                *pending = Some(Dialog::Open(Box::pin(dialog(base).add_filter("Neartect space", &["json"]).pick_file())));
                             }
                         }
                         Ok(Message::Save { name, base64 }) => match base64::engine::general_purpose::STANDARD.decode(base64) {
                             Ok(bytes) => {
-                                if let Some(path) = rfd::FileDialog::new().set_file_name(&name).save_file() {
-                                    if let Err(error) = std::fs::write(&path, bytes) {
-                                        log(&format!("save {}: {error}", path.display()));
-                                    }
+                                if pending.is_none() {
+                                    *pending = Some(Dialog::Save(Box::pin(dialog(base).set_file_name(&name).save_file()), bytes));
                                 }
                             }
                             Err(error) => log(&format!("save {name}: {error}")),

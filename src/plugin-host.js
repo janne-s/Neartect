@@ -1,7 +1,9 @@
 import { stereo } from './audio/preview.js';
 
+export const inPlugin = typeof window.sendToPlugin === 'function';
+
 export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
-  if (typeof window.sendToPlugin !== 'function') return null;
+  if (!inPlugin) return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
   window.onPluginMessage = message => {

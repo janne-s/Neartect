@@ -20,7 +20,7 @@ import { computeFilter, hearing, jobBytes, listeners } from './domain/near-filte
 import { createRenderMarker, renderLoadText } from './shared/ui/render-marker.js';
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
-import { createPluginHost } from './plugin-host.js';
+import { createPluginHost, inPlugin } from './plugin-host.js';
 
 const STORAGE_KEY = 'neartect.space';
 const PREFERENCES_KEY = 'neartect.preferences';
@@ -48,6 +48,7 @@ function writeStored(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 function initialSpace() {
+  if (inPlugin) return defaultSpace();
   try { return readSpace(readStored(STORAGE_KEY)); } catch { return defaultSpace(); }
 }
 
@@ -228,6 +229,11 @@ const UNDO_DEPTH = 50;
 const history = [];
 let committed = JSON.stringify(state.space);
 
+function keepSpace() {
+  if (pluginHost) pluginHost.space(state.space);
+  else writeStored(STORAGE_KEY, state.space);
+}
+
 function remember() {
   const now = JSON.stringify(state.space);
   if (now === committed) return;
@@ -246,8 +252,7 @@ function undo() {
   if (state.selection?.type === 'group') state.selection = null;
   if (state.selection?.type === 'rig' && !state.space.rigs.some(r => r.id === state.selection.id)) state.selection = null;
   $('undo').disabled = !history.length;
-  writeStored(STORAGE_KEY, state.space);
-  pluginHost?.space(state.space);
+  keepSpace();
   view.update(state.space, state.selection);
   refreshPanel();
   refreshFilter();
@@ -256,9 +261,8 @@ function undo() {
 function changed({ save = true, panel = false, compute = true } = {}) {
   placePoints(state.space);
   if (save) {
-    writeStored(STORAGE_KEY, state.space);
+    keepSpace();
     remember();
-    pluginHost?.space(state.space);
   }
   view.update(state.space, state.selection);
   if (panel) refreshPanel(); else syncLive();
