@@ -362,12 +362,48 @@ const PATTERN_LABELS = Object.freeze({ omni: 'Omni', wide: 'Wide cardioid', card
 const removeIcon = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
 const RIG_COLOUR_START = 3;
 
-function cardHeader(card, { lead, name, kind, selected, onToggle, onRemove, removeLabel }) {
+function cardName(name, selected, onRename) {
+  const label = element('span', 'name', name);
+  if (!selected) return label;
+  label.classList.add('renamable');
+  label.title = 'Rename';
+  label.addEventListener('click', event => {
+    event.stopPropagation();
+    const field = element('input', 'card-name');
+    field.type = 'text';
+    field.maxLength = 60;
+    field.value = name;
+    field.setAttribute('aria-label', 'Name');
+    let done = false;
+    const finish = apply => {
+      if (done) return;
+      done = true;
+      const next = field.value.trim();
+      if (apply && next && next !== name) {
+        onRename(next);
+        changed({ panel: true });
+      } else field.replaceWith(label);
+    };
+    field.addEventListener('click', inner => inner.stopPropagation());
+    field.addEventListener('keydown', inner => {
+      inner.stopPropagation();
+      if (inner.key === 'Enter') { inner.preventDefault(); finish(true); }
+      if (inner.key === 'Escape') { inner.preventDefault(); finish(false); }
+    });
+    field.addEventListener('blur', () => finish(true));
+    label.replaceWith(field);
+    field.focus();
+    field.select();
+  });
+  return label;
+}
+
+function cardHeader(card, { lead, name, kind, selected, onToggle, onRename, onRemove, removeLabel }) {
   const header = element('div', 'card-header');
   header.tabIndex = 0;
   header.setAttribute('role', 'button');
   header.setAttribute('aria-expanded', String(selected));
-  header.append(...lead, element('span', 'name', name), element('span', 'kind', kind));
+  header.append(...lead, cardName(name, selected, onRename), element('span', 'kind', kind));
   if (onRemove) {
     const remove = element('button', 'icon-button');
     remove.type = 'button';
@@ -446,6 +482,7 @@ function objectCard(container, object) {
   cardHeader(card, {
     lead: [enabled, icon], name: object.name, kind: MATERIALS[object.material].label, selected,
     onToggle: () => select(selected ? null : { type: 'object', id: object.id }),
+    onRename: next => { state.space.objects.find(o => o.id === object.id).name = next; },
     onRemove: () => removeObject(object.id), removeLabel: `Remove ${object.name}`
   });
   if (selected) {
@@ -672,6 +709,7 @@ function microphoneCard(container, microphone, index) {
   cardHeader(card, {
     lead: [hearingBox(microphone), dot], name: microphone.name, kind: PATTERN_LABELS[microphone.pattern], selected,
     onToggle: () => select(selected ? null : { type: 'microphone', id: microphone.id }),
+    onRename: next => { state.space.microphones.find(m => m.id === microphone.id).name = next; },
     onRemove: () => removeMicrophone(microphone.id), removeLabel: `Remove ${microphone.name}`
   });
   if (selected) {
@@ -739,6 +777,7 @@ function rigCard(container, rig, index) {
   cardHeader(card, {
     lead: [hearingBox(rig), rigBadge(rig.kind, index)], name: rig.name, kind: rigMembers(state.space, rig).map(m => m.name).join(' '), selected,
     onToggle: () => select(selected ? null : { type: 'rig', id: rig.id }),
+    onRename: next => { state.space.rigs.find(r => r.id === rig.id).name = next; },
     onRemove: () => removeRig(rig.id), removeLabel: `Remove ${rig.name}`
   });
   if (selected) {
