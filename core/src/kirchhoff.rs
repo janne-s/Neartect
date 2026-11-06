@@ -482,9 +482,18 @@ fn visit(context: &mut Context, centre: [f64; 2], size: f64, level: u32, cell: u
         return;
     }
     let uniform = solid == samples.len() && !vertex_inside && !pattern_edge;
-    let reach = distance * incident.source_distance / (distance + incident.source_distance);
-    let reach = if reach.is_finite() { reach } else { distance };
-    let target = if uniform { element_size(reach) } else { edge_element_size(reach) };
+    let reach = |distance: f64| {
+        let reach = distance * incident.source_distance / (distance + incident.source_distance);
+        if reach.is_finite() { reach } else { distance }
+    };
+    let size_at = |distance: f64| if uniform { element_size(reach(distance)) } else { edge_element_size(reach(distance)) };
+    let relief = &surface.relief;
+    let target = if relief.is_flat() || element_size((distance - relief.bound()).max(0.0)) >= size {
+        size_at(distance)
+    } else {
+        let (normal, _, _) = surface.frame(centre);
+        size_at(distance.min(norm(sub(to_microphone, scale(normal, relief.at(centre).0)))))
+    };
     let target = if context.relief_element > 0.0 { target.min(context.relief_element) } else { target }.max(SHORTEST_ELEMENT_METRES);
     if size <= target || level >= DEEPEST_LEVEL {
         if is_solid(centre) && (level >= CELL_LEVEL || context.owns(cell, level)) {
@@ -536,11 +545,11 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if (shaped || bent) && dot(tilted, incident.towards_source) <= 0.0 {
         return;
     }
-    let shades = |towards: V3| {
+    let shades = |towards: V3, length: f64| {
         let rise = dot(towards, normal);
-        shaped && relief.shades(centre, height, [dot(towards, along_u), dot(towards, along_v)], rise, side.signum(), |q| real.contains(q))
+        shaped && relief.shades(centre, height, [dot(towards, along_u), dot(towards, along_v)], rise, side.signum(), length, |q| real.contains(q))
     };
-    if shades(incident.towards_source) {
+    if shades(incident.towards_source, incident.source_distance) {
         return;
     }
     let towards_source_clear = virtual_element
@@ -576,7 +585,7 @@ fn element(context: &mut Context, centre: [f64; 2], size: f64) {
     if shadow && cos_scatter >= 0.0 {
         return;
     }
-    if cos_scatter > 0.0 && shades(direction) {
+    if cos_scatter > 0.0 && shades(direction, distance) {
         return;
     }
     let c = scene.speed_of_sound;

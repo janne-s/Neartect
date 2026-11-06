@@ -621,9 +621,36 @@ fn ray_along_a_steep_wave_trough_is_shaded_and_a_steep_ray_is_not() {
     let inside = |_: [f64; 2]| true;
     let trough = [0.075, 0.0];
     let (h, _) = r.at(trough);
-    assert!(r.shades(trough, h, [1.0, 0.0], 0.2, 1.0, inside));
-    assert!(!r.shades(trough, h, [1.0, 0.0], 5.0, 1.0, inside));
-    assert!(!r.shades(trough, h, [0.0, 1.0], 0.0, 1.0, inside));
+    assert!(r.shades(trough, h, [1.0, 0.0], 0.2, 1.0, f64::INFINITY, inside));
+    assert!(!r.shades(trough, h, [1.0, 0.0], 5.0, 1.0, f64::INFINITY, inside));
+    assert!(!r.shades(trough, h, [0.0, 1.0], 0.0, 1.0, f64::INFINITY, inside));
+}
+
+#[test]
+fn a_crest_past_the_microphone_does_not_shade_a_surface_before_it() {
+    let r = neartect_core::relief::Relief::new(1.0, 0.05, 0.1, [1.0, 0.0], [0.0, 0.0], 0.0, 0.0, 1.0, 0.0);
+    let inside = |_: [f64; 2]| true;
+    let trough = [0.075, 0.0];
+    let (h, _) = r.at(trough);
+    assert!(r.shades(trough, h, [1.0, 0.0], 0.2, 1.0, 0.1, inside));
+    assert!(!r.shades(trough, h, [1.0, 0.0], 0.2, 1.0, 0.001, inside));
+}
+
+#[test]
+fn a_directional_microphone_on_a_steep_wave_keeps_its_bass() {
+    let length = 4096;
+    let wave = relieved(floor(3.0), [1.0, 0.08, 0.2, 0.0, 0.0, 0.0, 0.05, 1.0]);
+    for across in [0.0, 0.03, 0.1] {
+        for sign in [1.0, -1.0] {
+            let level = |gap: f64| {
+                let mut near = scene(vec![wave.clone()], [across, 0.0, 0.08 * (std::f64::consts::TAU * across / 0.2).sin() + gap], normalize([sign * 0.5, 0.0, 0.866]), length, 1);
+                near.listener = Listener::Microphone { pattern: 0.0, facing: [1.0, 0.0, 0.0] };
+                20.0 * mean_magnitude(&near_spectrum(&near), length, 60.0, 250.0).log10()
+            };
+            let (close, far) = (level(0.003), level(0.03));
+            assert!(close < 24.0, "across {across} sign {sign}: {close:.1} dB at 3 mm, {far:.1} dB at 3 cm");
+        }
+    }
 }
 
 #[test]

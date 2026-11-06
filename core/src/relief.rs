@@ -148,14 +148,14 @@ impl Relief {
         }
     }
 
-    pub fn shades(&self, q: [f64; 2], height: f64, along: [f64; 2], rise: f64, side: f64, inside: impl Fn([f64; 2]) -> bool) -> bool {
+    pub fn shades(&self, q: [f64; 2], height: f64, along: [f64; 2], rise: f64, side: f64, length: f64, inside: impl Fn([f64; 2]) -> bool) -> bool {
         let level = (along[0] * along[0] + along[1] * along[1]).sqrt();
         let rise = rise * side;
         if level < 1e-9 || rise >= self.shape_steepest() * level {
             return false;
         }
         let step = self.period / SHADOW_STEPS_PER_PERIOD / level;
-        let reach = if rise > 0.0 { 2.0 * self.height / rise } else { f64::INFINITY };
+        let reach = if rise > 0.0 { (2.0 * self.height / rise).min(length) } else { length };
         let mut travelled = step;
         for _ in 0..MOST_SHADOW_STEPS {
             if travelled > reach {
