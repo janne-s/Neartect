@@ -15,7 +15,7 @@ const ALUMINIUM_REFLECTION = reflectionOf(2700 * 6320);
 
 export const MATERIALS = Object.freeze({
   rigid: { label: 'Rigid', absorption: [0, 0, 0, 0, 0, 0], reliability: 'A' },
-  water: { label: 'Still water', absorption: Array(6).fill(1 - WATER_REFLECTION ** 2), reliability: 'A' },
+  water: { label: 'Water', absorption: Array(6).fill(1 - WATER_REFLECTION ** 2), reliability: 'A' },
   metal: { label: 'Metal', absorption: Array(6).fill(1 - ALUMINIUM_REFLECTION ** 2), reliability: 'A' },
   concrete: { label: 'Concrete', absorption: [0.01, 0.01, 0.01, 0.02, 0.02, 0.02], reliability: 'B' },
   tile: { label: 'Glazed tile', absorption: [0.01, 0.01, 0.01, 0.01, 0.02, 0.02], reliability: 'B' },

@@ -32,8 +32,8 @@ processed sound itself.
 - **Relief** — Waves, arches, scallops, or an egg crate at a set height,
   period, and direction, plus random roughness with a height and grain. Rough
   surfaces lose their coherent treble and scatter it; repeating shapes send
-  their own lobes. A speed moves the relief while the preview plays (moving
-  water), each new filter gliding in.
+  their own lobes. A speed moves the relief while the preview plays, or in the
+  plugin while its window is open (moving water), each new filter gliding in.
 - **Gratings** — Bars or slats at a set period, width, and thickness; each bar
   reflects and shades on its own, and fine gratings let bass through.
 - **Inside a pipe** — A waveguide: resonances at the end-corrected length, the

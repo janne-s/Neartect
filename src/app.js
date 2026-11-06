@@ -138,12 +138,15 @@ function moving(space) {
   return space.objects.some(o => o.relief.speedMetresPerSecond !== 0 && (o.relief.shape !== 'flat' || o.relief.roughMetres > 0));
 }
 
+const motionRunning = () => inPlugin || preview.playing;
+const motionTime = () => (inPlugin ? performance.now() / 1000 : preview.time);
+
 function liveSpace() {
   const space = clone(state.space);
   if (state.audioRate) space.render.sampleRateHz = state.audioRate;
-  const gliding = preview.playing && moving(space);
+  const gliding = motionRunning() && moving(space);
   if (gliding) {
-    const t = preview.time;
+    const t = motionTime();
     space.objects.forEach(o => { o.relief.offsetMetres += o.relief.speedMetresPerSecond * t; });
   }
   if (gliding || dragging) {
@@ -166,6 +169,7 @@ async function refreshFilter() {
   if (!listeners(space).length) {
     state.filter = null;
     preview.silence();
+    pluginHost?.silence();
     setStatus(space.microphones.length || space.rigs.length ? 'All microphones are off' : 'No microphone: add one from Layouts');
     drawPlots();
     busy = false;
@@ -177,7 +181,7 @@ async function refreshFilter() {
     mayCancel = true;
     state.filter = result;
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
-    const gliding = preview.playing && moving(space);
+    const gliding = motionRunning() && moving(space);
     preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, result.milliseconds / 1000) : undefined);
     pluginHost?.filter(result);
     drawPlots();
@@ -529,7 +533,7 @@ function reliefControls(card, current) {
     macro(macros, { label: 'Grain', title: 'Roughness grain', range: [0.01, 1], log: true, format: formatGap, fallback: 0.05, read: () => relief().grainMetres, write: v => { relief().grainMetres = v; } });
   }
   if (shaped || relief().roughMetres > 0) {
-    macro(macros, { label: 'Motion', title: 'Moves while the preview plays', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
+    macro(macros, { label: 'Motion', title: inPlugin ? 'Moves while the window is open' : 'Moves while the preview plays', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
     macro(macros, { label: 'Shift', title: 'Relief position along its direction', range: [0.001, 5], signed: true, format: formatGap, fallback: 0, read: () => relief().offsetMetres, write: v => { relief().offsetMetres = v; } });
   }
 }
@@ -1017,9 +1021,9 @@ async function startPlayback() {
 
 let animating = false;
 function animateRelief() {
-  if (preview.playing && moving(state.space)) {
+  if (motionRunning() && moving(state.space)) {
     animating = true;
-    view.setReliefTime(preview.time);
+    view.setReliefTime(motionTime());
     requestAnimationFrame(animateRelief);
   } else {
     animating = false;

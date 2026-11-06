@@ -29,6 +29,9 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
       const [left, right] = stereo(result.channels, result.pans);
       send({ type: 'filter', sampleRateHz: result.sampleRateHz, left: Array.from(left), right: Array.from(right) });
     },
+    silence() {
+      if (rate !== null) send({ type: 'filter', sampleRateHz: rate, left: [0], right: [0] });
+    },
     ready() {
       send({ type: 'ready' });
     },
