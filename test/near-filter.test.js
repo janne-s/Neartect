@@ -200,6 +200,16 @@ test('a mid-side pair decodes to a left and right that favour the source side', 
   assert.ok(energy(left) > 2 * energy(right));
 });
 
+test('microphones spread by default and keep a chosen pan', () => {
+  const pans = (...chosen) => listeners(readSpace({ kind: 'neartect.space', microphones: chosen.map(pan => ({ position: [0, 0, 1], pan })) })).map(l => l.pan.map(g => Number(g.toFixed(3))));
+  assert.deepEqual(pans(undefined), [[1, 1]]);
+  assert.deepEqual(pans(-1), [[1, 0]]);
+  assert.deepEqual(pans(undefined, undefined), [[1, 0], [0, 1]]);
+  assert.deepEqual(pans(undefined, undefined, undefined), [[1, 0], [0.707, 0.707], [0, 1]]);
+  assert.deepEqual(pans(1, -1), [[0, 1], [1, 0]]);
+  assert.deepEqual(pans(0, undefined), [[0.707, 0.707], [0, 1]]);
+});
+
 test('a corrugated wall changes the filter, and moving its relief changes it again', async () => {
   const wall = relief => ({ kind: 'plane', position: [0, 1, 1], size: [3, 0, 2], material: 'rigid', relief });
   const space = relief => readSpace({ kind: 'neartect.space', render: { lengthMilliseconds: 20, order: 1 }, microphones: [{ position: [0, 0.6, 1] }], objects: [wall(relief)] });

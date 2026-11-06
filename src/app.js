@@ -16,7 +16,7 @@ import { TEST_SIGNALS } from './domain/signals.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
-import { computeFilter, hearing, jobBytes, listeners } from './domain/near-filter.js';
+import { computeFilter, hearing, jobBytes, listeners, panOf } from './domain/near-filter.js';
 import { createRenderMarker, renderLoadText } from './shared/ui/render-marker.js';
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
@@ -292,7 +292,7 @@ function paint(input) {
 }
 
 // `zero` keeps the leftmost few steps for an exact zero on a log slider.
-function macro(container, { label, title, read, write, range: [low, high], log = false, signed = false, zero = false, format, fallback }) {
+function macro(container, { label, title, read, write, range: [low, high], log = false, signed = false, zero = false, snap = null, format, fallback }) {
   const span = Math.log(high / low);
   const toSlider = value => {
     if (zero) return value < low ? 0 : Math.round(SLIDER_STEPS * (0.03 + 0.97 * Math.min(1, Math.log(value / low) / span)));
@@ -327,8 +327,12 @@ function macro(container, { label, title, read, write, range: [low, high], log =
     value.textContent = format(current);
     paint(input);
   };
+  let free = false;
+  ['pointerdown', 'pointermove', 'keydown'].forEach(type => input.addEventListener(type, event => { free = event.shiftKey; }));
   input.addEventListener('input', () => {
-    write(fromSlider(Number(input.value)));
+    const moved = fromSlider(Number(input.value));
+    write(snap && !free ? snap(moved) : moved);
+    if (snap && !free) input.value = String(toSlider(read()));
     paint(input);
     value.textContent = format(read());
     changed({ save: false });
@@ -652,6 +656,13 @@ function hearingBox(point) {
   return box;
 }
 
+function formatPan(pan) {
+  const percent = Math.round(Math.abs(pan) * 100);
+  if (percent === 0) return 'C';
+  const side = pan < 0 ? 'L' : 'R';
+  return percent === 100 ? side : `${side} ${percent}`;
+}
+
 function microphoneCard(container, microphone, index) {
   const selected = state.selection?.type === 'microphone' && state.selection.id === microphone.id;
   const card = element('div', 'card');
@@ -684,6 +695,7 @@ function microphoneCard(container, microphone, index) {
       macro(macros, { label: 'Aim', title: 'Aim around', range: [0, 360], format: degrees, fallback: 0, read: () => current().aim.azimuthDegrees, write: v => { current().aim.azimuthDegrees = v % 360; } });
       macro(macros, { label: 'Tilt', title: 'Aim tilted up or down', range: [-90, 90], format: degrees, fallback: 0, read: () => current().aim.elevationDegrees, write: v => { current().aim.elevationDegrees = v; } });
     }
+    macro(macros, { label: 'Pan', title: 'Left, centre, or right; Shift moves freely, a double click returns to automatic', range: RANGES.pan, snap: Math.round, format: formatPan, fallback: null, read: () => panOf(state.space, current()), write: v => { current().pan = v; } });
   }
   container.append(card);
 }

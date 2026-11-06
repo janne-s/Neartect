@@ -53,19 +53,29 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 export const hearing = list => list.filter(point => point.on !== false);
 
+export function panOf(space, microphone) {
+  if (microphone.pan !== null) return microphone.pan;
+  const heard = hearing(space.microphones);
+  const index = heard.findIndex(m => m.id === microphone.id);
+  return heard.length > 1 && index >= 0 ? 2 * index / (heard.length - 1) - 1 : 0;
+}
+
+function panGains(pan, alone) {
+  const angle = (pan + 1) * Math.PI / 4;
+  const gains = [Math.cos(angle), Math.sin(angle)];
+  const loudest = alone ? Math.max(...gains) : 1;
+  return gains.map(gain => gain / loudest);
+}
+
 export function listeners(space) {
   const microphones = hearing(space.microphones);
-  const count = microphones.length;
-  const free = microphones.map((m, index) => {
-    const angle = count === 1 ? Math.PI / 4 : index / (count - 1) * Math.PI / 2;
-    return {
-      name: m.name,
-      position: pointPosition(space, m),
-      pattern: m.pattern,
-      facing: aimVector(space, m),
-      pan: count === 1 ? [1, 1] : [Math.cos(angle), Math.sin(angle)]
-    };
-  });
+  const free = microphones.map(m => ({
+    name: m.name,
+    position: pointPosition(space, m),
+    pattern: m.pattern,
+    facing: aimVector(space, m),
+    pan: panGains(panOf(space, m), microphones.length === 1)
+  }));
   const rigged = hearing(space.rigs ?? []).flatMap(rig => rigMembers(space, rig).map(member => ({ ...member, name: `${rig.name} ${member.name}` })));
   return [...free, ...rigged];
 }

@@ -65,7 +65,9 @@ processed sound itself.
 
 - **Microphones** — Up to eight, bound to an object or free. Across, gap, and
   up are signed (a negative gap is behind the face or inside the object), from
-  1 mm to 5 m. Time and level differences are kept.
+  1 mm to 5 m. Time and level differences are kept. Pan places each one left,
+  centre, or right, or anywhere between with Shift; by default they spread
+  across the stereo image.
 - **Patterns** — Omni, wide cardioid, cardioid, supercardioid, hypercardioid,
   or figure of eight, with the proximity effect: a near source or a near
   reflection lifts the bass of a directional pattern.
@@ -81,7 +83,7 @@ processed sound itself.
   distance from a 1 m reference unless 1/r is off.
 - **Signal** — Pink noise, clicks, a sweep, or a sound file, with a
   free-field comparison.
-- **Preview** — Microphones spread from left to right; mid-side decodes to
+- **Preview** — Microphones follow their pan; mid-side decodes to
   left and right; a head plays binaurally.
 - **Plots** — The near filter and its response relative to the free field.
 - **Quality** — Relief detail and an element limit, with lower detail while

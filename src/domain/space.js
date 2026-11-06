@@ -33,7 +33,8 @@ export const RANGES = Object.freeze({
   speedMetresPerSecond: [-5, 5],
   reliefDetail: [1, 24],
   elementLimit: [1000, 5000000],
-  movingDetail: [0.1, 1]
+  movingDetail: [0.1, 1],
+  pan: [-1, 1]
 });
 
 export const DEFAULT_QUALITY = Object.freeze({ reliefDetail: 6, elementLimit: 400000, movingDetail: 0.5 });
@@ -120,6 +121,7 @@ function readMicrophone(value, index) {
     ...readPoint(m, [0, 0, 1]),
     pattern: Object.hasOwn(PATTERNS, m.pattern) ? m.pattern : 'omni',
     aim: readAim(m.aim),
+    pan: Number.isFinite(m.pan) ? clamp(m.pan, RANGES.pan) : null,
     on: typeof m.on === 'boolean' ? m.on : true
   };
 }
