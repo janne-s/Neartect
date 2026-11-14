@@ -258,7 +258,7 @@ fn served(path: &str) -> Option<&'static [u8]> {
 
 impl Plugin for Neartect {
     const NAME: &'static str = "Neartect";
-    const VENDOR: &'static str = "Janne Särkelä";
+    const VENDOR: &'static str = "JS";
     const URL: &'static str = "https://janne-s.github.io/Neartect/";
     const EMAIL: &'static str = "";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
