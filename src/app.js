@@ -23,6 +23,7 @@ import { withReliability } from './domain/reliability.js';
 import { createPluginHost, inPlugin } from './plugin-host.js';
 
 const STORAGE_KEY = 'neartect.space';
+const CAMERA_STORAGE_KEY = 'neartect.camera';
 const PREFERENCES_KEY = 'neartect.preferences';
 const GAP_RANGE_METRES = [SMALLEST_GAP_METRES, 5];
 const HORIZONTAL_RANGE_METRES = [-5, 5];
@@ -71,14 +72,17 @@ const view = createNearView($('near-view'), {
   snapSurfaces: () => preferences.snapSurfaces,
   showGrid: () => preferences.showGrid,
   scrollPans: () => preferences.scrollPans,
-  ownAxes: () => preferences.ownAxes
+  ownAxes: () => preferences.ownAxes,
+  onCamera: () => keepCamera()
 });
+const keepCamera = () => (pluginHost ? pluginHost.camera(view.camera()) : writeStored(CAMERA_STORAGE_KEY, view.camera()));
 
 function openSpace(text, compute = true) {
   try {
     state.space = readSpace(JSON.parse(text));
     state.selection = null;
     view.centre(spaceCentre(state.space));
+    if (compute) keepCamera();
     changed({ panel: true, compute });
   } catch (error) {
     setStatus(error instanceof SpaceError ? error.message : 'This file is not a Neartect space.', true);
@@ -92,6 +96,7 @@ function showBypass(on) {
 
 const pluginHost = createPluginHost({
   onSpace: text => openSpace(text, false),
+  onCamera: stored => view.setCamera(stored),
   onOpen: text => openSpace(text),
   onBypass: showBypass,
   currentSpace: () => state.space,
@@ -1045,6 +1050,7 @@ for (const [id, { label }] of Object.entries(SITUATIONS)) {
     state.space = situationSpace(id, state.space);
     state.selection = null;
     view.centre(activeListener().position);
+    keepCamera();
     changed({ panel: true });
   });
   $('situations').append(button);
@@ -1393,6 +1399,7 @@ $('results-toggle').addEventListener('click', () => {
 });
 
 view.centre(spaceCentre(state.space));
+if (!inPlugin) view.setCamera(readStored(CAMERA_STORAGE_KEY));
 changed({ save: false, panel: true, compute: !unfinishedFilter });
 pluginHost?.ready();
 if (unfinishedFilter) {

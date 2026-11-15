@@ -3,7 +3,7 @@ import { createParameterSync } from './plugin-parameters.js';
 
 export const inPlugin = typeof window.sendToPlugin === 'function';
 
-export function createPluginHost({ onSpace, onOpen, onBypass, onRate, onParameters, currentSpace }) {
+export function createPluginHost({ onSpace, onCamera, onOpen, onBypass, onRate, onParameters, currentSpace }) {
   if (!inPlugin) return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
@@ -15,6 +15,7 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate, onParamete
       rate = message.sampleRateHz;
       parameters.start(message.parameters ?? [], message.values ?? {});
       if (message.space) onSpace(message.space);
+      if (message.camera) onCamera(message.camera);
       onBypass(message.bypass);
       onRate(rate);
       parameters.push(currentSpace(), true);
@@ -38,6 +39,9 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate, onParamete
   addGrip(send);
   return {
     parameters,
+    camera(camera) {
+      send({ type: 'camera', camera });
+    },
     space(space) {
       send({ type: 'space', json: JSON.stringify(space) });
     },

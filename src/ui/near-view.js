@@ -90,7 +90,7 @@ function insidePolygon([x, y], corners) {
   return inside;
 }
 
-export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true, scrollPans = () => false, ownAxes = () => false }) {
+export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true, scrollPans = () => false, ownAxes = () => false, onCamera = () => {} }) {
   const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
@@ -1284,9 +1284,11 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     forget(event);
     if (pinching) {
       drag = null;
+      onCamera();
       return;
     }
     canvas.classList.remove('dragging');
+    if (drag?.moved && !drag.handle && !drag.marquee) onCamera();
     if (drag?.handle) {
       readout = null;
       onCommit();
@@ -1314,6 +1316,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (zoomPixels === undefined) panBy(-panX, -panY);
     else zoomBy(Math.exp(-zoomPixels * ZOOM_PER_PIXEL));
     draw();
+    onCamera();
   }, { passive: false });
   let gestureScale = 1;
   canvas.addEventListener('gesturestart', event => { event.preventDefault(); gestureScale = 1; });
@@ -1323,7 +1326,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     gestureScale = event.scale;
     draw();
   });
-  canvas.addEventListener('gestureend', event => event.preventDefault());
+  canvas.addEventListener('gestureend', event => { event.preventDefault(); onCamera(); });
   canvas.addEventListener('dblclick', event => {
     const item = itemAt(pointer(event));
     if (item?.type === 'object') camera.target = objectCentre(space.objects.find(o => o.id === item.id));
@@ -1331,6 +1334,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (item?.type === 'source') camera.target = [...space.source.position];
     if (item?.type === 'rig') camera.target = [...space.rigs.find(r => r.id === item.id).position];
     draw();
+    if (item) onCamera();
   });
   new ResizeObserver(() => drawNow()).observe(canvas);
 
@@ -1344,9 +1348,21 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       Object.assign(camera, { yaw: -0.6, pitch: 0.45, distance: 6 });
       if (space) camera.target = [...listeningCentre()];
       draw();
+      onCamera();
     },
     centre(point) {
       camera.target = [...point];
+      draw();
+    },
+    camera() {
+      return { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance, target: [...camera.target] };
+    },
+    setCamera(stored) {
+      const number = (v, fallback, low = -Infinity, high = Infinity) => (Number.isFinite(v) ? Math.min(high, Math.max(low, v)) : fallback);
+      camera.yaw = number(stored?.yaw, camera.yaw);
+      camera.pitch = number(stored?.pitch, camera.pitch, -0.4, 1.5);
+      camera.distance = number(stored?.distance, camera.distance, 0.1, 60);
+      if (Array.isArray(stored?.target)) camera.target = camera.target.map((v, i) => number(stored.target[i], v));
       draw();
     },
     setReliefTime(seconds) {

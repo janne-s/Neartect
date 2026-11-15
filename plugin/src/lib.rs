@@ -51,6 +51,8 @@ pub struct NeartectParams {
     filter: Arc<RwLock<StoredFilter>>,
     #[persist = "synced"]
     synced: Arc<RwLock<bool>>,
+    #[persist = "camera"]
+    camera: Arc<RwLock<serde_json::Value>>,
     #[id = "mix"]
     mix: FloatParam,
     #[id = "output"]
@@ -70,6 +72,7 @@ impl NeartectParams {
             space: Arc::new(RwLock::new(String::new())),
             filter: Arc::new(RwLock::new(StoredFilter::default())),
             synced: Arc::new(RwLock::new(false)),
+            camera: Arc::new(RwLock::new(serde_json::Value::Null)),
             mix: FloatParam::new("Mix", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_smoother(SmoothingStyle::Linear(30.0))
                 .with_unit(" %")
@@ -271,6 +274,9 @@ enum Message {
     },
     End,
     Synced,
+    Camera {
+        camera: serde_json::Value,
+    },
     Open,
     Save {
         name: String,
@@ -567,6 +573,7 @@ impl Plugin for Neartect {
                             window.send_json(json!({
                                 "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(),
                                 "space": if space.is_empty() { None } else { Some(space) },
+                                "camera": params.camera.read().map(|c| c.clone()).unwrap_or_default(),
                                 "parameters": params::specs_json(&params.slots.specs), "values": ids.iter().zip(&values).map(|(id, v)| (id.to_string(), json!(v))).collect::<serde_json::Map<_, _>>()
                             }));
                         }
@@ -587,6 +594,11 @@ impl Plugin for Neartect {
                         Ok(Message::Synced) => {
                             if let Ok(mut synced) = params.synced.write() {
                                 *synced = true;
+                            }
+                        }
+                        Ok(Message::Camera { camera }) => {
+                            if let Ok(mut stored) = params.camera.write() {
+                                *stored = camera;
                             }
                         }
                         Ok(Message::End) => {
