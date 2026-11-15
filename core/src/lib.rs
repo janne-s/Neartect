@@ -4,11 +4,14 @@ pub mod filter;
 pub mod geom;
 pub mod hrtf;
 pub mod images;
+pub mod jobs;
 pub mod kirchhoff;
+pub mod layout;
 pub mod pattern;
 pub mod pipe;
 pub mod relief;
 pub mod scene;
+pub mod space;
 pub mod spectrum;
 pub mod trig;
 
@@ -247,4 +250,20 @@ pub fn core_version() -> String {
 #[wasm_bindgen(js_name = surfaceHeaderLength)]
 pub fn surface_header_length() -> usize {
     SURFACE_HEADER
+}
+
+fn space_from_text(text: &str) -> Result<space::Space, JsError> {
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|_| JsError::new("This is not a Neartect space."))?;
+    space::read_space(&value).map_err(|e| JsError::new(e.0))
+}
+
+#[wasm_bindgen(js_name = readSpace)]
+pub fn read_space_text(text: &str) -> Result<String, JsError> {
+    Ok(space::space_json(&space_from_text(text)?).to_string())
+}
+
+// Jobs, then per job: channels, variants, then per variant: parts, settings length, settings, surfaces length, surfaces.
+#[wasm_bindgen(js_name = nearJobs)]
+pub fn near_jobs(text: &str) -> Result<Vec<f64>, JsError> {
+    Ok(jobs::flat_jobs(&jobs::channel_jobs(&space_from_text(text)?)))
 }
