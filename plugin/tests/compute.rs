@@ -45,7 +45,9 @@ fn a_space_without_listeners_builds_silence() {
 fn a_newer_request_supersedes_the_waiting_ones_and_each_gets_an_answer() {
     let (sent, heard) = mpsc::channel();
     let (_retired, retired) = crossbeam_channel::bounded::<()>(1);
-    let builder = Builder::new(retired, move |outcome| sent.send(outcome).unwrap());
+    let (_wake, woken) = crossbeam_channel::bounded::<()>(1);
+    let sent = std::sync::Mutex::new(sent);
+    let builder = Builder::new(retired, woken, || None, move |outcome| sent.lock().unwrap().send(outcome).unwrap());
     let json = corrugated();
     let generations: Vec<u64> = (0..5).map(|i| builder.request(json.replace("1.2]", &format!("1.{}]", 3 + i)), None, Some(i))).collect();
     assert_eq!(builder.latest(), *generations.last().unwrap());

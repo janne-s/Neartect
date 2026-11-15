@@ -13,12 +13,15 @@ use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
 use std::ptr::NonNull;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::task::{Context, Poll, Waker};
 
 pub mod compute;
 pub mod convolver;
+pub mod params;
+use params::SlotParams;
 use compute::{Builder, Computed, Outcome};
 use convolver::{Convolver, Filter, BLOCK};
 
@@ -41,11 +44,13 @@ struct StoredFilter {
 }
 
 #[derive(Params)]
-struct NeartectParams {
+pub struct NeartectParams {
     #[persist = "space"]
     space: Arc<RwLock<String>>,
     #[persist = "filter"]
     filter: Arc<RwLock<StoredFilter>>,
+    #[persist = "synced"]
+    synced: Arc<RwLock<bool>>,
     #[id = "mix"]
     mix: FloatParam,
     #[id = "output"]
@@ -53,15 +58,18 @@ struct NeartectParams {
     #[id = "bypass"]
     bypass: BoolParam,
     bypass_changed: Arc<AtomicBool>,
+    #[nested]
+    pub slots: SlotParams,
 }
 
-impl Default for NeartectParams {
-    fn default() -> Self {
+impl NeartectParams {
+    fn new(wake: Sender<()>) -> Self {
         let bypass_changed = Arc::new(AtomicBool::new(false));
         let flag = bypass_changed.clone();
         Self {
             space: Arc::new(RwLock::new(String::new())),
             filter: Arc::new(RwLock::new(StoredFilter::default())),
+            synced: Arc::new(RwLock::new(false)),
             mix: FloatParam::new("Mix", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_smoother(SmoothingStyle::Linear(30.0))
                 .with_unit(" %")
@@ -84,7 +92,16 @@ impl Default for NeartectParams {
                 .make_bypass()
                 .with_callback(Arc::new(move |_| flag.store(true, Ordering::Relaxed))),
             bypass_changed,
+            slots: SlotParams::new(wake),
         }
+    }
+
+    fn live_space(&self) -> String {
+        let space = self.space.read().map(|s| s.clone()).unwrap_or_default();
+        if space.is_empty() || !self.synced.read().is_ok_and(|s| *s) {
+            return space;
+        }
+        params::applied(&space, &self.slots.specs, &self.slots.values()).unwrap_or(space)
     }
 }
 
@@ -122,14 +139,35 @@ struct Neartect {
     retired_out: Sender<Box<Filter>>,
     page_out: Sender<Outcome>,
     page_in: Receiver<Outcome>,
+    editor_open: Arc<AtomicBool>,
+}
+
+struct OpenWindow(Arc<AtomicBool>);
+
+impl Drop for OpenWindow {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 impl Default for Neartect {
     fn default() -> Self {
         let (retired_out, retired_in) = bounded(RETIRED_QUEUE);
         let (page_out, page_in) = unbounded();
-        let params = Arc::new(NeartectParams::default());
+        let (wake_out, wake_in) = bounded(1);
+        let params = Arc::new(NeartectParams::new(wake_out));
         let sample_rate = Arc::new(AtomicU32::new(48000.0f32.to_bits()));
+        let editor_open = Arc::new(AtomicBool::new(false));
+        let source = {
+            let (params, sample_rate, editor_open) = (params.clone(), sample_rate.clone(), editor_open.clone());
+            move || {
+                if editor_open.load(Ordering::Acquire) {
+                    return None;
+                }
+                let space = params.live_space();
+                (!space.is_empty()).then(|| (space, Some(f32::from_bits(sample_rate.load(Ordering::Relaxed)) as f64)))
+            }
+        };
         let mailbox = Arc::new(Mailbox::default());
         let deliver = {
             let (params, sample_rate, mailbox, page_out) = (params.clone(), sample_rate.clone(), mailbox.clone(), page_out.clone());
@@ -155,7 +193,7 @@ impl Default for Neartect {
             }
         };
         Self {
-            builder: Arc::new(Builder::new(retired_in, deliver)),
+            builder: Arc::new(Builder::new(retired_in, wake_in, source, deliver)),
             params,
             convolver: Convolver::new(48000.0),
             dry: [vec![0.0; BLOCK], vec![0.0; BLOCK]],
@@ -169,6 +207,7 @@ impl Default for Neartect {
             retired_out,
             page_out,
             page_in,
+            editor_open,
         }
     }
 }
@@ -226,6 +265,12 @@ enum Message {
     Bypass {
         on: bool,
     },
+    Set {
+        id: String,
+        value: f64,
+    },
+    End,
+    Synced,
     Open,
     Save {
         name: String,
@@ -391,7 +436,7 @@ impl Plugin for Neartect {
                 .set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
             self.applied = self.builder.latest();
         } else {
-            let space = self.params.space.read().map(|s| s.clone()).unwrap_or_default();
+            let space = self.params.live_space();
             if !space.is_empty() {
                 self.builder.request(space, Some(rate as f64), None);
             }
@@ -462,7 +507,10 @@ impl Plugin for Neartect {
         let builder = self.builder.clone();
         let page_in = self.page_in.clone();
         let page_out = self.page_out.clone();
+        let editor_open = self.editor_open.clone();
+        let window_open = OpenWindow(editor_open.clone());
         let pending: Mutex<Option<Dialog>> = Mutex::new(None);
+        let held: Mutex<(HashSet<usize>, Vec<f64>)> = Mutex::new((HashSet::new(), Vec::new()));
         let editor = WebViewEditor::new(HTMLSource::URL("neartect://localhost/index.html"), WINDOW_SIZE)
             .with_background_color((32, 32, 32, 255))
             .with_developer_mode(true)
@@ -475,6 +523,7 @@ impl Plugin for Neartect {
             })
             .with_keyboard_handler(|event| event.key == Key::Escape)
             .with_event_loop(move |window, setter, base| {
+                let _ = &window_open;
                 while let Ok(outcome) = page_in.try_recv() {
                     if let Some(message) = outcome_json(&outcome) {
                         window.send_json(message);
@@ -486,15 +535,65 @@ impl Plugin for Neartect {
                 if pending.as_mut().is_some_and(|dialog| settle(dialog, window)) {
                     *pending = None;
                 }
+                if let Ok(mut held) = held.lock() {
+                    if !held.1.is_empty() {
+                        let mut changed = serde_json::Map::new();
+                        for (index, entry) in params.slots.entries.iter().enumerate() {
+                            let now = entry.plain();
+                            if !held.0.contains(&index) && held.1[index] != now {
+                                held.1[index] = now;
+                                changed.insert(params.slots.specs[index].id.clone(), json!(now));
+                            }
+                        }
+                        if !changed.is_empty() {
+                            window.send_json(json!({ "type": "params", "values": changed }));
+                        }
+                    }
+                }
                 if params.bypass_changed.swap(false, Ordering::Relaxed) {
                     window.send_json(json!({ "type": "bypass", "on": params.bypass.value() }));
                 }
                 while let Ok(value) = window.next_event() {
                     match serde_json::from_value::<Message>(value) {
                         Ok(Message::Ready) => {
-                            let space = params.space.read().map(|s| s.clone()).unwrap_or_default();
+                            editor_open.store(true, Ordering::Release);
+                            let space = params.live_space();
                             let rate = f32::from_bits(sample_rate.load(Ordering::Relaxed));
-                            window.send_json(json!({ "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(), "space": if space.is_empty() { None } else { Some(space) } }));
+                            let values = params.slots.values();
+                            if let Ok(mut held) = held.lock() {
+                                held.1 = values.clone();
+                            }
+                            let ids: Vec<&str> = params.slots.specs.iter().map(|s| s.id.as_str()).collect();
+                            window.send_json(json!({
+                                "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(),
+                                "space": if space.is_empty() { None } else { Some(space) },
+                                "parameters": params::specs_json(&params.slots.specs), "values": ids.iter().zip(&values).map(|(id, v)| (id.to_string(), json!(v))).collect::<serde_json::Map<_, _>>()
+                            }));
+                        }
+                        Ok(Message::Set { id, value }) => {
+                            let Some(index) = params.slots.index_of(&id) else { continue };
+                            let ptr = params.slots.ptr(index);
+                            let Ok(mut held) = held.lock() else { continue };
+                            unsafe {
+                                if held.0.insert(index) {
+                                    setter.raw_context.raw_begin_set_parameter(ptr);
+                                }
+                                setter.raw_context.raw_set_parameter_normalized(ptr, ptr.preview_normalized(value as f32));
+                            }
+                            if let Some(known) = held.1.get_mut(index) {
+                                *known = params.slots.entries[index].plain();
+                            }
+                        }
+                        Ok(Message::Synced) => {
+                            if let Ok(mut synced) = params.synced.write() {
+                                *synced = true;
+                            }
+                        }
+                        Ok(Message::End) => {
+                            let Ok(mut held) = held.lock() else { continue };
+                            for index in held.0.drain().collect::<Vec<_>>() {
+                                unsafe { setter.raw_context.raw_end_set_parameter(params.slots.ptr(index)) };
+                            }
                         }
                         Ok(Message::Space { json }) => {
                             if let Ok(mut space) = params.space.write() {

@@ -148,28 +148,48 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new<T: Send + 'static>(retired: Receiver<T>, deliver: impl Fn(Outcome) + Send + 'static) -> Builder {
+    pub fn new<T: Send + 'static>(
+        retired: Receiver<T>,
+        wake: Receiver<()>,
+        source: impl Fn() -> Option<(String, Option<f64>)> + Send + 'static,
+        deliver: impl Fn(Outcome) + Send + Sync + 'static,
+    ) -> Builder {
         let latest = Arc::new(AtomicU64::new(0));
         let (requests, queue) = unbounded::<Request>();
         let current = latest.clone();
+        let deliver = Arc::new(deliver);
+        let cancel = deliver.clone();
+        let build = move |request: Request| {
+            let generation = request.generation;
+            let watched = current.clone();
+            let still: Still = Arc::new(move || watched.load(Ordering::Acquire) == generation);
+            let started = Instant::now();
+            deliver(match compute(&request.json, request.rate, still) {
+                Ok(Some(computed)) => Outcome::Built { generation, page: request.page, computed, milliseconds: started.elapsed().as_secs_f64() * 1000.0 },
+                Ok(None) => Outcome::Cancelled { generation, page: request.page },
+                Err(message) => Outcome::Failed { generation, page: request.page, message },
+            });
+        };
+        let next = latest.clone();
         let _ = std::thread::Builder::new().name("neartect-builder".into()).spawn(move || loop {
             select! {
                 recv(retired) -> old => drop(old),
+                recv(wake) -> woken => {
+                    if woken.is_err() {
+                        return;
+                    }
+                    if let Some((json, rate)) = source() {
+                        let generation = next.fetch_add(1, Ordering::AcqRel) + 1;
+                        build(Request { generation, json, rate, page: None });
+                    }
+                }
                 recv(queue) -> request => {
                     let Ok(mut request) = request else { return };
                     while let Ok(newer) = queue.try_recv() {
-                        deliver(Outcome::Cancelled { generation: request.generation, page: request.page });
+                        cancel(Outcome::Cancelled { generation: request.generation, page: request.page });
                         request = newer;
                     }
-                    let generation = request.generation;
-                    let watched = current.clone();
-                    let still: Still = Arc::new(move || watched.load(Ordering::Acquire) == generation);
-                    let started = Instant::now();
-                    deliver(match compute(&request.json, request.rate, still) {
-                        Ok(Some(computed)) => Outcome::Built { generation, page: request.page, computed, milliseconds: started.elapsed().as_secs_f64() * 1000.0 },
-                        Ok(None) => Outcome::Cancelled { generation, page: request.page },
-                        Err(message) => Outcome::Failed { generation, page: request.page, message },
-                    });
+                    build(request);
                 }
             }
         });

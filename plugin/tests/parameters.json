@@ -1,0 +1,5820 @@
+[
+  {
+    "id": "temperature",
+    "holder": {
+      "list": null
+    },
+    "path": [
+      "air",
+      "temperatureCelsius"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "arrival_azimuth",
+    "holder": {
+      "list": null
+    },
+    "path": [
+      "arrival",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "arrival_elevation",
+    "holder": {
+      "list": null
+    },
+    "path": [
+      "arrival",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "length",
+    "holder": {
+      "list": null
+    },
+    "path": [
+      "render",
+      "lengthMilliseconds"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source_x",
+    "holder": {
+      "list": "source"
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source_y",
+    "holder": {
+      "list": "source"
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source_z",
+    "holder": {
+      "list": "source"
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source_distance",
+    "holder": {
+      "list": "source"
+    },
+    "path": [
+      "distance"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic1_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic1_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic1_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic1_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic1_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic1_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic1_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic1_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic1_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 1
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic2_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic2_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic2_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic2_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic2_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic2_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic2_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic2_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic2_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 2
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic3_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic3_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic3_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic3_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic3_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic3_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic3_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic3_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic3_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 3
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic4_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic4_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic4_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic4_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic4_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic4_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic4_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic4_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic4_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 4
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic5_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic5_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic5_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic5_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic5_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic5_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic5_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic5_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic5_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 5
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic6_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic6_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic6_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic6_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic6_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic6_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic6_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic6_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic6_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 6
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic7_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic7_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic7_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic7_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic7_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic7_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic7_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic7_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic7_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 7
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "mic8_on",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "mic8_x",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic8_y",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic8_z",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic8_azimuth",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic8_elevation",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic8_pattern",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      "pattern"
+    ],
+    "kind": "choice",
+    "choices": [
+      "omni",
+      "wide",
+      "cardioid",
+      "supercardioid",
+      "hypercardioid",
+      "figure8"
+    ]
+  },
+  {
+    "id": "mic8_pan",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "mic8_pan_auto",
+    "holder": {
+      "list": "microphones",
+      "slot": 8
+    },
+    "path": [
+      "pan"
+    ],
+    "kind": "panAuto",
+    "choices": null
+  },
+  {
+    "id": "layout1_on",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "layout1_x",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout1_y",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout1_z",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout1_azimuth",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout1_elevation",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout1_spacing",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      "spacingMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout1_angle",
+    "holder": {
+      "list": "rigs",
+      "slot": 1
+    },
+    "path": [
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_on",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "layout2_x",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_y",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_z",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_azimuth",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_elevation",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_spacing",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      "spacingMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout2_angle",
+    "holder": {
+      "list": "rigs",
+      "slot": 2
+    },
+    "path": [
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_on",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "layout3_x",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_y",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_z",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_azimuth",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_elevation",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_spacing",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      "spacingMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout3_angle",
+    "holder": {
+      "list": "rigs",
+      "slot": 3
+    },
+    "path": [
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_on",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "layout4_x",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_y",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_z",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_azimuth",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      "aim",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_elevation",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      "aim",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_spacing",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      "spacingMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "layout4_angle",
+    "holder": {
+      "list": "rigs",
+      "slot": 4
+    },
+    "path": [
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_x",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_y",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_z",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_width",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_height",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_material",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object1_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object1_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object1_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 1
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_x",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_y",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_z",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_width",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_height",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_material",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object2_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object2_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object2_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 2
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_x",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_y",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_z",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_width",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_height",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_material",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object3_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object3_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object3_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 3
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_x",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_y",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_z",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_width",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_height",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_material",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object4_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object4_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object4_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 4
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_x",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_y",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_z",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_width",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_height",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_material",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object5_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object5_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object5_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 5
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_x",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_y",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_z",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_width",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_height",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_material",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object6_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object6_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object6_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 6
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_x",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_y",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_z",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_width",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_height",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_material",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object7_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object7_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object7_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 7
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_x",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_y",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_z",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_width",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_height",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_material",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object8_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object8_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object8_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 8
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_x",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_y",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_z",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_width",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_height",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_material",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object9_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object9_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object9_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 9
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_x",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_y",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_z",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_width",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_height",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_material",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object10_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object10_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object10_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 10
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_x",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_y",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_z",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_width",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_height",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_material",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object11_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object11_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object11_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 11
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_x",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_y",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_z",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_width",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_height",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_material",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object12_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object12_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object12_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 12
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_x",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_y",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_z",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_width",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_height",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_material",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object13_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object13_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object13_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 13
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_x",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_y",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_z",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_width",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_height",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_material",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object14_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object14_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object14_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 14
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_x",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_y",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_z",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_width",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_height",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_material",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object15_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object15_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object15_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 15
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_x",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "position",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_y",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "position",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_z",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "position",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_yaw",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "yawDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_tilt",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "tiltDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_width",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "size",
+      0
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_depth",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "size",
+      1
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_height",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "size",
+      2
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_bend",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "bend",
+      "angleDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_strength",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "strength"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_material",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "material"
+    ],
+    "kind": "choice",
+    "choices": [
+      "rigid",
+      "water",
+      "metal",
+      "concrete",
+      "tile",
+      "plaster",
+      "brick",
+      "glass",
+      "gypsum",
+      "woodFloor",
+      "woodPanel",
+      "carpet",
+      "curtain",
+      "foam",
+      "mineralWool",
+      "stonyGround",
+      "soil",
+      "grass",
+      "forestFloor",
+      "snow"
+    ]
+  },
+  {
+    "id": "object16_relief",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "shape"
+    ],
+    "kind": "choice",
+    "choices": [
+      "flat",
+      "waves",
+      "arches",
+      "scallops",
+      "egg"
+    ]
+  },
+  {
+    "id": "object16_relief_height",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "heightMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_relief_period",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "periodMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_relief_direction",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "directionDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_roughness",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "roughMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_grain",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "grainMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_relief_offset",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "offsetMetres"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "object16_motion",
+    "holder": {
+      "list": "objects",
+      "slot": 16
+    },
+    "path": [
+      "relief",
+      "speedMetresPerSecond"
+    ],
+    "kind": "number",
+    "choices": null
+  }
+]

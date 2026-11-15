@@ -3,7 +3,7 @@ import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav, wavByteLength } from './shared/domain/wav.js';
 import { zipStore } from './shared/domain/zip.js';
-import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, fillSlots, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
+import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, fillSlots, MOST_MICROPHONES, MOST_RIGS, OBJECT_SLOTS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, centredOffset, firstListener, fittedOpening, followResize, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
@@ -94,6 +94,11 @@ const pluginHost = createPluginHost({
   onSpace: text => openSpace(text, false),
   onOpen: text => openSpace(text),
   onBypass: showBypass,
+  currentSpace: () => state.space,
+  onParameters: values => {
+    pluginHost.parameters.take(state.space, values);
+    changed({ save: false, panel: !dragging });
+  },
   onRate: hz => {
     state.audioRate = hz;
     refreshFilter();
@@ -255,6 +260,7 @@ function undo() {
   if (state.selection?.type === 'group') state.selection = null;
   if (state.selection?.type === 'rig' && !state.space.rigs.some(r => r.id === state.selection.id)) state.selection = null;
   $('undo').disabled = !history.length;
+  pluginHost?.parameters.push(state.space, true);
   keepSpace();
   view.update(state.space, state.selection);
   refreshPanel();
@@ -264,6 +270,7 @@ function undo() {
 function changed({ save = true, panel = false, compute = true } = {}) {
   fillSlots(state.space);
   placePoints(state.space);
+  pluginHost?.parameters.push(state.space, save);
   if (save) {
     keepSpace();
     remember();
@@ -464,6 +471,21 @@ function selectRow(macros, { label, title, value, options, onChange, note = '', 
   macros.append(name, select, extra ?? element('span', 'macro-value', note));
 }
 
+function slotRow(macros, list, item, most, none) {
+  if (!inPlugin) return;
+  const options = [...(none ? [['', '–']] : []), ...Array.from({ length: most }, (_, i) => [String(i + 1), String(i + 1)])];
+  selectRow(macros, {
+    label: 'Automation', title: 'Host parameters of this slot', value: item.slot ? String(item.slot) : '', options,
+    onChange: value => {
+      const slot = value ? Number(value) : null;
+      const holder = slot === null ? null : list.find(other => other !== item && other.slot === slot);
+      if (holder) holder.slot = item.slot ?? null;
+      item.slot = slot;
+      changed({ panel: true });
+    }
+  });
+}
+
 function objectCard(container, object) {
   const selected = state.selection?.type === 'object' && state.selection.id === object.id;
   const card = element('div', 'card');
@@ -488,6 +510,7 @@ function objectCard(container, object) {
   if (selected) {
     const current = () => state.space.objects.find(o => o.id === object.id);
     const { macros: shape } = cardGroup(card, 'Shape and place');
+    slotRow(shape, state.space.objects, current(), OBJECT_SLOTS, true);
     SIZE_LABELS[object.kind].forEach((label, axis) => {
       if (!label) return;
       macro(shape, {
@@ -717,6 +740,7 @@ function microphoneCard(container, microphone, index) {
     const current = () => state.space.microphones.find(m => m.id === microphone.id);
     const place = cardGroup(card, 'Place').macros;
     layoutSelect(place, 'mono', kind => changeLayout(current(), kind));
+    slotRow(place, state.space.microphones, current(), MOST_MICROPHONES, false);
     pointControls(place, current, 0.3);
     sourceDistanceRow(place, current);
     const { group, macros } = cardGroup(card, 'Pickup');
@@ -785,6 +809,7 @@ function rigCard(container, rig, index) {
     const current = () => state.space.rigs.find(r => r.id === rig.id);
     const place = cardGroup(card, 'Place').macros;
     layoutSelect(place, rig.kind, kind => changeLayout(current(), kind));
+    slotRow(place, state.space.rigs, current(), MOST_RIGS, false);
     pointControls(place, current, 0.5);
     sourceDistanceRow(place, current);
     const { macros } = cardGroup(card, rig.kind === 'binaural' ? 'Head' : 'Arrangement');

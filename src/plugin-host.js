@@ -1,21 +1,27 @@
 import { FilterCancelled } from './filter-pool.js';
+import { createParameterSync } from './plugin-parameters.js';
 
 export const inPlugin = typeof window.sendToPlugin === 'function';
 
-export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
+export function createPluginHost({ onSpace, onOpen, onBypass, onRate, onParameters, currentSpace }) {
   if (!inPlugin) return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
   let asked = 0;
+  const parameters = createParameterSync(message => send(message));
   const waiting = new Map();
   window.onPluginMessage = message => {
     if (message.type === 'init') {
       rate = message.sampleRateHz;
+      parameters.start(message.parameters ?? [], message.values ?? {});
       if (message.space) onSpace(message.space);
       onBypass(message.bypass);
       onRate(rate);
+      parameters.push(currentSpace(), true);
+      send({ type: 'synced' });
     }
     if (message.type === 'opened') onOpen(message.text);
+    if (message.type === 'params') onParameters(message.values);
     if (message.type === 'bypass') onBypass(message.on);
     if (message.type === 'computed') {
       const wait = waiting.get(message.id);
@@ -31,6 +37,7 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
   document.body.classList.add('in-plugin');
   addGrip(send);
   return {
+    parameters,
     space(space) {
       send({ type: 'space', json: JSON.stringify(space) });
     },
