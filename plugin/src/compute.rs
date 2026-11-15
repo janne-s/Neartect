@@ -34,6 +34,7 @@ pub struct Computed {
     pub names: Vec<String>,
     pub pans: Vec<[f64; 2]>,
     pub stereo: [Vec<f32>; 2],
+    pub moving: bool,
 }
 
 type Cache = Mutex<Vec<(u64, Arc<Computed>)>>;
@@ -63,11 +64,15 @@ fn remember(key: u64, computed: Arc<Computed>) {
 
 pub type Still = Arc<dyn Fn() -> bool + Send + Sync>;
 
-pub fn compute(json: &str, rate: Option<f64>, still: Still) -> Result<Option<Arc<Computed>>, String> {
+pub fn compute(json: &str, rate: Option<f64>, seconds: Option<f64>, still: Still) -> Result<Option<Arc<Computed>>, String> {
     let value: serde_json::Value = serde_json::from_str(json).map_err(|_| "This is not a Neartect space.".to_string())?;
     let mut space = space::read_space(&value).map_err(|e| e.0.to_string())?;
     if let Some(rate) = rate {
         space.render.sample_rate_hz = rate;
+    }
+    let moving = seconds.is_some() && space::moving(&space);
+    if let Some(seconds) = seconds.filter(|_| moving) {
+        space::set_in_motion(&mut space, seconds);
     }
     let mut hasher = DefaultHasher::new();
     space::space_json(&space).to_string().hash(&mut hasher);
@@ -112,6 +117,7 @@ pub fn compute(json: &str, rate: Option<f64>, still: Still) -> Result<Option<Arc
         names: plan.names.clone(),
         pans: plan.pans.clone(),
         stereo,
+        moving,
     });
     remember(key, computed.clone());
     Ok(Some(computed))
@@ -142,8 +148,17 @@ pub enum Outcome {
     },
 }
 
+enum Event<T> {
+    Retired(T),
+    Woken,
+    Asked(Request),
+    Rolled,
+    Closed,
+}
+
 pub struct Builder {
     latest: Arc<AtomicU64>,
+    required: Arc<AtomicU64>,
     requests: Sender<Request>,
 }
 
@@ -152,65 +167,104 @@ impl Builder {
         retired: Receiver<T>,
         wake: Receiver<()>,
         source: impl Fn() -> Option<(String, Option<f64>)> + Send + 'static,
+        clock: impl Fn() -> f64 + Send + 'static,
         deliver: impl Fn(Outcome) + Send + Sync + 'static,
     ) -> Builder {
         let latest = Arc::new(AtomicU64::new(0));
+        let required = Arc::new(AtomicU64::new(0));
         let (requests, queue) = unbounded::<Request>();
         let current = latest.clone();
         let deliver = Arc::new(deliver);
         let cancel = deliver.clone();
-        let build = move |request: Request| {
+        let build = move |request: &Request| -> bool {
             let generation = request.generation;
             let watched = current.clone();
             let still: Still = Arc::new(move || watched.load(Ordering::Acquire) == generation);
             let started = Instant::now();
-            deliver(match compute(&request.json, request.rate, still) {
-                Ok(Some(computed)) => Outcome::Built { generation, page: request.page, computed, milliseconds: started.elapsed().as_secs_f64() * 1000.0 },
-                Ok(None) => Outcome::Cancelled { generation, page: request.page },
-                Err(message) => Outcome::Failed { generation, page: request.page, message },
-            });
-        };
-        let next = latest.clone();
-        let _ = std::thread::Builder::new().name("neartect-builder".into()).spawn(move || loop {
-            select! {
-                recv(retired) -> old => drop(old),
-                recv(wake) -> woken => {
-                    if woken.is_err() {
-                        return;
-                    }
-                    if let Some((json, rate)) = source() {
-                        let generation = next.fetch_add(1, Ordering::AcqRel) + 1;
-                        build(Request { generation, json, rate, page: None });
-                    }
+            let (outcome, moving) = match compute(&request.json, request.rate, Some(clock()), still) {
+                Ok(Some(computed)) => {
+                    let moving = computed.moving;
+                    (Outcome::Built { generation, page: request.page, computed, milliseconds: started.elapsed().as_secs_f64() * 1000.0 }, moving)
                 }
-                recv(queue) -> request => {
-                    let Ok(mut request) = request else { return };
-                    while let Ok(newer) = queue.try_recv() {
-                        cancel(Outcome::Cancelled { generation: request.generation, page: request.page });
-                        request = newer;
+                Ok(None) => (Outcome::Cancelled { generation, page: request.page }, true),
+                Err(message) => (Outcome::Failed { generation, page: request.page, message }, false),
+            };
+            deliver(outcome);
+            moving
+        };
+        let (next, needed) = (latest.clone(), required.clone());
+        let _ = std::thread::Builder::new().name("neartect-builder".into()).spawn(move || {
+            let mut base: Option<Request> = None;
+            let mut rolling = false;
+            loop {
+                let event = if rolling {
+                    select! {
+                        recv(retired) -> old => old.map_or(Event::Closed, Event::Retired),
+                        recv(wake) -> woken => woken.map_or(Event::Closed, |_| Event::Woken),
+                        recv(queue) -> request => request.map_or(Event::Closed, Event::Asked),
+                        default => Event::Rolled,
                     }
-                    build(request);
+                } else {
+                    select! {
+                        recv(retired) -> old => old.map_or(Event::Closed, Event::Retired),
+                        recv(wake) -> woken => woken.map_or(Event::Closed, |_| Event::Woken),
+                        recv(queue) -> request => request.map_or(Event::Closed, Event::Asked),
+                    }
+                };
+                let rolled = matches!(event, Event::Rolled);
+                let request = match event {
+                    Event::Closed => return,
+                    Event::Retired(old) => {
+                        drop(old);
+                        continue;
+                    }
+                    Event::Woken => {
+                        let Some((json, rate)) = source() else { continue };
+                        let generation = next.fetch_add(1, Ordering::AcqRel) + 1;
+                        needed.store(generation, Ordering::Release);
+                        Request { generation, json, rate, page: None }
+                    }
+                    Event::Asked(mut request) => {
+                        while let Ok(newer) = queue.try_recv() {
+                            cancel(Outcome::Cancelled { generation: request.generation, page: request.page });
+                            request = newer;
+                        }
+                        request
+                    }
+                    Event::Rolled => {
+                        let Some(base) = &base else {
+                            rolling = false;
+                            continue;
+                        };
+                        let generation = next.fetch_add(1, Ordering::AcqRel) + 1;
+                        Request { generation, json: base.json.clone(), rate: base.rate, page: None }
+                    }
+                };
+                rolling = build(&request);
+                if !rolled {
+                    base = Some(Request { page: None, ..request });
                 }
             }
         });
-        Builder { latest, requests }
+        Builder { latest, required, requests }
     }
 
     pub fn request(&self, json: String, rate: Option<f64>, page: Option<u64>) -> u64 {
         let generation = self.latest.fetch_add(1, Ordering::AcqRel) + 1;
+        self.required.store(generation, Ordering::Release);
         let _ = self.requests.send(Request { generation, json, rate, page });
         generation
     }
 
     pub fn latest(&self) -> u64 {
-        self.latest.load(Ordering::Acquire)
+        self.required.load(Ordering::Acquire)
     }
 }
 
 pub fn export(json: String, page: u64, deliver: impl FnOnce(Outcome) + Send + 'static) {
     let _ = std::thread::Builder::new().name("neartect-export".into()).spawn(move || {
         let started = Instant::now();
-        deliver(match compute(&json, None, Arc::new(|| true)) {
+        deliver(match compute(&json, None, None, Arc::new(|| true)) {
             Ok(Some(computed)) => Outcome::Built {
                 generation: 0,
                 page: Some(page),

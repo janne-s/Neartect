@@ -3,7 +3,7 @@ import { createParameterSync } from './plugin-parameters.js';
 
 export const inPlugin = typeof window.sendToPlugin === 'function';
 
-export function createPluginHost({ onSpace, onCamera, onOpen, onBypass, onRate, onParameters, currentSpace }) {
+export function createPluginHost({ onSpace, onCamera, onClock, onAudition, onOpen, onBypass, onRate, onParameters, currentSpace }) {
   if (!inPlugin) return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
@@ -16,6 +16,8 @@ export function createPluginHost({ onSpace, onCamera, onOpen, onBypass, onRate, 
       parameters.start(message.parameters ?? [], message.values ?? {});
       if (message.space) onSpace(message.space);
       if (message.camera) onCamera(message.camera);
+      onClock(message.seconds ?? 0);
+      if (message.audition) onAudition(message.audition);
       onBypass(message.bypass);
       onRate(rate);
       parameters.push(currentSpace(), true);
@@ -39,6 +41,9 @@ export function createPluginHost({ onSpace, onCamera, onOpen, onBypass, onRate, 
   addGrip(send);
   return {
     parameters,
+    audition({ signal, file, playing, samples, rate }) {
+      send({ type: 'audition', signal, file, playing, samples: samples ? base64(samples) : null, rate: samples ? rate : null });
+    },
     camera(camera) {
       send({ type: 'camera', camera });
     },
@@ -66,6 +71,13 @@ export function createPluginHost({ onSpace, onCamera, onOpen, onBypass, onRate, 
       reader.readAsDataURL(blob);
     }
   };
+}
+
+function base64(samples) {
+  const bytes = new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);
+  const parts = [];
+  for (let i = 0; i < bytes.length; i += 0x8000) parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
+  return btoa(parts.join(''));
 }
 
 function addGrip(send) {

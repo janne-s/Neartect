@@ -663,3 +663,16 @@ pub fn space_json(space: &Space) -> Value {
         "objects": space.objects.iter().map(object_json).collect::<Vec<_>>()
     })
 }
+
+pub fn moving(space: &Space) -> bool {
+    space.objects.iter().any(|o| o.relief.speed_metres_per_second != 0.0 && (o.relief.shape != "flat" || o.relief.rough_metres > 0.0))
+}
+
+pub fn set_in_motion(space: &mut Space, seconds: f64) {
+    for object in &mut space.objects {
+        object.relief.offset_metres += object.relief.speed_metres_per_second * seconds;
+    }
+    let quality = &mut space.render.quality;
+    quality.relief_detail = (quality.relief_detail * quality.moving_detail).max(RELIEF_DETAIL.0);
+    quality.element_limit = js_round(quality.element_limit * quality.moving_detail).max(ELEMENT_LIMIT.0);
+}

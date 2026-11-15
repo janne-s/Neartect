@@ -14,7 +14,7 @@ use std::io::Write;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::task::{Context, Poll, Waker};
 
@@ -35,6 +35,27 @@ const SMALLEST_WINDOW: (u32, u32) = (640, 420);
 const RETIRED_QUEUE: usize = 8;
 const LOG_FILE: &str = "neartect-plugin.log";
 const BYPASS_SECONDS: f32 = 0.01;
+const SIGNAL_GAIN: f32 = 0.35;
+
+pub struct Signal {
+    samples: Vec<f32>,
+    sample_rate: f32,
+}
+
+#[derive(Default)]
+struct Audition {
+    signal: String,
+    file: Option<String>,
+    samples: Option<Arc<Signal>>,
+    playing: bool,
+}
+
+type SignalChange = Mutex<Option<Option<Arc<Signal>>>>;
+
+enum Retired {
+    Filter(Box<Filter>),
+    Signal(Arc<Signal>),
+}
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 struct StoredFilter {
@@ -139,7 +160,12 @@ struct Neartect {
     applied: u64,
     offline: bool,
     builder: Arc<Builder>,
-    retired_out: Sender<Box<Filter>>,
+    retired_out: Sender<Retired>,
+    clock: Arc<AtomicU64>,
+    audition: Arc<Mutex<Audition>>,
+    signal_change: Arc<SignalChange>,
+    signal: Option<Arc<Signal>>,
+    phase: f64,
     page_out: Sender<Outcome>,
     page_in: Receiver<Outcome>,
     editor_open: Arc<AtomicBool>,
@@ -172,6 +198,11 @@ impl Default for Neartect {
             }
         };
         let mailbox = Arc::new(Mailbox::default());
+        let clock = Arc::new(AtomicU64::new(0));
+        let seconds = {
+            let (clock, sample_rate) = (clock.clone(), sample_rate.clone());
+            move || clock.load(Ordering::Relaxed) as f64 / f32::from_bits(sample_rate.load(Ordering::Relaxed)) as f64
+        };
         let deliver = {
             let (params, sample_rate, mailbox, page_out) = (params.clone(), sample_rate.clone(), mailbox.clone(), page_out.clone());
             move |outcome: Outcome| {
@@ -196,7 +227,7 @@ impl Default for Neartect {
             }
         };
         Self {
-            builder: Arc::new(Builder::new(retired_in, wake_in, source, deliver)),
+            builder: Arc::new(Builder::new(retired_in, wake_in, source, seconds, deliver)),
             params,
             convolver: Convolver::new(48000.0),
             dry: [vec![0.0; BLOCK], vec![0.0; BLOCK]],
@@ -208,6 +239,11 @@ impl Default for Neartect {
             applied: 0,
             offline: false,
             retired_out,
+            clock,
+            audition: Arc::new(Mutex::new(Audition { signal: "pink".into(), ..Audition::default() })),
+            signal_change: Arc::new(Mutex::new(None)),
+            signal: None,
+            phase: 0.0,
             page_out,
             page_in,
             editor_open,
@@ -276,6 +312,13 @@ enum Message {
     Synced,
     Camera {
         camera: serde_json::Value,
+    },
+    Audition {
+        signal: String,
+        file: Option<String>,
+        playing: bool,
+        samples: Option<String>,
+        rate: Option<f32>,
     },
     Open,
     Save {
@@ -476,10 +519,19 @@ impl Plugin for Neartect {
     ) -> ProcessStatus {
         self.take_delivery(self.offline);
         while let Some(old) = self.convolver.take_retired() {
-            if let Err(error) = self.retired_out.try_send(old) {
+            if let Err(error) = self.retired_out.try_send(Retired::Filter(old)) {
                 drop(error.into_inner());
             }
         }
+        if let Some(next) = self.signal_change.try_lock().ok().and_then(|mut change| change.take()) {
+            self.phase = 0.0;
+            if let Some(old) = std::mem::replace(&mut self.signal, next) {
+                if let Err(error) = self.retired_out.try_send(Retired::Signal(old)) {
+                    drop(error.into_inner());
+                }
+            }
+        }
+        self.clock.fetch_add(buffer.samples() as u64, Ordering::Relaxed);
         let stereo_input = self.inputs > 1;
         let rate = f32::from_bits(self.sample_rate.load(Ordering::Relaxed));
         let step = 1.0 / (BYPASS_SECONDS * rate);
@@ -488,11 +540,17 @@ impl Plugin for Neartect {
             self.heard += (target - self.heard).clamp(-step, step);
             let mix = self.params.mix.smoothed.next() * self.heard;
             let gain = self.params.output.smoothed.next();
-            let left = *frame.get_mut(0).expect("a main channel");
-            let right = if stereo_input {
-                *frame.get_mut(1).expect("a second channel")
+            let (left, right) = if let Some(signal) = &self.signal {
+                let sample = SIGNAL_GAIN * signal.samples[self.phase as usize];
+                self.phase += (signal.sample_rate / rate) as f64;
+                if self.phase >= signal.samples.len() as f64 {
+                    self.phase %= signal.samples.len() as f64;
+                }
+                (sample, sample)
             } else {
-                left
+                let left = *frame.get_mut(0).expect("a main channel");
+                let right = if stereo_input { *frame.get_mut(1).expect("a second channel") } else { left };
+                (left, right)
             };
             let wet = self.convolver.process(0.5 * (left + right));
             let slot = self.dry_at;
@@ -514,6 +572,7 @@ impl Plugin for Neartect {
         let page_in = self.page_in.clone();
         let page_out = self.page_out.clone();
         let editor_open = self.editor_open.clone();
+        let (clock, audition, signal_change) = (self.clock.clone(), self.audition.clone(), self.signal_change.clone());
         let window_open = OpenWindow(editor_open.clone());
         let pending: Mutex<Option<Dialog>> = Mutex::new(None);
         let held: Mutex<(HashSet<usize>, Vec<f64>)> = Mutex::new((HashSet::new(), Vec::new()));
@@ -573,6 +632,8 @@ impl Plugin for Neartect {
                             window.send_json(json!({
                                 "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(),
                                 "space": if space.is_empty() { None } else { Some(space) },
+                                "seconds": clock.load(Ordering::Relaxed) as f64 / rate as f64,
+                                "audition": audition.lock().map(|a| json!({ "signal": a.signal, "file": a.file, "playing": a.playing })).unwrap_or_default(),
                                 "camera": params.camera.read().map(|c| c.clone()).unwrap_or_default(),
                                 "parameters": params::specs_json(&params.slots.specs), "values": ids.iter().zip(&values).map(|(id, v)| (id.to_string(), json!(v))).collect::<serde_json::Map<_, _>>()
                             }));
@@ -594,6 +655,25 @@ impl Plugin for Neartect {
                         Ok(Message::Synced) => {
                             if let Ok(mut synced) = params.synced.write() {
                                 *synced = true;
+                            }
+                        }
+                        Ok(Message::Audition { signal, file, playing, samples, rate }) => {
+                            let host = f32::from_bits(sample_rate.load(Ordering::Relaxed));
+                            let decoded = samples
+                                .and_then(|text| base64::engine::general_purpose::STANDARD.decode(text).ok())
+                                .map(|bytes| bytes.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect::<Vec<f32>>())
+                                .filter(|samples| !samples.is_empty())
+                                .map(|samples| Arc::new(Signal { samples, sample_rate: rate.filter(|r| *r > 0.0).unwrap_or(host) }));
+                            let Ok(mut audition) = audition.lock() else { continue };
+                            if decoded.is_some() {
+                                audition.samples = decoded;
+                            }
+                            audition.signal = signal;
+                            audition.file = file;
+                            audition.playing = playing;
+                            let heard = if audition.playing { audition.samples.clone() } else { None };
+                            if let Ok(mut change) = signal_change.lock() {
+                                *change = Some(heard);
                             }
                         }
                         Ok(Message::Camera { camera }) => {

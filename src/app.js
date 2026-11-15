@@ -97,6 +97,19 @@ function showBypass(on) {
 const pluginHost = createPluginHost({
   onSpace: text => openSpace(text, false),
   onCamera: stored => view.setCamera(stored),
+  onClock: seconds => { hostClock = { seconds, at: performance.now() }; },
+  onAudition: heard => {
+    state.signal = ['pink', 'clicks', 'sweep', 'file'].includes(heard.signal) ? heard.signal : 'pink';
+    if (heard.file) {
+      state.file = { name: heard.file, samples: null, sampleRate: null };
+      $('signal').options[3].hidden = false;
+    }
+    if (state.signal === 'file' && !state.file) state.signal = 'pink';
+    $('signal').value = state.signal;
+    showFileName();
+    auditioning = Boolean(heard.playing);
+    showPlaying(auditioning);
+  },
   onOpen: text => openSpace(text),
   onBypass: showBypass,
   currentSpace: () => state.space,
@@ -148,18 +161,22 @@ function moving(space) {
   return space.objects.some(o => o.relief.speedMetresPerSecond !== 0 && (o.relief.shape !== 'flat' || o.relief.roughMetres > 0));
 }
 
-const motionRunning = () => inPlugin || preview.playing;
-const motionTime = () => (inPlugin ? performance.now() / 1000 : preview.time);
+let hostClock = { seconds: 0, at: performance.now() };
+let auditioning = false;
+const playing = () => (inPlugin ? auditioning : preview.playing);
+const pageMoves = space => !inPlugin && preview.playing && moving(space);
+const motionShown = space => (inPlugin || preview.playing) && moving(space);
+const motionTime = () => (inPlugin ? hostClock.seconds + (performance.now() - hostClock.at) / 1000 : preview.time);
 
 function liveSpace() {
   const space = clone(state.space);
   if (state.audioRate) space.render.sampleRateHz = state.audioRate;
-  const gliding = motionRunning() && moving(space);
+  const gliding = pageMoves(space);
   if (gliding) {
     const t = motionTime();
     space.objects.forEach(o => { o.relief.offsetMetres += o.relief.speedMetresPerSecond * t; });
   }
-  if (gliding || dragging) {
+  if (gliding || (dragging && !(inPlugin && moving(space)))) {
     const quality = space.render.quality;
     quality.reliefDetail = Math.max(RANGES.reliefDetail[0], quality.reliefDetail * quality.movingDetail);
     quality.elementLimit = Math.max(RANGES.elementLimit[0], Math.round(quality.elementLimit * quality.movingDetail));
@@ -191,13 +208,11 @@ async function refreshFilter() {
     mayCancel = true;
     state.filter = result;
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
-    const gliding = motionRunning() && moving(space);
+    const gliding = pageMoves(space);
     preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, result.milliseconds / 1000) : undefined);
     drawPlots();
-    if (gliding) {
-      dirty = true;
-      if (!animating) animateRelief();
-    }
+    if (gliding) dirty = true;
+    if (motionShown(space) && !animating) animateRelief();
   } catch (error) {
     if (error instanceof FilterCancelled) mayCancel = false;
     else setStatus(error.message, true);
@@ -603,7 +618,7 @@ function reliefControls(card, current) {
     macro(macros, { label: 'Grain', title: 'Roughness grain', range: [0.01, 1], log: true, format: formatGap, fallback: 0.05, read: () => relief().grainMetres, write: v => { relief().grainMetres = v; } });
   }
   if (shaped || relief().roughMetres > 0) {
-    macro(macros, { label: 'Motion', title: inPlugin ? 'Moves while the window is open' : 'Moves while the preview plays', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
+    macro(macros, { label: 'Motion', title: inPlugin ? 'Moves while the host runs audio' : 'Moves while the preview plays', range: [0.001, 5], signed: true, format: v => (v ? `${formatGap(Math.abs(v))}/s` : 'still'), fallback: 0, read: () => relief().speedMetresPerSecond, write: v => { relief().speedMetresPerSecond = v; } });
     macro(macros, { label: 'Shift', title: 'Relief position along its direction', range: [0.001, 5], signed: true, format: formatGap, fallback: 0, read: () => relief().offsetMetres, write: v => { relief().offsetMetres = v; } });
   }
 }
@@ -1089,7 +1104,21 @@ async function signalSamples(sampleRate) {
   return { samples: TEST_SIGNALS[state.signal === 'file' ? 'pink' : state.signal](sampleRate), sampleRate };
 }
 
+function showPlaying(on) {
+  $('play').setAttribute('aria-pressed', String(on));
+  $('play').textContent = on ? 'Stop' : 'Play';
+}
+
+function audition(on) {
+  auditioning = on;
+  const rate = state.audioRate ?? 48000;
+  const heard = state.signal === 'file' ? state.file : { samples: TEST_SIGNALS[state.signal](rate), sampleRate: rate };
+  pluginHost.audition({ signal: state.signal, file: state.file?.name ?? null, playing: on, samples: on ? heard?.samples : null, rate: heard?.sampleRate });
+  showPlaying(on);
+}
+
 async function startPlayback() {
+  if (pluginHost) return audition(true);
   const rate = preview.sampleRate;
   if (state.audioRate !== rate) {
     state.audioRate = rate;
@@ -1104,7 +1133,7 @@ async function startPlayback() {
 
 let animating = false;
 function animateRelief() {
-  if (motionRunning() && moving(state.space)) {
+  if (motionShown(state.space)) {
     animating = true;
     view.setReliefTime(motionTime());
     requestAnimationFrame(animateRelief);
@@ -1115,12 +1144,13 @@ function animateRelief() {
 }
 
 function stopPlayback() {
+  if (pluginHost) return audition(false);
   preview.stop();
   $('play').setAttribute('aria-pressed', 'false');
   $('play').textContent = 'Play';
 }
 
-$('play').addEventListener('click', () => (preview.playing ? stopPlayback() : startPlayback()));
+$('play').addEventListener('click', () => (playing() ? stopPlayback() : startPlayback()));
 document.addEventListener('keydown', event => {
   if (event.code !== 'Space' || event.target.closest('input, select, textarea, button, dialog')) return;
   event.preventDefault();
@@ -1136,7 +1166,7 @@ function showFileName() {
 $('signal').addEventListener('change', () => {
   state.signal = $('signal').value;
   showFileName();
-  if (preview.playing) startPlayback();
+  if (playing()) startPlayback();
 });
 $('load-signal').addEventListener('click', () => $('signal-file').click());
 $('signal-file').addEventListener('change', async () => {
@@ -1155,7 +1185,7 @@ $('signal-file').addEventListener('change', async () => {
     $('signal').options[3].hidden = false;
     $('signal').value = 'file';
     showFileName();
-    if (preview.playing) startPlayback();
+    if (playing()) startPlayback();
   } catch {
     setStatus('The file could not be read as audio.', true);
     $('signal').value = state.signal;
