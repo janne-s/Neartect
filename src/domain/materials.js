@@ -37,9 +37,3 @@ export const MATERIALS = Object.freeze({
 });
 
 export const DEFAULT_MATERIAL = 'concrete';
-
-export function reflectionBands(materialId) {
-  const absorption = (MATERIALS[materialId] ?? MATERIALS[DEFAULT_MATERIAL]).absorption;
-  const six = absorption.map(alpha => Math.sqrt(Math.max(0, 1 - Math.min(1, alpha))));
-  return [six[0], ...six, six[5]];
-}

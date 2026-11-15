@@ -1,5 +1,4 @@
-import { loadCore } from './domain/core.js';
-import { runJob } from './domain/near-filter.js';
+import { loadCore, runJob } from './domain/core.js';
 
 // A trap leaves the core’s memory unknown, so the pool replaces this worker.
 self.addEventListener('message', async ({ data: { id, job } }) => {

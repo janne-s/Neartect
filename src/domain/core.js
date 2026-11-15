@@ -12,3 +12,9 @@ export function loadCore() {
   }
   return ready.then(wasm => ({ coreVersion, nearFilterFromParts, nearJobs, nearSpectrumPart, readSpace, settingNames, surfaceHeaderLength, memoryBytes: () => wasm.memory.buffer.byteLength }));
 }
+
+export function runJob(core, job) {
+  return job.spectra
+    ? core.nearFilterFromParts(job.settings, job.spectra)
+    : core.nearSpectrumPart(job.settings, job.surfaces, job.part, job.parts);
+}

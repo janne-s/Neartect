@@ -106,9 +106,3 @@ export function flatPoint(bend, p) {
   const gap = sign * (1 / Math.abs(k) - Math.hypot(...radial));
   return along(bend.touching, [bend.arc, s], [bend.front, gap], [bend.axis, t]);
 }
-
-export function bendValues(bend, faceNormal) {
-  if (!bend) return [0, 0, 0, 0, 0, 0, 0, 0];
-  const towards = Math.sign(dot(faceNormal, bend.front)) || 1;
-  return [bend.curvature * towards, ...(bend.arc ?? [0, 0, 0]), ...bend.touching, bend.sphere ? 1 : 0];
-}

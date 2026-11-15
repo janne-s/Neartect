@@ -705,3 +705,36 @@ pub fn reflection_bands(material_id: &str) -> [f64; 8] {
     let six = absorption(material).map(|alpha| (0.0f64).max(1.0 - alpha.min(1.0)).sqrt());
     [six[0], six[0], six[1], six[2], six[3], six[4], six[5], six[5]]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bent_pipe() -> Space {
+        let document = serde_json::json!({ "kind": "neartect.space", "objects": [{ "kind": "pipe", "position": [0, 0, 1], "size": [0.2, 2, 0.2], "bend": { "angleDegrees": 90, "axis": "up" } }] });
+        crate::space::read_space(&document).expect("a space")
+    }
+
+    #[test]
+    fn a_bent_pipe_holds_a_microphone_on_its_arc_and_turns_from_mouth_a_to_mouth_b() {
+        let space = bent_pipe();
+        let pipe = &space.objects[0];
+        let at = point_position(&space, &Point { position: [0.0; 3], reference: Some(pipe.id.clone()), offset: [0.0, -1.0, 0.0] });
+        assert!(pipe_share(&space, at).is_some_and(|(_, share)| share == 1.0), "the middle of the arc is inside");
+        assert!(pipe_share(&space, [0.0, 0.0, 1.5]).is_none());
+        let (mouth_a, mouth_b, bend) = pipe_centreline(pipe);
+        let bend = bend.expect("a bend");
+        let radius = 2.0 / (PI / 2.0);
+        let a = sub(mouth_a, bend.centre);
+        let b = sub(mouth_b, bend.centre);
+        assert!((hypot3(a) - radius).abs() < 1e-9 && (hypot3(b) - radius).abs() < 1e-9);
+        assert!(dot(cross(a, b), bend.axis) > 0.0, "A turns towards B about the axis");
+    }
+
+    #[test]
+    fn ground_materials_absorb_more_than_concrete_and_rigid_reflects_fully() {
+        assert_eq!(reflection_bands("rigid"), [1.0; 8]);
+        assert_eq!(reflection_bands("cheese"), reflection_bands("concrete"));
+        assert!(reflection_bands("grass").iter().zip(reflection_bands("concrete")).all(|(g, c)| g < &c));
+    }
+}

@@ -183,20 +183,6 @@ function bentPipeFaces(object, bend) {
   return faces;
 }
 
-export function pipeCentreline(object) {
-  const [, d] = object.size;
-  const bend = objectBend(object);
-  const mouthA = surfacePoint(object, [0, -d / 2, 0]);
-  const mouthB = surfacePoint(object, [0, d / 2, 0]);
-  if (!bend) return { mouthA, mouthB, bend: null };
-  const centre = bend.touching.map((p, i) => p + bend.front[i] / bend.curvature);
-  const travel = bentTangent(bend, toWorld(object, [0, -d / 2, 0]));
-  const radial = sub(mouthA, centre);
-  const axis = [radial[1] * travel[2] - radial[2] * travel[1], radial[2] * travel[0] - radial[0] * travel[2], radial[0] * travel[1] - radial[1] * travel[0]];
-  const n = Math.hypot(...axis);
-  return { mouthA, mouthB, bend: { centre, axis: axis.map(v => v / n) } };
-}
-
 export function expandObject(object) {
   const bend = objectBend(object);
   if (bend && object.kind === 'pipe') {
@@ -354,31 +340,4 @@ export function placePoints(space) {
 
 export function releaseObject(space, id) {
   boundPoints(space).forEach(point => { if (point.reference === id) referTo(space, point, null); });
-}
-
-// Class C: smoothstep blend through the mouth.
-export function pipeShare(space, point) {
-  for (const object of space.objects) {
-    if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
-    const [x, y, z] = surfaceLocal(object, point);
-    const [diameter, length] = object.size;
-    const radius = diameter / 2;
-    const depth = length / 2 - Math.abs(y);
-    if (Math.hypot(x, z) >= radius || depth <= -radius) continue;
-    const t = Math.min(1, Math.max(0, (depth + radius) / (2 * radius)));
-    return { pipe: { object, ...pipeCentreline(object), radius }, share: t * t * (3 - 2 * t) };
-  }
-  return null;
-}
-
-export function pipeAround(space, point) {
-  for (const object of space.objects) {
-    if (object.kind !== 'pipe' || !(object.strength > 0)) continue;
-    const [x, y, z] = surfaceLocal(object, point);
-    const [diameter, length] = object.size;
-    if (Math.hypot(x, z) < diameter / 2 && Math.abs(y) < length / 2) {
-      return { object, ...pipeCentreline(object), radius: diameter / 2 };
-    }
-  }
-  return null;
 }

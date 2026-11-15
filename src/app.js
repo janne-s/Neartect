@@ -3,7 +3,7 @@ import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav, wavByteLength } from './shared/domain/wav.js';
 import { zipStore } from './shared/domain/zip.js';
-import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
+import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, fillSlots, MOST_MICROPHONES, MOST_RIGS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, centredOffset, firstListener, fittedOpening, followResize, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
@@ -263,6 +263,7 @@ function undo() {
 }
 
 function changed({ save = true, panel = false, compute = true } = {}) {
+  fillSlots(state.space);
   placePoints(state.space);
   if (save) {
     keepSpace();
@@ -544,6 +545,7 @@ function objectCard(container, object) {
     button('<i class="fa-solid fa-clone" aria-hidden="true"></i>', 'Duplicate', () => {
       const copy = clone(object);
       copy.id = defaultObject(object.kind).id;
+      delete copy.slot;
       copy.name = `${object.name} copy`;
       copy.position = copy.position.map((v, i) => v + (i === 0 ? 0.2 : 0));
       state.space.objects.push(copy);

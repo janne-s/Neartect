@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { alignment, channelJobs, listeners, nearFilter, packSpace, SETTING_NAMES } from '../src/domain/near-filter.js';
+import { channelJobs, listeners, nearFilter, SETTING_NAMES } from '../src/domain/near-filter.js';
 import { loadCore } from '../src/domain/core.js';
 import { defaultRig, defaultSpace, readSpace } from '../src/domain/space.js';
 
@@ -238,9 +238,7 @@ test('a measured head and a spherical head both hear a source on the left louder
 test('the settings record names every field the core reads, in its order', async () => {
   const core = await loadCore();
   assert.deepEqual(core.settingNames(), [...SETTING_NAMES]);
-  const space = defaultSpace();
-  const list = listeners(space);
-  const { settings } = packSpace(space, list[0], alignment(space, list.map(l => l.position))[0], 0);
+  const { settings } = channelJobs(defaultSpace())[0].variants[0];
   assert.equal(settings.length, SETTING_NAMES.length);
   assert.ok(settings.every(Number.isFinite));
 });
@@ -258,8 +256,8 @@ test('a job takes no more WebAssembly memory than its estimate', async () => {
   const { execFileSync } = await import('node:child_process');
   const measure = (rig, milliseconds, rate) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
     import init from '../src/core/neartect_core.js';
-    import { loadCore } from '../src/domain/core.js';
-    import { channelJobs, jobBytes, runJob } from '../src/domain/near-filter.js';
+    import { loadCore, runJob } from '../src/domain/core.js';
+    import { channelJobs, jobBytes } from '../src/domain/near-filter.js';
     import { situationSpace } from '../src/domain/situations.js';
     import { defaultRig, defaultSpace, readSpace } from '../src/domain/space.js';
     const core = await loadCore();
