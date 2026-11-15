@@ -101,7 +101,7 @@ const pluginHost = createPluginHost({
 });
 
 const WORKERS = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 2) - 1));
-const pool = createPool(new URL('./filter-worker.js', import.meta.url), WORKERS, jobBytes);
+const pool = inPlugin ? null : createPool(new URL('./filter-worker.js', import.meta.url), WORKERS, jobBytes);
 
 const filterMarker = createRenderMarker(localStorage, 'neartect.filterUnfinished');
 const unfinishedFilter = filterMarker.take();
@@ -124,7 +124,7 @@ async function timedFilter(space, purpose, build = Symbol('build')) {
   marked += 1;
   filterMarker.phase(filterLoad(space, purpose));
   try {
-    const result = await computeFilter(space, pool.runner(build));
+    const result = pluginHost ? await pluginHost.compute(space, purpose === 'Preview' ? 'preview' : 'export') : await computeFilter(space, pool.runner(build));
     return { ...result, milliseconds: performance.now() - started };
   } finally {
     marked -= 1;
@@ -160,7 +160,7 @@ function liveSpace() {
 async function refreshFilter() {
   if (busy) {
     dirty = true;
-    if (mayCancel) pool.cancel(building);
+    if (mayCancel) pool?.cancel(building);
     return;
   }
   busy = true;
@@ -169,7 +169,7 @@ async function refreshFilter() {
   if (!listeners(space).length) {
     state.filter = null;
     preview.silence();
-    pluginHost?.silence();
+    pluginHost?.compute(space, 'preview').catch(() => {});
     setStatus(space.microphones.length || space.rigs.length ? 'All microphones are off' : 'No microphone: add one from Layouts');
     drawPlots();
     busy = false;
@@ -183,7 +183,6 @@ async function refreshFilter() {
     setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
     const gliding = motionRunning() && moving(space);
     preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, result.milliseconds / 1000) : undefined);
-    pluginHost?.filter(result);
     drawPlots();
     if (gliding) {
       dirty = true;

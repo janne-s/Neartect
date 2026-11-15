@@ -1,5 +1,5 @@
 use base64::Engine;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use include_dir::{include_dir, Dir};
 use nih_plug::prelude::*;
 use nih_plug_webview::{http, HTMLSource, Key, WebViewEditor};
@@ -14,10 +14,12 @@ use std::io::Write;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::task::{Context, Poll, Waker};
 
+pub mod compute;
 pub mod convolver;
+use compute::{Builder, Computed, Outcome};
 use convolver::{Convolver, Filter, BLOCK};
 
 static SOURCES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../src");
@@ -27,7 +29,7 @@ static THEME: &[u8] = include_bytes!("../../theme.css");
 
 const WINDOW_SIZE: (u32, u32) = (1200, 760);
 const SMALLEST_WINDOW: (u32, u32) = (640, 420);
-const FILTER_QUEUE: usize = 4;
+const RETIRED_QUEUE: usize = 8;
 const LOG_FILE: &str = "neartect-plugin.log";
 const BYPASS_SECONDS: f32 = 0.01;
 
@@ -86,6 +88,25 @@ impl Default for NeartectParams {
     }
 }
 
+type Delivery = (u64, Option<Box<Filter>>);
+
+#[derive(Default)]
+struct Mailbox {
+    slot: Mutex<Option<Delivery>>,
+    ready: Condvar,
+}
+
+impl Mailbox {
+    fn put(&self, generation: u64, filter: Option<Box<Filter>>) {
+        if let Ok(mut slot) = self.slot.lock() {
+            if slot.as_ref().is_none_or(|(held, _)| *held <= generation) {
+                *slot = Some((generation, filter));
+            }
+        }
+        self.ready.notify_all();
+    }
+}
+
 struct Neartect {
     params: Arc<NeartectParams>,
     convolver: Convolver,
@@ -94,30 +115,93 @@ struct Neartect {
     inputs: usize,
     heard: f32,
     sample_rate: Arc<AtomicU32>,
-    filters_in: Receiver<Box<Filter>>,
-    filters_out: Sender<Box<Filter>>,
+    mailbox: Arc<Mailbox>,
+    applied: u64,
+    offline: bool,
+    builder: Arc<Builder>,
     retired_out: Sender<Box<Filter>>,
-    retired_in: Receiver<Box<Filter>>,
+    page_out: Sender<Outcome>,
+    page_in: Receiver<Outcome>,
 }
 
 impl Default for Neartect {
     fn default() -> Self {
-        let (filters_out, filters_in) = bounded(FILTER_QUEUE);
-        let (retired_out, retired_in) = bounded(FILTER_QUEUE);
+        let (retired_out, retired_in) = bounded(RETIRED_QUEUE);
+        let (page_out, page_in) = unbounded();
+        let params = Arc::new(NeartectParams::default());
+        let sample_rate = Arc::new(AtomicU32::new(48000.0f32.to_bits()));
+        let mailbox = Arc::new(Mailbox::default());
+        let deliver = {
+            let (params, sample_rate, mailbox, page_out) = (params.clone(), sample_rate.clone(), mailbox.clone(), page_out.clone());
+            move |outcome: Outcome| {
+                let (generation, page) = match &outcome {
+                    Outcome::Built { generation, page, .. } | Outcome::Cancelled { generation, page } | Outcome::Failed { generation, page, .. } => (*generation, *page),
+                };
+                let rate = f32::from_bits(sample_rate.load(Ordering::Relaxed));
+                let filter = match &outcome {
+                    Outcome::Built { computed, .. } if computed.sample_rate_hz as f32 == rate => {
+                        let [left, right] = &computed.stereo;
+                        if let Ok(mut stored) = params.filter.write() {
+                            *stored = StoredFilter { sample_rate: rate, left: left.clone(), right: right.clone() };
+                        }
+                        Some(Box::new(Filter::new(rate, left, right)))
+                    }
+                    _ => None,
+                };
+                mailbox.put(generation, filter);
+                if page.is_some() {
+                    let _ = page_out.send(outcome);
+                }
+            }
+        };
         Self {
-            params: Arc::new(NeartectParams::default()),
+            builder: Arc::new(Builder::new(retired_in, deliver)),
+            params,
             convolver: Convolver::new(48000.0),
             dry: [vec![0.0; BLOCK], vec![0.0; BLOCK]],
             dry_at: 0,
             inputs: 2,
             heard: 1.0,
-            sample_rate: Arc::new(AtomicU32::new(48000.0f32.to_bits())),
-            filters_in,
-            filters_out,
+            sample_rate,
+            mailbox,
+            applied: 0,
+            offline: false,
             retired_out,
-            retired_in,
+            page_out,
+            page_in,
         }
     }
+}
+
+impl Neartect {
+    fn take_delivery(&mut self, waiting: bool) {
+        let latest = self.builder.latest();
+        let taken = if waiting && self.applied < latest {
+            let Ok(slot) = self.mailbox.slot.lock() else { return };
+            let Ok(mut slot) = self.mailbox.ready.wait_while(slot, |slot| slot.as_ref().is_none_or(|(g, _)| *g < latest)) else { return };
+            slot.take()
+        } else {
+            self.mailbox.slot.try_lock().ok().and_then(|mut slot| slot.take())
+        };
+        if let Some((generation, filter)) = taken {
+            self.applied = self.applied.max(generation);
+            if let Some(filter) = filter {
+                self.convolver.offer(filter);
+            }
+        }
+    }
+}
+
+fn computed_json(id: u64, computed: &Computed, milliseconds: f64) -> serde_json::Value {
+    json!({ "type": "computed", "id": id, "sampleRateHz": computed.sample_rate_hz, "channels": computed.channels, "names": computed.names, "pans": computed.pans, "milliseconds": milliseconds })
+}
+
+fn outcome_json(outcome: &Outcome) -> Option<serde_json::Value> {
+    Some(match outcome {
+        Outcome::Built { page, computed, milliseconds, .. } => computed_json((*page)?, computed, *milliseconds),
+        Outcome::Cancelled { page, .. } => json!({ "type": "computed", "id": (*page)?, "cancelled": true }),
+        Outcome::Failed { page, message, .. } => json!({ "type": "computed", "id": (*page)?, "error": message }),
+    })
 }
 
 #[derive(Deserialize)]
@@ -127,11 +211,10 @@ enum Message {
     Space {
         json: String,
     },
-    #[serde(rename_all = "camelCase")]
-    Filter {
-        sample_rate_hz: f32,
-        left: Vec<f32>,
-        right: Vec<f32>,
+    Compute {
+        id: u64,
+        json: String,
+        purpose: String,
     },
     Resize {
         width: u32,
@@ -292,6 +375,7 @@ impl Plugin for Neartect {
         context: &mut impl InitContext<Self>,
     ) -> bool {
         let rate = buffer_config.sample_rate;
+        self.offline = buffer_config.process_mode == ProcessMode::Offline;
         self.inputs = layout.main_input_channels.map_or(2, |n| n.get() as usize);
         self.sample_rate.store(rate.to_bits(), Ordering::Relaxed);
         self.convolver = Convolver::new(rate);
@@ -305,6 +389,12 @@ impl Plugin for Neartect {
         if stored.sample_rate == rate && !stored.left.is_empty() {
             self.convolver
                 .set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
+            self.applied = self.builder.latest();
+        } else {
+            let space = self.params.space.read().map(|s| s.clone()).unwrap_or_default();
+            if !space.is_empty() {
+                self.builder.request(space, Some(rate as f64), None);
+            }
         }
         context.set_latency_samples(BLOCK as u32);
         true
@@ -333,9 +423,7 @@ impl Plugin for Neartect {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        while let Ok(filter) = self.filters_in.try_recv() {
-            self.convolver.offer(filter);
-        }
+        self.take_delivery(self.offline);
         while let Some(old) = self.convolver.take_retired() {
             if let Err(error) = self.retired_out.try_send(old) {
                 drop(error.into_inner());
@@ -371,8 +459,9 @@ impl Plugin for Neartect {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let sample_rate = self.sample_rate.clone();
-        let filters_out = self.filters_out.clone();
-        let retired_in = self.retired_in.clone();
+        let builder = self.builder.clone();
+        let page_in = self.page_in.clone();
+        let page_out = self.page_out.clone();
         let pending: Mutex<Option<Dialog>> = Mutex::new(None);
         let editor = WebViewEditor::new(HTMLSource::URL("neartect://localhost/index.html"), WINDOW_SIZE)
             .with_background_color((32, 32, 32, 255))
@@ -386,7 +475,11 @@ impl Plugin for Neartect {
             })
             .with_keyboard_handler(|event| event.key == Key::Escape)
             .with_event_loop(move |window, setter, base| {
-                while retired_in.try_recv().is_ok() {}
+                while let Ok(outcome) = page_in.try_recv() {
+                    if let Some(message) = outcome_json(&outcome) {
+                        window.send_json(message);
+                    }
+                }
                 let Ok(mut pending) = pending.lock() else {
                     return;
                 };
@@ -408,14 +501,14 @@ impl Plugin for Neartect {
                                 *space = json;
                             }
                         }
-                        Ok(Message::Filter { sample_rate_hz, left, right }) => {
-                            let rate = f32::from_bits(sample_rate.load(Ordering::Relaxed));
-                            if sample_rate_hz != rate {
-                                continue;
-                            }
-                            let _ = filters_out.try_send(Box::new(Filter::new(rate, &left, &right)));
-                            if let Ok(mut stored) = params.filter.write() {
-                                *stored = StoredFilter { sample_rate: rate, left, right };
+                        Ok(Message::Compute { id, json, purpose }) => {
+                            if purpose == "export" {
+                                let page_out = page_out.clone();
+                                compute::export(json, id, move |outcome| {
+                                    let _ = page_out.send(outcome);
+                                });
+                            } else {
+                                builder.request(json, None, Some(id));
                             }
                         }
                         Ok(Message::Resize { width, height }) => window.resize(base, width.max(SMALLEST_WINDOW.0), height.max(SMALLEST_WINDOW.1)),

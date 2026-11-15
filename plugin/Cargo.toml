@@ -13,6 +13,7 @@ exclude = ["vendor"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+neartect-core = { path = "../core" }
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_webview = { git = "https://github.com/httnn/nih-plug-webview", rev = "745d79a32fb21374758812e49436cb2a21e217fd" }
 realfft = "3"

@@ -246,3 +246,67 @@ pub fn flat_jobs(jobs: &[Job]) -> Vec<f64> {
     }
     out
 }
+
+pub struct Piece {
+    pub scene: std::sync::Arc<crate::scene::Scene>,
+    pub part: crate::kirchhoff::Part,
+}
+
+pub struct ChannelPlan {
+    pub head: std::sync::Arc<crate::scene::Scene>,
+    pub pieces: Vec<Piece>,
+    pub channels: usize,
+}
+
+pub struct Plan {
+    pub channels: Vec<ChannelPlan>,
+    pub names: Vec<String>,
+    pub pans: Vec<[f64; 2]>,
+    pub sample_rate_hz: f64,
+}
+
+pub fn plan(space: &Space) -> Result<Plan, String> {
+    let list = listeners(space);
+    let mut channels = Vec::new();
+    for job in channel_jobs(space) {
+        let mut pieces = Vec::new();
+        for variant in &job.variants {
+            let scene = std::sync::Arc::new(crate::read_scene(&variant.settings, &variant.surfaces)?);
+            pieces.extend((0..variant.parts).map(|index| Piece { scene: scene.clone(), part: crate::kirchhoff::Part { index, count: variant.parts } }));
+        }
+        let head = std::sync::Arc::new(crate::read_scene(&job.variants[0].settings, &[])?);
+        channels.push(ChannelPlan { head, pieces, channels: job.channels });
+    }
+    Ok(Plan { channels, names: list.iter().map(|l| l.name.clone()).collect(), pans: list.iter().map(|l| l.pan).collect(), sample_rate_hz: space.render.sample_rate_hz })
+}
+
+pub fn spectra_of(piece: &Piece) -> Vec<Vec<rustfft::num_complex::Complex64>> {
+    crate::filter::near_spectra_part(&piece.scene, piece.part)
+}
+
+pub fn finish(channel: &ChannelPlan, spectra: &[Vec<Vec<rustfft::num_complex::Complex64>>]) -> Vec<Vec<f32>> {
+    let half = crate::filter::half_length(&channel.head);
+    let mut sum = vec![vec![rustfft::num_complex::Complex64::new(0.0, 0.0); half]; channel.channels];
+    for piece in spectra {
+        for (total, spectrum) in sum.iter_mut().zip(piece) {
+            total.iter_mut().zip(spectrum).for_each(|(t, s)| *t += s);
+        }
+    }
+    sum.iter().map(|spectrum| crate::filter::filter_from_spectrum(&channel.head, spectrum)).collect()
+}
+
+pub fn stereo(channels: &[Vec<f32>], pans: &[[f64; 2]]) -> [Vec<f32>; 2] {
+    let length = channels.first().map_or(1, Vec::len);
+    let mut out = [vec![0.0f32; length], vec![0.0f32; length]];
+    for (channel, pan) in channels.iter().zip(pans) {
+        for (ear, gain) in pan.iter().enumerate() {
+            out[ear].iter_mut().zip(channel).for_each(|(o, x)| *o += *gain as f32 * x);
+        }
+    }
+    out
+}
+
+pub fn near_filter(space: &Space) -> Result<Vec<Vec<f32>>, String> {
+    let plan = plan(space)?;
+    Ok(plan.channels.iter().flat_map(|channel| finish(channel, &channel.pieces.iter().map(spectra_of).collect::<Vec<_>>())).collect())
+}

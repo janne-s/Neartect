@@ -1,4 +1,4 @@
-import { stereo } from './audio/preview.js';
+import { FilterCancelled } from './filter-pool.js';
 
 export const inPlugin = typeof window.sendToPlugin === 'function';
 
@@ -6,6 +6,8 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
   if (!inPlugin) return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
+  let asked = 0;
+  const waiting = new Map();
   window.onPluginMessage = message => {
     if (message.type === 'init') {
       rate = message.sampleRateHz;
@@ -15,6 +17,14 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
     }
     if (message.type === 'opened') onOpen(message.text);
     if (message.type === 'bypass') onBypass(message.on);
+    if (message.type === 'computed') {
+      const wait = waiting.get(message.id);
+      if (!wait) return;
+      waiting.delete(message.id);
+      if (message.cancelled) wait.reject(new FilterCancelled());
+      else if (message.error) wait.reject(new Error(message.error));
+      else wait.resolve({ sampleRateHz: message.sampleRateHz, channels: message.channels.map(c => Float32Array.from(c)), names: message.names, pans: message.pans });
+    }
   };
   window.addEventListener('error', event => send({ type: 'log', text: `${event.message} ${event.filename}:${event.lineno}` }));
   window.addEventListener('unhandledrejection', event => send({ type: 'log', text: String(event.reason?.stack ?? event.reason) }));
@@ -24,13 +34,11 @@ export function createPluginHost({ onSpace, onOpen, onBypass, onRate }) {
     space(space) {
       send({ type: 'space', json: JSON.stringify(space) });
     },
-    filter(result) {
-      if (result.sampleRateHz !== rate) return;
-      const [left, right] = stereo(result.channels, result.pans);
-      send({ type: 'filter', sampleRateHz: result.sampleRateHz, left: Array.from(left), right: Array.from(right) });
-    },
-    silence() {
-      if (rate !== null) send({ type: 'filter', sampleRateHz: rate, left: [0], right: [0] });
+    compute(space, purpose) {
+      asked += 1;
+      const id = asked;
+      send({ type: 'compute', id, json: JSON.stringify(space), purpose });
+      return new Promise((resolve, reject) => waiting.set(id, { resolve, reject }));
     },
     ready() {
       send({ type: 'ready' });
