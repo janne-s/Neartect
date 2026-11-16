@@ -22,3 +22,4 @@ The filter is normalised to the free field: with no surfaces it is a unit impuls
 
 - App: https://janne-s.github.io/Neartect/
 - Repository: https://github.com/janne-s/Neartect
+- Plugin (macOS VST3, CLAP): https://github.com/janne-s/Neartect/releases/latest

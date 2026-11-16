@@ -8,6 +8,8 @@ or the filtered sound as WAV.
 
 See it live: [**https://janne-s.github.io/Neartect/**](https://janne-s.github.io/Neartect/)
 
+Plugin for macOS (VST3, CLAP): [**download the latest release**](https://github.com/janne-s/Neartect/releases/latest)
+
 ![Neartect interface](assets/screenshot.jpg)
 
 ## How it works
@@ -166,7 +168,8 @@ font under the SIL OFL 1.1, CSS under the MIT License, icons under CC BY 4.0
 
 ## License
 
-MIT
+MIT. The VST3 plugin binary is GPLv3, as it links the GPLv3 VST3 bindings
+of nih-plug.
 
 ## Support Neartect
 
