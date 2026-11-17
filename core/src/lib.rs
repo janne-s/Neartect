@@ -262,6 +262,17 @@ pub fn read_space_text(text: &str) -> Result<String, JsError> {
     Ok(space::space_json(&space_from_text(text)?).to_string())
 }
 
+#[wasm_bindgen(js_name = sourceSpaces)]
+pub fn source_spaces_text(text: &str) -> Result<String, JsError> {
+    let list = jobs::source_spaces(&space_from_text(text)?);
+    Ok(serde_json::Value::Array(
+        list.iter()
+            .map(|s| serde_json::json!({ "number": s.number, "name": s.name, "input": s.input, "space": space::space_json(&s.space) }))
+            .collect(),
+    )
+    .to_string())
+}
+
 // Jobs, then per job: channels, variants, then per variant: parts, settings length, settings, surfaces length, surfaces.
 #[wasm_bindgen(js_name = nearJobs)]
 pub fn near_jobs(text: &str) -> Result<Vec<f64>, JsError> {

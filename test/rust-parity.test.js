@@ -6,6 +6,8 @@ import { SPACE_KIND } from '../src/domain/space.js';
 
 const core = await loadCore();
 
+const ADDED_SINCE = Object.freeze(['moreSources', 'name', 'on', 'levelDb', 'input']);
+
 function close(actual, expected, path) {
   if (typeof expected === 'number') {
     assert.equal(typeof actual, 'number', path);
@@ -20,7 +22,7 @@ function close(actual, expected, path) {
     return;
   }
   if (expected && typeof expected === 'object') {
-    assert.deepEqual(Object.keys(actual).filter(k => k !== 'slot').sort(), Object.keys(expected).sort(), `${path} keys`);
+    assert.deepEqual(Object.keys(actual).filter(k => k !== 'slot' && (k in expected || !ADDED_SINCE.includes(k))).sort(), Object.keys(expected).sort(), `${path} keys`);
     for (const key of Object.keys(expected)) close(actual[key], expected[key], `${path}.${key}`);
     return;
   }

@@ -77,17 +77,39 @@ fn max_of(list: &[f64]) -> f64 {
 
 pub fn alignment(space: &Space, positions: &[V3]) -> Vec<Aligned> {
     let c = speed_of_sound(space.temperature_celsius);
+    let level = 10f64.powf(space.source.level_db / 20.0);
     if space.source.kind == "point" {
         let source = layout::point_position(space, &space.source.point);
         let reach: Vec<f64> = positions.iter().map(|p| (source[0] - p[0]).hypot(source[1] - p[1]).hypot(source[2] - p[2])).collect();
         let nearest = min_of(&reach);
-        let level = if space.source.distance { DISTANCE_REFERENCE_METRES } else { nearest.max(NEAREST_LEVEL_METRES) };
-        return reach.iter().map(|&r| Aligned { delay_seconds: (r - nearest) / c, gain: level / r.max(NEAREST_LEVEL_METRES) }).collect();
+        let reference = if space.source.distance { DISTANCE_REFERENCE_METRES } else { nearest.max(NEAREST_LEVEL_METRES) };
+        return reach.iter().map(|&r| Aligned { delay_seconds: (r - nearest) / c, gain: level * reference / r.max(NEAREST_LEVEL_METRES) }).collect();
     }
     let arrival = arrival_vector(&space.arrival);
     let lead: Vec<f64> = positions.iter().map(|p| arrival[0] * p[0] + arrival[1] * p[1] + arrival[2] * p[2]).collect();
     let first = max_of(&lead);
-    lead.iter().map(|&l| Aligned { delay_seconds: (first - l) / c, gain: 1.0 }).collect()
+    lead.iter().map(|&l| Aligned { delay_seconds: (first - l) / c, gain: level }).collect()
+}
+
+pub struct SourceSpace {
+    pub number: usize,
+    pub name: String,
+    pub input: &'static str,
+    pub space: Space,
+}
+
+pub fn source_spaces(space: &Space) -> Vec<SourceSpace> {
+    let alone = |source: &crate::space::Source, arrival: &crate::space::Aim| Space { source: source.clone(), arrival: *arrival, more_sources: Vec::new(), ..space.clone() };
+    let mut list = Vec::new();
+    if space.source.on {
+        list.push(SourceSpace { number: 1, name: space.source.name.clone(), input: space.source.input, space: alone(&space.source, &space.arrival) });
+    }
+    let mut more: Vec<&crate::space::MoreSource> = space.more_sources.iter().filter(|s| s.source.on).collect();
+    more.sort_by_key(|s| s.slot);
+    for s in more {
+        list.push(SourceSpace { number: s.slot, name: s.source.name.clone(), input: s.source.input, space: alone(&s.source, &s.arrival) });
+    }
+    list
 }
 
 pub struct Variant {

@@ -8,6 +8,8 @@ pub const SPACE_VERSION: f64 = 1.0;
 pub const MOST_MICROPHONES: usize = 8;
 pub const MOST_RIGS: usize = 4;
 pub const OBJECT_SLOTS: usize = 16;
+pub const MOST_SOURCES: usize = 4;
+pub const SOURCE_INPUTS: [&str; 6] = ["main", "mainLeft", "mainRight", "side", "sideLeft", "sideRight"];
 
 pub const OBJECT_KINDS: [&str; 8] = ["plane", "disc", "grating", "wall", "box", "corner", "recess", "pipe"];
 pub const BEND_KINDS: [&str; 5] = ["plane", "wall", "grating", "pipe", "disc"];
@@ -59,6 +61,7 @@ pub const RELIEF_DETAIL: Range = (1.0, 24.0);
 pub const ELEMENT_LIMIT: Range = (1000.0, 5000000.0);
 pub const MOVING_DETAIL: Range = (0.1, 1.0);
 pub const PAN: Range = (-1.0, 1.0);
+pub const SOURCE_LEVEL_DB: Range = (-36.0, 12.0);
 pub const RIG_SPACING_METRES: Range = (0.0, 5.0);
 pub const RIG_ANGLE_DEGREES: Range = (0.0, 180.0);
 
@@ -118,6 +121,18 @@ pub struct Source {
     pub kind: &'static str,
     pub point: Point,
     pub distance: bool,
+    pub name: String,
+    pub on: bool,
+    pub level_db: f64,
+    pub input: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MoreSource {
+    pub id: String,
+    pub source: Source,
+    pub arrival: Aim,
+    pub slot: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -203,6 +218,7 @@ pub struct Space {
     pub rigs: Vec<Rig>,
     pub source: Source,
     pub arrival: Aim,
+    pub more_sources: Vec<MoreSource>,
     pub render: Render,
     pub objects: Vec<Object>,
 }
@@ -464,9 +480,34 @@ fn read_rig(value: &Value, ids: &mut Ids) -> Rig {
     }
 }
 
-fn read_source(value: Option<&Value>) -> Source {
+fn read_source(value: Option<&Value>, count: usize) -> Source {
     let s = record(value);
-    Source { kind: choice(s.get("kind"), &SOURCE_KINDS, "far"), point: read_point(s, [0.0, 2.0, 1.5]), distance: boolean(s.get("distance"), true) }
+    Source {
+        kind: choice(s.get("kind"), &SOURCE_KINDS, "far"),
+        point: read_point(s, [0.0, 2.0, 1.5]),
+        distance: boolean(s.get("distance"), true),
+        name: name(s.get("name"), format!("Source {count}")),
+        on: boolean(s.get("on"), true),
+        level_db: number(s.get("levelDb"), SOURCE_LEVEL_DB, 0.0),
+        input: choice(s.get("input"), &SOURCE_INPUTS, if count == 1 { "main" } else { "side" }),
+    }
+}
+
+fn read_more_sources(document: &Map<String, Value>, ids: &mut Ids) -> Vec<MoreSource> {
+    let values: Vec<Value> = document.get("moreSources").and_then(Value::as_array).map(|list| list.iter().filter(|v| v.is_object()).take(MOST_SOURCES - 1).cloned().collect()).unwrap_or_default();
+    let wishes: Vec<Option<Option<usize>>> = values
+        .iter()
+        .map(|v| v.get("slot").and_then(Value::as_f64).filter(|n| n.fract() == 0.0 && (2.0..=MOST_SOURCES as f64).contains(n)).map(|n| Some(n as usize - 1)))
+        .collect();
+    let slots = assign_slots(&wishes, MOST_SOURCES - 1);
+    values
+        .iter()
+        .zip(slots)
+        .map(|(v, slot)| {
+            let slot = slot.map_or(0, |s| s + 1);
+            MoreSource { id: ids.read(v.get("id")), source: read_source(Some(v), slot), arrival: read_aim(v.get("arrival")), slot }
+        })
+        .collect()
 }
 
 fn assign_slots(wanted: &[Option<Option<usize>>], most: usize) -> Vec<Option<usize>> {
@@ -520,8 +561,9 @@ pub fn read_space(value: &Value) -> Result<Space, SpaceError> {
         temperature_celsius: number(air.get("temperatureCelsius"), TEMPERATURE_CELSIUS, 20.0),
         microphones: microphone_values.iter().enumerate().map(|(i, m)| read_microphone(m, i, &mut ids)).collect(),
         rigs: rig_values.iter().map(|r| read_rig(r, &mut ids)).collect(),
-        source: read_source(document.get("source")),
+        source: read_source(document.get("source"), 1),
         arrival: read_aim(document.get("arrival")),
+        more_sources: Vec::new(),
         render: Render {
             sample_rate_hz: js_round(number(render.get("sampleRateHz"), SAMPLE_RATE_HZ, 48000.0)),
             length_milliseconds: number(render.get("lengthMilliseconds"), LENGTH_MILLISECONDS, 80.0),
@@ -534,6 +576,7 @@ pub fn read_space(value: &Value) -> Result<Space, SpaceError> {
         },
         objects: object_values.iter().enumerate().map(|(i, o)| read_object(o, i, &mut ids)).collect(),
     };
+    space.more_sources = read_more_sources(document, &mut ids);
     let object_slots = assign_slots(&object_values.iter().map(|o| slot_wish(o, OBJECT_SLOTS)).collect::<Vec<_>>(), OBJECT_SLOTS);
     space.objects.iter_mut().zip(object_slots).for_each(|(o, slot)| o.slot = slot);
     let microphone_slots = assign_slots(&microphone_values.iter().map(|m| slot_wish(m, MOST_MICROPHONES).filter(Option::is_some)).collect::<Vec<_>>(), MOST_MICROPHONES);
@@ -554,6 +597,12 @@ pub fn read_space(value: &Value) -> Result<Space, SpaceError> {
             seen.insert(space.rigs[i].id.clone());
         }
     }
+    for i in 0..space.more_sources.len() {
+        if !seen.insert(space.more_sources[i].id.clone()) {
+            space.more_sources[i].id = ids.fresh();
+            seen.insert(space.more_sources[i].id.clone());
+        }
+    }
     let object_ids: HashSet<String> = space.objects.iter().map(|o| o.id.clone()).collect();
     let release = |point: &mut Point| {
         if !point.reference.as_ref().is_some_and(|r| object_ids.contains(r)) {
@@ -564,6 +613,7 @@ pub fn read_space(value: &Value) -> Result<Space, SpaceError> {
     space.microphones.iter_mut().for_each(|m| release(&mut m.point));
     space.rigs.iter_mut().for_each(|r| release(&mut r.point));
     release(&mut space.source.point);
+    space.more_sources.iter_mut().for_each(|s| release(&mut s.source.point));
     layout::place_points(&mut space);
     Ok(space)
 }
@@ -640,11 +690,28 @@ fn rig_json(r: &Rig) -> Value {
     Value::Object(map)
 }
 
+fn source_json(s: &Source) -> Map<String, Value> {
+    let mut map = Map::new();
+    map.insert("kind".into(), json!(s.kind));
+    map.insert("name".into(), json!(s.name));
+    point_json(&mut map, &s.point);
+    map.insert("distance".into(), json!(s.distance));
+    map.insert("on".into(), json!(s.on));
+    map.insert("levelDb".into(), json!(s.level_db));
+    map.insert("input".into(), json!(s.input));
+    map
+}
+
+fn more_source_json(s: &MoreSource) -> Value {
+    let mut map = source_json(&s.source);
+    map.insert("id".into(), json!(s.id));
+    map.insert("arrival".into(), aim_json(&s.arrival));
+    map.insert("slot".into(), json!(s.slot));
+    Value::Object(map)
+}
+
 pub fn space_json(space: &Space) -> Value {
-    let mut source = Map::new();
-    source.insert("kind".into(), json!(space.source.kind));
-    point_json(&mut source, &space.source.point);
-    source.insert("distance".into(), json!(space.source.distance));
+    let source = source_json(&space.source);
     let q = &space.render.quality;
     json!({
         "kind": SPACE_KIND,
@@ -654,6 +721,7 @@ pub fn space_json(space: &Space) -> Value {
         "rigs": space.rigs.iter().map(rig_json).collect::<Vec<_>>(),
         "source": source,
         "arrival": aim_json(&space.arrival),
+        "moreSources": space.more_sources.iter().map(more_source_json).collect::<Vec<_>>(),
         "render": {
             "sampleRateHz": space.render.sample_rate_hz,
             "lengthMilliseconds": space.render.length_milliseconds,

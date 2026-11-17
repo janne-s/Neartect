@@ -501,6 +501,7 @@ pub fn place_points(space: &mut Space) {
         .map(|m| &m.point)
         .chain(space.rigs.iter().map(|r| &r.point))
         .chain(std::iter::once(&space.source.point))
+        .chain(space.more_sources.iter().map(|s| &s.source.point))
         .map(|p| point_position(space, p))
         .collect();
     let mut at = positions.into_iter();
@@ -511,6 +512,9 @@ pub fn place_points(space: &mut Space) {
         r.point.position = at.next().unwrap_or(r.point.position);
     }
     space.source.point.position = at.next().unwrap_or(space.source.point.position);
+    for s in &mut space.more_sources {
+        s.source.point.position = at.next().unwrap_or(s.source.point.position);
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
