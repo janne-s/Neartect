@@ -325,7 +325,14 @@ fn put(map: &mut Map<String, Value>, path: &[Key], value: Value, bound: bool) {
 }
 
 pub fn apply(space: &mut Value, specs: &[Spec], values: &[f64]) {
-    for (spec, &v) in specs.iter().zip(values) {
+    apply_where(space, specs, values, |_| true);
+}
+
+pub fn apply_where(space: &mut Value, specs: &[Spec], values: &[f64], applies: impl Fn(usize) -> bool) {
+    for (index, (spec, &v)) in specs.iter().zip(values).enumerate() {
+        if !applies(index) {
+            continue;
+        }
         let Some(target) = holder_mut(space, spec.holder) else { continue };
         let value = match &spec.kind {
             Kind::Float { .. } => json!(v),
@@ -340,7 +347,34 @@ pub fn apply(space: &mut Value, specs: &[Spec], values: &[f64]) {
 }
 
 pub fn applied(json: &str, specs: &[Spec], values: &[f64]) -> Option<String> {
+    applied_where(json, specs, values, |_| true)
+}
+
+pub fn applied_where(json: &str, specs: &[Spec], values: &[f64], applies: impl Fn(usize) -> bool) -> Option<String> {
     let mut value: Value = serde_json::from_str(json).ok()?;
-    apply(&mut value, specs, values);
+    apply_where(&mut value, specs, values, applies);
     Some(value.to_string())
+}
+
+const SAME: f64 = 1e-6;
+
+#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Latch {
+    pub scene: usize,
+    pub baseline: Vec<f64>,
+}
+
+impl Latch {
+    pub fn enter(&mut self, scene: usize, values: &[f64]) {
+        if self.scene == 0 {
+            self.scene = scene;
+        } else if self.scene != scene {
+            self.scene = scene;
+            self.baseline = values.to_vec();
+        }
+    }
+
+    pub fn overrides(&self, index: usize, value: f64) -> bool {
+        self.baseline.get(index).is_none_or(|&b| (value - b).abs() > SAME * b.abs().max(1.0))
+    }
 }

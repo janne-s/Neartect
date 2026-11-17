@@ -21,7 +21,8 @@ use std::task::{Context, Poll, Waker};
 pub mod compute;
 pub mod convolver;
 pub mod params;
-use params::SlotParams;
+pub mod scenes;
+use params::{Latch, SlotParams};
 use compute::{Builder, Computed, Outcome};
 use convolver::{Convolver, Filter, BLOCK};
 
@@ -74,6 +75,11 @@ pub struct NeartectParams {
     synced: Arc<RwLock<bool>>,
     #[persist = "camera"]
     camera: Arc<RwLock<serde_json::Value>>,
+    #[persist = "latch"]
+    latch: Arc<RwLock<Latch>>,
+    #[id = "scene"]
+    scene: IntParam,
+    scene_changed: Arc<AtomicBool>,
     #[id = "mix"]
     mix: FloatParam,
     #[id = "output"]
@@ -89,11 +95,19 @@ impl NeartectParams {
     fn new(wake: Sender<()>) -> Self {
         let bypass_changed = Arc::new(AtomicBool::new(false));
         let flag = bypass_changed.clone();
+        let scene_changed = Arc::new(AtomicBool::new(false));
+        let (scene_flag, scene_wake) = (scene_changed.clone(), wake.clone());
         Self {
             space: Arc::new(RwLock::new(String::new())),
             filter: Arc::new(RwLock::new(StoredFilter::default())),
             synced: Arc::new(RwLock::new(false)),
             camera: Arc::new(RwLock::new(serde_json::Value::Null)),
+            latch: Arc::new(RwLock::new(Latch::default())),
+            scene: IntParam::new("Scene", 1, IntRange::Linear { min: 1, max: scenes::SCENES as i32 }).with_callback(Arc::new(move |_| {
+                scene_flag.store(true, Ordering::Release);
+                let _ = scene_wake.try_send(());
+            })),
+            scene_changed,
             mix: FloatParam::new("Mix", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_smoother(SmoothingStyle::Linear(30.0))
                 .with_unit(" %")
@@ -120,12 +134,37 @@ impl NeartectParams {
         }
     }
 
-    fn live_space(&self) -> String {
-        let space = self.space.read().map(|s| s.clone()).unwrap_or_default();
-        if space.is_empty() || !self.synced.read().is_ok_and(|s| *s) {
-            return space;
+    fn live(&self) -> Option<(usize, String)> {
+        let document = self.space.read().map(|s| s.clone()).unwrap_or_default();
+        if document.is_empty() {
+            return None;
         }
-        params::applied(&space, &self.slots.specs, &self.slots.values()).unwrap_or(space)
+        let (number, scene) = scenes::chosen(&document, self.scene.value() as usize).unwrap_or((1, document));
+        if !self.synced.read().is_ok_and(|s| *s) {
+            return Some((number, scene));
+        }
+        let values = self.slots.values();
+        let latch = match self.latch.write() {
+            Ok(mut latch) => {
+                latch.enter(number, &values);
+                latch.clone()
+            }
+            Err(_) => Latch::default(),
+        };
+        let live = params::applied_where(&scene, &self.slots.specs, &values, |i| latch.overrides(i, values[i])).unwrap_or(scene);
+        Some((number, live))
+    }
+
+    fn live_space(&self) -> String {
+        self.live().map(|(_, scene)| scene).unwrap_or_default()
+    }
+
+    fn live_document(&self) -> String {
+        let document = self.space.read().map(|s| s.clone()).unwrap_or_default();
+        match self.live() {
+            Some((number, scene)) => scenes::with_active(&document, number, &scene).unwrap_or(scene),
+            None => document,
+        }
     }
 }
 
@@ -310,6 +349,9 @@ enum Message {
     },
     End,
     Synced,
+    Scene {
+        number: i32,
+    },
     Camera {
         camera: serde_json::Value,
     },
@@ -615,6 +657,9 @@ impl Plugin for Neartect {
                         }
                     }
                 }
+                if params.scene_changed.swap(false, Ordering::AcqRel) && editor_open.load(Ordering::Acquire) {
+                    window.send_json(json!({ "type": "scene", "space": params.live_document() }));
+                }
                 if params.bypass_changed.swap(false, Ordering::Relaxed) {
                     window.send_json(json!({ "type": "bypass", "on": params.bypass.value() }));
                 }
@@ -622,7 +667,8 @@ impl Plugin for Neartect {
                     match serde_json::from_value::<Message>(value) {
                         Ok(Message::Ready) => {
                             editor_open.store(true, Ordering::Release);
-                            let space = params.live_space();
+                            params.scene_changed.store(false, Ordering::Release);
+                            let space = params.live_document();
                             let rate = f32::from_bits(sample_rate.load(Ordering::Relaxed));
                             let values = params.slots.values();
                             if let Ok(mut held) = held.lock() {
@@ -630,7 +676,7 @@ impl Plugin for Neartect {
                             }
                             let ids: Vec<&str> = params.slots.specs.iter().map(|s| s.id.as_str()).collect();
                             window.send_json(json!({
-                                "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(),
+                                "type": "init", "sampleRateHz": rate, "bypass": params.bypass.value(), "synced": params.synced.read().is_ok_and(|s| *s),
                                 "space": if space.is_empty() { None } else { Some(space) },
                                 "seconds": clock.load(Ordering::Relaxed) as f64 / rate as f64,
                                 "audition": audition.lock().map(|a| json!({ "signal": a.signal, "file": a.file, "playing": a.playing })).unwrap_or_default(),
@@ -651,6 +697,13 @@ impl Plugin for Neartect {
                             if let Some(known) = held.1.get_mut(index) {
                                 *known = params.slots.entries[index].plain();
                             }
+                        }
+                        Ok(Message::Scene { number }) => {
+                            setter.begin_set_parameter(&params.scene);
+                            setter.set_parameter(&params.scene, number.clamp(1, scenes::SCENES as i32));
+                            setter.end_set_parameter(&params.scene);
+                            params.scene_changed.store(false, Ordering::Release);
+                            let _ = params.live();
                         }
                         Ok(Message::Synced) => {
                             if let Ok(mut synced) = params.synced.write() {
