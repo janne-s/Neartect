@@ -7,6 +7,8 @@ import { faceNormal, nearestSurface } from '../domain/placement.js';
 import { faceRelief, hasRelief } from '../domain/relief.js';
 import { headWidth, rigFrame, rigMembers } from '../domain/rigs.js';
 
+const HOME_YAW = 0.6 - Math.PI;
+
 const FIELD_OF_VIEW = 0.9;
 const CLICK_PIXELS = 4;
 const HANDLE_PIXELS = 8;
@@ -91,7 +93,7 @@ function insidePolygon([x, y], corners) {
 }
 
 export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd = () => {}, snapSurfaces = () => false, showGrid = () => true, scrollPans = () => false, ownAxes = () => false, onCamera = () => {} }) {
-  const camera = { yaw: -0.6, pitch: 0.45, distance: 6, target: [0, 0, 1] };
+  const camera = { yaw: HOME_YAW, pitch: 0.45, distance: 6, target: [0, 0, 1] };
   let space = null;
   let selection = null;
   let hover = null;
@@ -1345,7 +1347,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       draw();
     },
     reset() {
-      Object.assign(camera, { yaw: -0.6, pitch: 0.45, distance: 6 });
+      Object.assign(camera, { yaw: HOME_YAW, pitch: 0.45, distance: 6 });
       if (space) camera.target = [...listeningCentre()];
       draw();
       onCamera();
