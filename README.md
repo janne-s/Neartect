@@ -47,6 +47,9 @@ processed sound itself.
   pipe mouth, in a doorway, by a curved or corrugated wall, over moving waves,
   or over water. A situation adds to the objects already built and keeps the
   microphones and the point source.
+- **Scenes** — Up to eight complete spaces in one, numbered 1–8 and named by
+  double-click. An empty number starts as a copy of the current scene. In the
+  plugin, the Scene parameter switches between them with a crossfade.
 
 ## Scene
 

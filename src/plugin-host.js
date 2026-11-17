@@ -3,7 +3,7 @@ import { createParameterSync } from './plugin-parameters.js';
 
 export const inPlugin = typeof window.sendToPlugin === 'function';
 
-export function createPluginHost({ onSpace, onCamera, onClock, onAudition, onOpen, onBypass, onRate, onParameters, currentSpace }) {
+export function createPluginHost({ onSpace, onScene, onCamera, onClock, onAudition, onOpen, onBypass, onRate, onParameters, currentSpace }) {
   if (!inPlugin) return null;
   const send = message => window.sendToPlugin(message);
   let rate = null;
@@ -14,7 +14,7 @@ export function createPluginHost({ onSpace, onCamera, onClock, onAudition, onOpe
     if (message.type === 'init') {
       rate = message.sampleRateHz;
       parameters.start(message.parameters ?? [], message.values ?? {});
-      if (message.space) onSpace(message.space);
+      if (message.space) onSpace(message.space, Boolean(message.synced));
       if (message.camera) onCamera(message.camera);
       onClock(message.seconds ?? 0);
       if (message.audition) onAudition(message.audition);
@@ -24,6 +24,7 @@ export function createPluginHost({ onSpace, onCamera, onClock, onAudition, onOpe
       send({ type: 'synced' });
     }
     if (message.type === 'opened') onOpen(message.text);
+    if (message.type === 'scene') onScene(message.space);
     if (message.type === 'params') onParameters(message.values);
     if (message.type === 'bypass') onBypass(message.on);
     if (message.type === 'computed') {
@@ -49,6 +50,9 @@ export function createPluginHost({ onSpace, onCamera, onClock, onAudition, onOpe
     },
     space(space) {
       send({ type: 'space', json: JSON.stringify(space) });
+    },
+    scene(number) {
+      send({ type: 'scene', number });
     },
     compute(space, purpose) {
       asked += 1;

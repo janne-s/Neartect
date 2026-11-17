@@ -21,6 +21,7 @@ import { createRenderMarker, renderLoadText } from './shared/ui/render-marker.js
 import { createPool, FilterCancelled } from './filter-pool.js';
 import { withReliability } from './domain/reliability.js';
 import { createPluginHost, inPlugin } from './plugin-host.js';
+import { readScenes, resolveScene, sceneDocument, sceneName, SCENES } from './domain/scenes.js';
 
 const STORAGE_KEY = 'neartect.space';
 const CAMERA_STORAGE_KEY = 'neartect.camera';
@@ -48,13 +49,16 @@ function readStored(key) {
 function writeStored(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
-function initialSpace() {
-  if (inPlugin) return defaultSpace();
-  try { return readSpace(readStored(STORAGE_KEY)); } catch { return defaultSpace(); }
+const loneScene = space => ({ list: Array.from({ length: SCENES }, (_, i) => (i === 0 ? space : null)), scene: 1, names: Array(SCENES).fill(null) });
+function initialScenes() {
+  if (inPlugin) return loneScene(defaultSpace());
+  try { return readScenes(readStored(STORAGE_KEY)); } catch { return loneScene(defaultSpace()); }
 }
+const opened = initialScenes();
 
 const state = {
-  space: initialSpace(),
+  space: opened.list[opened.scene - 1],
+  scenes: opened,
   selection: null,
   signal: 'pink',
   file: null,
@@ -77,13 +81,24 @@ const view = createNearView($('near-view'), {
 });
 const keepCamera = () => (pluginHost ? pluginHost.camera(view.camera()) : writeStored(CAMERA_STORAGE_KEY, view.camera()));
 
-function openSpace(text, compute = true) {
+function takeScenes(scenes) {
+  state.scenes = scenes;
+  state.space = scenes.list[scenes.scene - 1];
+}
+
+const spaceDocument = () => sceneDocument(state.space, state.scenes);
+
+function openSpace(text, { compute = true, adopt = false, centre = true } = {}) {
   try {
-    state.space = readSpace(JSON.parse(text));
+    const before = state.scenes.scene;
+    takeScenes(readScenes(JSON.parse(text)));
     state.selection = null;
-    view.centre(spaceCentre(state.space));
-    if (compute) keepCamera();
+    if (adopt) pluginHost.parameters.adopt(state.space);
+    if (centre) view.centre(spaceCentre(state.space));
+    if (compute && centre) keepCamera();
     changed({ panel: true, compute });
+    if (!adopt && state.scenes.scene !== before) pluginHost?.scene(state.scenes.scene);
+    showScenes();
   } catch (error) {
     setStatus(error instanceof SpaceError ? error.message : 'This file is not a Neartect space.', true);
   }
@@ -95,7 +110,8 @@ function showBypass(on) {
 }
 
 const pluginHost = createPluginHost({
-  onSpace: text => openSpace(text, false),
+  onSpace: (text, synced) => openSpace(text, { compute: false, adopt: synced }),
+  onScene: text => openSpace(text, { adopt: true, centre: false }),
   onCamera: stored => view.setCamera(stored),
   onClock: seconds => { hostClock = { seconds, at: performance.now() }; },
   onAudition: heard => {
@@ -255,15 +271,15 @@ function activeListener() {
 
 const UNDO_DEPTH = 50;
 const history = [];
-let committed = JSON.stringify(state.space);
+let committed = JSON.stringify(spaceDocument());
 
 function keepSpace() {
-  if (pluginHost) pluginHost.space(state.space);
-  else writeStored(STORAGE_KEY, state.space);
+  if (pluginHost) pluginHost.space(spaceDocument());
+  else writeStored(STORAGE_KEY, spaceDocument());
 }
 
 function remember() {
-  const now = JSON.stringify(state.space);
+  const now = JSON.stringify(spaceDocument());
   if (now === committed) return;
   history.push(committed);
   if (history.length > UNDO_DEPTH) history.shift();
@@ -274,17 +290,115 @@ function remember() {
 function undo() {
   if (!history.length) return;
   committed = history.pop();
-  state.space = readSpace(JSON.parse(committed));
+  const before = state.scenes.scene;
+  takeScenes(readScenes(JSON.parse(committed)));
+  if (state.scenes.scene !== before) state.selection = null;
   if (state.selection?.type === 'object' && !state.space.objects.some(o => o.id === state.selection.id)) state.selection = null;
   if (state.selection?.type === 'microphone' && !state.space.microphones.some(m => m.id === state.selection.id)) state.selection = null;
   if (state.selection?.type === 'group') state.selection = null;
   if (state.selection?.type === 'rig' && !state.space.rigs.some(r => r.id === state.selection.id)) state.selection = null;
   $('undo').disabled = !history.length;
+  if (state.scenes.scene !== before) pluginHost?.parameters.adopt(state.space);
   pluginHost?.parameters.push(state.space, true);
   keepSpace();
+  if (state.scenes.scene !== before) pluginHost?.scene(state.scenes.scene);
   view.update(state.space, state.selection);
   refreshPanel();
   refreshFilter();
+  showScenes();
+}
+
+function switchScene(number) {
+  if (number === state.scenes.scene) return;
+  const list = [...state.scenes.list];
+  list[state.scenes.scene - 1] = state.space;
+  if (!list[number - 1]) list[number - 1] = readSpace(clone(state.space));
+  takeScenes({ ...state.scenes, list, scene: number });
+  state.selection = null;
+  pluginHost?.parameters.adopt(state.space);
+  keepSpace();
+  committed = JSON.stringify(spaceDocument());
+  pluginHost?.scene(number);
+  view.update(state.space, state.selection);
+  refreshPanel();
+  refreshFilter();
+  showScenes();
+}
+
+function removeScene() {
+  const list = [...state.scenes.list];
+  if (list.filter(Boolean).length < 2) return;
+  list[state.scenes.scene - 1] = null;
+  const names = [...state.scenes.names];
+  names[state.scenes.scene - 1] = null;
+  const scene = resolveScene(list, state.scenes.scene);
+  takeScenes({ list, scene, names });
+  state.selection = null;
+  pluginHost?.parameters.adopt(state.space);
+  pluginHost?.scene(scene);
+  changed({ panel: true });
+  showScenes();
+}
+
+function nameScene(number, text) {
+  const names = [...state.scenes.names];
+  names[number - 1] = sceneName(text);
+  state.scenes = { ...state.scenes, names };
+  keepSpace();
+  remember();
+  showScenes();
+}
+
+function showScenes() {
+  const bar = $('scenes');
+  bar.replaceChildren();
+  const filled = state.scenes.list.filter(Boolean).length;
+  for (let n = 1; n <= SCENES; n += 1) {
+    const name = state.scenes.names[n - 1];
+    const button = element('button', 'scene', String(n));
+    button.type = 'button';
+    button.classList.toggle('empty', !state.scenes.list[n - 1] && n !== state.scenes.scene);
+    button.setAttribute('aria-pressed', String(n === state.scenes.scene));
+    button.title = name ? `${n} ${name}` : `Scene ${n}`;
+    button.addEventListener('click', () => switchScene(n));
+    button.addEventListener('dblclick', () => editSceneName(button, n));
+    bar.append(button);
+  }
+  const name = state.scenes.names[state.scenes.scene - 1];
+  if (name) bar.append(element('span', 'scene-name', name));
+  if (filled > 1) {
+    const remove = element('button', 'scene scene-remove');
+    remove.type = 'button';
+    remove.title = 'Remove scene';
+    remove.setAttribute('aria-label', 'Remove scene');
+    remove.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    remove.addEventListener('click', removeScene);
+    bar.append(remove);
+  }
+}
+
+function editSceneName(button, number) {
+  if (number !== state.scenes.scene) return;
+  const input = element('input', 'scene-name-input');
+  input.value = state.scenes.names[number - 1] ?? '';
+  input.maxLength = 24;
+  input.setAttribute('aria-label', 'Scene name');
+  let done = false;
+  const finish = keep => {
+    if (done) return;
+    done = true;
+    if (keep) nameScene(number, input.value);
+    else showScenes();
+  };
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') finish(true);
+    if (event.key === 'Escape') finish(false);
+    event.stopPropagation();
+  });
+  input.addEventListener('blur', () => finish(true));
+  button.after(input);
+  input.focus();
+  input.select();
 }
 
 function changed({ save = true, panel = false, compute = true } = {}) {
@@ -1208,7 +1322,7 @@ function download(name, blob) {
   Object.assign(document.createElement('a'), { href: downloadUrl, download: name }).click();
 }
 
-$('save').addEventListener('click', () => download('neartect-space.json', new Blob([`${JSON.stringify(withReliability(state.space), null, 2)}\n`], { type: 'application/json' })));
+$('save').addEventListener('click', () => download('neartect-space.json', new Blob([`${JSON.stringify(sceneDocument(withReliability(state.space), state.scenes), null, 2)}\n`], { type: 'application/json' })));
 $('open').addEventListener('click', () => (pluginHost ? pluginHost.open() : $('open-file').click()));
 $('open-file').addEventListener('change', async () => {
   const file = $('open-file').files[0];
@@ -1431,6 +1545,7 @@ $('results-toggle').addEventListener('click', () => {
 view.centre(spaceCentre(state.space));
 if (!inPlugin) view.setCamera(readStored(CAMERA_STORAGE_KEY));
 changed({ save: false, panel: true, compute: !unfinishedFilter });
+showScenes();
 pluginHost?.ready();
 if (unfinishedFilter) {
   const stopped = unfinishedFilter.hidden === true

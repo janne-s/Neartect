@@ -82,6 +82,12 @@ export function createParameterSync(send) {
         open = false;
       }
     },
+    adopt(space) {
+      for (const spec of specs) {
+        const value = plainOf(space, spec);
+        if (value !== undefined) host.set(spec.id, value);
+      }
+    },
     take(space, values) {
       for (const spec of specs) {
         if (!(spec.id in values)) continue;
