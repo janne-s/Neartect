@@ -1,6 +1,6 @@
 use crossbeam_channel::Sender;
 use neartect_core::layout::MATERIALS;
-use neartect_core::space::{self, MOST_MICROPHONES, MOST_RIGS, OBJECT_SLOTS, PATTERNS, RELIEF_SHAPES};
+use neartect_core::space::{self, MOST_MICROPHONES, MOST_RIGS, MOST_SOURCES, OBJECT_SLOTS, PATTERNS, RELIEF_SHAPES};
 use nih_plug::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
@@ -13,6 +13,7 @@ pub enum Holder {
     Microphone(usize),
     Rig(usize),
     Object(usize),
+    MoreSource(usize),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -137,6 +138,17 @@ pub fn specs() -> Vec<Spec> {
         list.push(field(h, &p, &g, "relief_offset", "Relief Offset", relief("offsetMetres"), float(POSITION, " m", Scale::Centred), 0.0));
         list.push(field(h, &p, &g, "motion", "Motion", relief("speedMetresPerSecond"), float(space::SPEED_METRES_PER_SECOND, " m/s", Scale::Centred), 0.0));
     }
+    let level = || float(space::SOURCE_LEVEL_DB, " dB", Scale::Linear);
+    list.push(field(Holder::Source, "source_", "Source", "on", "On", vec![F("on")], Kind::Toggle, 1.0));
+    list.push(field(Holder::Source, "source_", "Source", "level", "Level", vec![F("levelDb")], level(), 0.0));
+    for n in 2..=MOST_SOURCES {
+        let (h, p, g) = (Holder::MoreSource(n), format!("source{n}_"), format!("Source {n}"));
+        list.push(field(h, &p, &g, "on", "On", vec![F("on")], Kind::Toggle, 1.0));
+        place(h, &p, &g, [0.0, 2.0, 1.5], &mut list);
+        list.push(field(h, &p, &g, "distance", "1/r", vec![F("distance")], Kind::Toggle, 1.0));
+        aim(h, &p, &g, "arrival", &mut list);
+        list.push(field(h, &p, &g, "level", "Level", vec![F("levelDb")], level(), 0.0));
+    }
     list
 }
 
@@ -255,6 +267,7 @@ fn holder_json(holder: Holder) -> Value {
         Holder::Microphone(n) => json!({ "list": "microphones", "slot": n }),
         Holder::Rig(n) => json!({ "list": "rigs", "slot": n }),
         Holder::Object(n) => json!({ "list": "objects", "slot": n }),
+        Holder::MoreSource(n) => json!({ "list": "moreSources", "slot": n }),
     }
 }
 
@@ -291,6 +304,7 @@ fn holder_mut(space: &mut Value, holder: Holder) -> Option<&mut Map<String, Valu
         Holder::Microphone(n) => ("microphones", n),
         Holder::Rig(n) => ("rigs", n),
         Holder::Object(n) => ("objects", n),
+        Holder::MoreSource(n) => ("moreSources", n),
     };
     space.get_mut(list)?.as_array_mut()?.iter_mut().find(|item| item.get("slot").and_then(Value::as_u64) == Some(slot as u64))?.as_object_mut()
 }

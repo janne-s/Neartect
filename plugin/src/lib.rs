@@ -26,7 +26,7 @@ use params::{Latch, SlotParams};
 use compute::{Builder, Computed, Outcome};
 use convolver::{Convolver, Filter, BLOCK};
 
-static SOURCES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../src");
+static PAGE_SOURCES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../src");
 static ASSETS: Dir = include_dir!("$CARGO_MANIFEST_DIR/../assets");
 static PAGE: &[u8] = include_bytes!("../../index.html");
 static THEME: &[u8] = include_bytes!("../../theme.css");
@@ -56,13 +56,96 @@ type SignalChange = Mutex<Option<Option<Arc<Signal>>>>;
 enum Retired {
     Filter(Box<Filter>),
     Signal(Arc<Signal>),
+    Bank(Box<Bank>),
+}
+
+const SOURCES: usize = neartect_core::space::MOST_SOURCES;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Input {
+    Main,
+    MainLeft,
+    MainRight,
+    Side,
+    SideLeft,
+    SideRight,
+}
+
+impl Input {
+    fn of(name: &str) -> Input {
+        match name {
+            "mainLeft" => Input::MainLeft,
+            "mainRight" => Input::MainRight,
+            "side" => Input::Side,
+            "sideLeft" => Input::SideLeft,
+            "sideRight" => Input::SideRight,
+            _ => Input::Main,
+        }
+    }
+
+    #[inline]
+    fn pick(self, main: [f32; 2], side: [f32; 2]) -> f32 {
+        match self {
+            Input::Main => 0.5 * (main[0] + main[1]),
+            Input::MainLeft => main[0],
+            Input::MainRight => main[1],
+            Input::Side => 0.5 * (side[0] + side[1]),
+            Input::SideLeft => side[0],
+            Input::SideRight => side[1],
+        }
+    }
+}
+
+pub struct Bank {
+    filters: [Option<Box<Filter>>; SOURCES],
+    inputs: [Input; SOURCES],
+}
+
+impl Bank {
+    fn of<'a>(rate: f32, sources: impl Iterator<Item = (usize, &'a str, &'a [f32], &'a [f32])>) -> Box<Bank> {
+        let mut bank = Box::new(Bank { filters: Default::default(), inputs: [Input::Main; SOURCES] });
+        for (number, input, left, right) in sources {
+            if (1..=SOURCES).contains(&number) {
+                bank.filters[number - 1] = Some(Box::new(Filter::new(rate, left, right)));
+                bank.inputs[number - 1] = Input::of(input);
+            }
+        }
+        for filter in bank.filters.iter_mut().filter(|f| f.is_none()) {
+            *filter = Some(Box::new(Filter::new(rate, &[0.0], &[0.0])));
+        }
+        bank
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+struct StoredSource {
+    number: usize,
+    input: String,
+    left: Vec<f32>,
+    right: Vec<f32>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 struct StoredFilter {
     sample_rate: f32,
+    #[serde(default)]
     left: Vec<f32>,
+    #[serde(default)]
     right: Vec<f32>,
+    #[serde(default)]
+    sources: Vec<StoredSource>,
+}
+
+impl StoredFilter {
+    fn bank(&self, rate: f32) -> Option<Box<Bank>> {
+        if self.sample_rate != rate {
+            return None;
+        }
+        if !self.sources.is_empty() {
+            return Some(Bank::of(rate, self.sources.iter().map(|s| (s.number, s.input.as_str(), s.left.as_slice(), s.right.as_slice()))));
+        }
+        (!self.left.is_empty()).then(|| Bank::of(rate, std::iter::once((1, "main", self.left.as_slice(), self.right.as_slice()))))
+    }
 }
 
 #[derive(Params)]
@@ -168,7 +251,7 @@ impl NeartectParams {
     }
 }
 
-type Delivery = (u64, Option<Box<Filter>>);
+type Delivery = (u64, Option<Box<Bank>>);
 
 #[derive(Default)]
 struct Mailbox {
@@ -177,7 +260,7 @@ struct Mailbox {
 }
 
 impl Mailbox {
-    fn put(&self, generation: u64, filter: Option<Box<Filter>>) {
+    fn put(&self, generation: u64, filter: Option<Box<Bank>>) {
         if let Ok(mut slot) = self.slot.lock() {
             if slot.as_ref().is_none_or(|(held, _)| *held <= generation) {
                 *slot = Some((generation, filter));
@@ -189,10 +272,11 @@ impl Mailbox {
 
 struct Neartect {
     params: Arc<NeartectParams>,
-    convolver: Convolver,
+    convolvers: Vec<Convolver>,
+    inputs: [Input; SOURCES],
     dry: [Vec<f32>; 2],
     dry_at: usize,
-    inputs: usize,
+    main_channels: usize,
     heard: f32,
     sample_rate: Arc<AtomicU32>,
     mailbox: Arc<Mailbox>,
@@ -251,11 +335,16 @@ impl Default for Neartect {
                 let rate = f32::from_bits(sample_rate.load(Ordering::Relaxed));
                 let filter = match &outcome {
                     Outcome::Built { computed, .. } if computed.sample_rate_hz as f32 == rate => {
-                        let [left, right] = &computed.stereo;
+                        let sources: Vec<StoredSource> = computed
+                            .sources
+                            .iter()
+                            .map(|s| StoredSource { number: s.number, input: s.input.to_string(), left: s.stereo[0].clone(), right: s.stereo[1].clone() })
+                            .collect();
+                        let bank = Bank::of(rate, sources.iter().map(|s| (s.number, s.input.as_str(), s.left.as_slice(), s.right.as_slice())));
                         if let Ok(mut stored) = params.filter.write() {
-                            *stored = StoredFilter { sample_rate: rate, left: left.clone(), right: right.clone() };
+                            *stored = StoredFilter { sample_rate: rate, sources, ..StoredFilter::default() };
                         }
-                        Some(Box::new(Filter::new(rate, left, right)))
+                        Some(bank)
                     }
                     _ => None,
                 };
@@ -268,10 +357,11 @@ impl Default for Neartect {
         Self {
             builder: Arc::new(Builder::new(retired_in, wake_in, source, seconds, deliver)),
             params,
-            convolver: Convolver::new(48000.0),
+            convolvers: (0..SOURCES).map(|_| Convolver::new(48000.0)).collect(),
+            inputs: [Input::Main; SOURCES],
             dry: [vec![0.0; BLOCK], vec![0.0; BLOCK]],
             dry_at: 0,
-            inputs: 2,
+            main_channels: 2,
             heard: 1.0,
             sample_rate,
             mailbox,
@@ -300,17 +390,34 @@ impl Neartect {
         } else {
             self.mailbox.slot.try_lock().ok().and_then(|mut slot| slot.take())
         };
-        if let Some((generation, filter)) = taken {
+        if let Some((generation, bank)) = taken {
             self.applied = self.applied.max(generation);
-            if let Some(filter) = filter {
-                self.convolver.offer(filter);
+            if let Some(bank) = bank {
+                self.offer(bank, false);
             }
+        }
+    }
+
+    fn offer(&mut self, mut bank: Box<Bank>, now: bool) {
+        self.inputs = bank.inputs;
+        for (convolver, filter) in self.convolvers.iter_mut().zip(bank.filters.iter_mut()) {
+            if let Some(filter) = filter.take() {
+                if now {
+                    convolver.set_now(filter);
+                } else {
+                    convolver.offer(filter);
+                }
+            }
+        }
+        if let Err(error) = self.retired_out.try_send(Retired::Bank(bank)) {
+            drop(error.into_inner());
         }
     }
 }
 
 fn computed_json(id: u64, computed: &Computed, milliseconds: f64) -> serde_json::Value {
-    json!({ "type": "computed", "id": id, "sampleRateHz": computed.sample_rate_hz, "channels": computed.channels, "names": computed.names, "pans": computed.pans, "milliseconds": milliseconds })
+    let sources: Vec<serde_json::Value> = computed.sources.iter().map(|s| json!({ "number": s.number, "name": s.name, "input": s.input, "first": s.first, "count": s.count })).collect();
+    json!({ "type": "computed", "id": id, "sampleRateHz": computed.sample_rate_hz, "channels": computed.channels, "names": computed.names, "pans": computed.pans, "sources": sources, "milliseconds": milliseconds })
 }
 
 fn outcome_json(outcome: &Outcome) -> Option<serde_json::Value> {
@@ -465,7 +572,7 @@ fn served(path: &str) -> Option<&'static [u8]> {
         "theme.css" => Some(THEME),
         _ => {
             if let Some(rest) = path.strip_prefix("src/") {
-                SOURCES.get_file(rest).map(|f| f.contents())
+                PAGE_SOURCES.get_file(rest).map(|f| f.contents())
             } else if let Some(rest) = path.strip_prefix("assets/") {
                 ASSETS.get_file(rest).map(|f| f.contents())
             } else {
@@ -486,11 +593,15 @@ impl Plugin for Neartect {
         AudioIOLayout {
             main_input_channels: NonZeroU32::new(2),
             main_output_channels: NonZeroU32::new(2),
+            aux_input_ports: &[new_nonzero_u32(2)],
+            names: PortNames { aux_inputs: &["Sidechain"], ..PortNames::const_default() },
             ..AudioIOLayout::const_default()
         },
         AudioIOLayout {
             main_input_channels: NonZeroU32::new(1),
             main_output_channels: NonZeroU32::new(2),
+            aux_input_ports: &[new_nonzero_u32(2)],
+            names: PortNames { aux_inputs: &["Sidechain"], ..PortNames::const_default() },
             ..AudioIOLayout::const_default()
         },
     ];
@@ -512,19 +623,13 @@ impl Plugin for Neartect {
     ) -> bool {
         let rate = buffer_config.sample_rate;
         self.offline = buffer_config.process_mode == ProcessMode::Offline;
-        self.inputs = layout.main_input_channels.map_or(2, |n| n.get() as usize);
+        self.main_channels = layout.main_input_channels.map_or(2, |n| n.get() as usize);
         self.sample_rate.store(rate.to_bits(), Ordering::Relaxed);
-        self.convolver = Convolver::new(rate);
+        self.convolvers = (0..SOURCES).map(|_| Convolver::new(rate)).collect();
         self.dry = [vec![0.0; BLOCK], vec![0.0; BLOCK]];
-        let stored = self
-            .params
-            .filter
-            .read()
-            .map(|f| f.clone())
-            .unwrap_or_default();
-        if stored.sample_rate == rate && !stored.left.is_empty() {
-            self.convolver
-                .set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
+        let stored = self.params.filter.read().ok().and_then(|f| f.bank(rate));
+        if let Some(bank) = stored {
+            self.offer(bank, true);
             self.applied = self.builder.latest();
         } else {
             let space = self.params.live_space();
@@ -538,17 +643,10 @@ impl Plugin for Neartect {
 
     fn reset(&mut self) {
         let rate = f32::from_bits(self.sample_rate.load(Ordering::Relaxed));
-        let mut fresh = Convolver::new(rate);
-        let stored = self
-            .params
-            .filter
-            .read()
-            .map(|f| f.clone())
-            .unwrap_or_default();
-        if stored.sample_rate == rate && !stored.left.is_empty() {
-            fresh.set_now(Box::new(Filter::new(rate, &stored.left, &stored.right)));
+        self.convolvers = (0..SOURCES).map(|_| Convolver::new(rate)).collect();
+        if let Some(bank) = self.params.filter.read().ok().and_then(|f| f.bank(rate)) {
+            self.offer(bank, true);
         }
-        self.convolver = fresh;
         self.dry.iter_mut().for_each(|d| d.fill(0.0));
         self.dry_at = 0;
     }
@@ -556,13 +654,15 @@ impl Plugin for Neartect {
     fn process(
         &mut self,
         buffer: &mut Buffer,
-        _aux: &mut AuxiliaryBuffers,
+        aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         self.take_delivery(self.offline);
-        while let Some(old) = self.convolver.take_retired() {
-            if let Err(error) = self.retired_out.try_send(Retired::Filter(old)) {
-                drop(error.into_inner());
+        for convolver in &mut self.convolvers {
+            while let Some(old) = convolver.take_retired() {
+                if let Err(error) = self.retired_out.try_send(Retired::Filter(old)) {
+                    drop(error.into_inner());
+                }
             }
         }
         if let Some(next) = self.signal_change.try_lock().ok().and_then(|mut change| change.take()) {
@@ -574,11 +674,12 @@ impl Plugin for Neartect {
             }
         }
         self.clock.fetch_add(buffer.samples() as u64, Ordering::Relaxed);
-        let stereo_input = self.inputs > 1;
+        let stereo_input = self.main_channels > 1;
+        let side = aux.inputs.first().map(|b| b.as_slice_immutable());
         let rate = f32::from_bits(self.sample_rate.load(Ordering::Relaxed));
         let step = 1.0 / (BYPASS_SECONDS * rate);
         let target = if self.params.bypass.value() { 0.0 } else { 1.0 };
-        for mut frame in buffer.iter_samples() {
+        for (index, mut frame) in buffer.iter_samples().enumerate() {
             self.heard += (target - self.heard).clamp(-step, step);
             let mix = self.params.mix.smoothed.next() * self.heard;
             let gain = self.params.output.smoothed.next();
@@ -594,7 +695,13 @@ impl Plugin for Neartect {
                 let right = if stereo_input { *frame.get_mut(1).expect("a second channel") } else { left };
                 (left, right)
             };
-            let wet = self.convolver.process(0.5 * (left + right));
+            let sided = side.map_or([0.0; 2], |s| [s.first().map_or(0.0, |c| c[index]), s.get(1).or(s.first()).map_or(0.0, |c| c[index])]);
+            let mut wet = [0.0f32; 2];
+            for (convolver, input) in self.convolvers.iter_mut().zip(self.inputs) {
+                let out = convolver.process(input.pick([left, right], sided));
+                wet[0] += out[0];
+                wet[1] += out[1];
+            }
             let slot = self.dry_at;
             self.dry_at = (self.dry_at + 1) % BLOCK;
             let dry = [self.dry[0][slot], self.dry[1][slot]];

@@ -5816,5 +5816,339 @@
     ],
     "kind": "number",
     "choices": null
+  },
+  {
+    "id": "source_on",
+    "holder": {
+      "list": "source"
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source_level",
+    "holder": {
+      "list": "source"
+    },
+    "path": [
+      "levelDb"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source2_on",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source2_x",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source2_y",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source2_z",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source2_distance",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      "distance"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source2_azimuth",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      "arrival",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source2_elevation",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      "arrival",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source2_level",
+    "holder": {
+      "list": "moreSources",
+      "slot": 2
+    },
+    "path": [
+      "levelDb"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source3_on",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source3_x",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source3_y",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source3_z",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source3_distance",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      "distance"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source3_azimuth",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      "arrival",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source3_elevation",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      "arrival",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source3_level",
+    "holder": {
+      "list": "moreSources",
+      "slot": 3
+    },
+    "path": [
+      "levelDb"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source4_on",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      "on"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source4_x",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 0
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source4_y",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 1
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source4_z",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      {
+        "place": 2
+      }
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source4_distance",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      "distance"
+    ],
+    "kind": "toggle",
+    "choices": null
+  },
+  {
+    "id": "source4_azimuth",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      "arrival",
+      "azimuthDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source4_elevation",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      "arrival",
+      "elevationDegrees"
+    ],
+    "kind": "number",
+    "choices": null
+  },
+  {
+    "id": "source4_level",
+    "holder": {
+      "list": "moreSources",
+      "slot": 4
+    },
+    "path": [
+      "levelDb"
+    ],
+    "kind": "number",
+    "choices": null
   }
 ]

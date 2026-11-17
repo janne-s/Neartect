@@ -28,12 +28,21 @@ fn pool() -> &'static Sender<Task> {
     })
 }
 
+pub struct SourceFilter {
+    pub number: usize,
+    pub name: String,
+    pub input: &'static str,
+    pub first: usize,
+    pub count: usize,
+    pub stereo: [Vec<f32>; 2],
+}
+
 pub struct Computed {
     pub sample_rate_hz: f64,
     pub channels: Vec<Vec<f32>>,
     pub names: Vec<String>,
     pub pans: Vec<[f64; 2]>,
-    pub stereo: [Vec<f32>; 2],
+    pub sources: Vec<SourceFilter>,
     pub moving: bool,
 }
 
@@ -80,43 +89,44 @@ pub fn compute(json: &str, rate: Option<f64>, seconds: Option<f64>, still: Still
     if let Some(computed) = cached(key) {
         return Ok(Some(computed));
     }
-    let plan = Arc::new(jobs::plan(&space)?);
+    let alone = jobs::source_spaces(&space);
+    let plans: Vec<Arc<jobs::Plan>> = alone.iter().map(|s| jobs::plan(&s.space).map(Arc::new)).collect::<Result<_, _>>()?;
     let (done, results) = unbounded();
     let mut count = 0;
-    for (c, channel) in plan.channels.iter().enumerate() {
-        for p in 0..channel.pieces.len() {
-            let (plan, done, still) = (plan.clone(), done.clone(), still.clone());
-            count += 1;
-            let _ = pool().send(Box::new(move || {
-                let spectra = still().then(|| jobs::spectra_of(&plan.channels[c].pieces[p]));
-                let _ = done.send((c, p, spectra));
-            }));
+    for (s, plan) in plans.iter().enumerate() {
+        for (c, channel) in plan.channels.iter().enumerate() {
+            for p in 0..channel.pieces.len() {
+                let (plan, done, still) = (plan.clone(), done.clone(), still.clone());
+                count += 1;
+                let _ = pool().send(Box::new(move || {
+                    let spectra = still().then(|| jobs::spectra_of(&plan.channels[c].pieces[p]));
+                    let _ = done.send((s, c, p, spectra));
+                }));
+            }
         }
     }
     drop(done);
-    let mut spectra: Vec<Vec<Option<_>>> = plan.channels.iter().map(|c| (0..c.pieces.len()).map(|_| None).collect()).collect();
+    let mut spectra: Vec<Vec<Vec<Option<_>>>> = plans.iter().map(|plan| plan.channels.iter().map(|c| (0..c.pieces.len()).map(|_| None).collect()).collect()).collect();
     for _ in 0..count {
-        let Ok((c, p, piece)) = results.recv() else { return Ok(None) };
+        let Ok((s, c, p, piece)) = results.recv() else { return Ok(None) };
         let Some(piece) = piece else { return Ok(None) };
-        spectra[c][p] = Some(piece);
+        spectra[s][c][p] = Some(piece);
     }
-    let channels: Vec<Vec<f32>> = plan
-        .channels
-        .iter()
-        .zip(spectra)
-        .flat_map(|(channel, pieces)| jobs::finish(channel, &pieces.into_iter().flatten().collect::<Vec<_>>()))
-        .collect();
-    let stereo = if channels.is_empty() {
-        [vec![0.0], vec![0.0]]
-    } else {
-        jobs::stereo(&channels, &plan.pans)
-    };
+    let (mut channels, mut names, mut pans, mut sources) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for ((meta, plan), pieces) in alone.iter().zip(&plans).zip(spectra) {
+        let own: Vec<Vec<f32>> = plan.channels.iter().zip(pieces).flat_map(|(channel, pieces)| jobs::finish(channel, &pieces.into_iter().flatten().collect::<Vec<_>>())).collect();
+        let stereo = if own.is_empty() { [vec![0.0], vec![0.0]] } else { jobs::stereo(&own, &plan.pans) };
+        sources.push(SourceFilter { number: meta.number, name: meta.name.clone(), input: meta.input, first: channels.len(), count: own.len(), stereo });
+        channels.extend(own);
+        names.extend(plan.names.iter().cloned());
+        pans.extend(plan.pans.iter().copied());
+    }
     let computed = Arc::new(Computed {
-        sample_rate_hz: plan.sample_rate_hz,
+        sample_rate_hz: space.render.sample_rate_hz,
         channels,
-        names: plan.names.clone(),
-        pans: plan.pans.clone(),
-        stereo,
+        names,
+        pans,
+        sources,
         moving,
     });
     remember(key, computed.clone());

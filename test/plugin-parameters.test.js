@@ -11,7 +11,8 @@ const full = () => readSpace({
   objects: Array.from({ length: 18 }, (_, i) => ({ kind: i % 2 ? 'grating' : 'plane', id: `o${i}`, position: [i * 0.1, 0, 1] })),
   microphones: Array.from({ length: 8 }, (_, i) => ({ id: `m${i}`, position: [0, i * 0.1, 1], ...(i === 0 ? { reference: 'o0', offset: [0, 0.01, 0] } : {}) })),
   rigs: Array.from({ length: 4 }, (_, i) => ({ kind: 'ortf', id: `r${i}`, position: [i, 0, 1] })),
-  source: { kind: 'point' }
+  source: { kind: 'point' },
+  moreSources: [2, 3, 4].map(slot => ({ id: `s${slot}`, kind: 'point', slot }))
 });
 
 test('every parameter finds its place in a space with every slot taken', () => {
@@ -19,6 +20,9 @@ test('every parameter finds its place in a space with every slot taken', () => {
   const missing = specs.filter(spec => plainOf(space, spec) === undefined && !(spec.kind === 'number' && spec.path[0] === 'pan')).map(s => s.id);
   assert.deepEqual(missing, []);
   assert.equal(plainOf(space, specs.find(s => s.id === 'mic1_y')), 0.01, 'a bound microphone shows its offset');
+  assert.equal(plainOf(space, specs.find(s => s.id === 'source3_level')), 0);
+  space.moreSources[1].arrival.azimuthDegrees = 45;
+  assert.equal(plainOf(space, specs.find(s => s.id === 'source3_azimuth')), 45);
 });
 
 test('the page sends only what differs, ends the gesture on commit, and does not echo the host', () => {

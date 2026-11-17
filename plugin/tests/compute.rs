@@ -21,8 +21,19 @@ fn the_pool_builds_the_same_filter_as_the_core_and_mixes_it_to_stereo() {
     let space = space::read_space(&serde_json::from_str(&json).unwrap()).unwrap();
     assert_eq!(built.channels, jobs::near_filter(&space).unwrap());
     assert_eq!(built.channels.len(), 2);
-    assert_eq!(built.stereo[0], built.channels[0]);
-    assert_eq!(built.stereo[1], built.channels[1]);
+    assert_eq!(built.sources[0].stereo[0], built.channels[0]);
+    assert_eq!(built.sources[0].stereo[1], built.channels[1]);
+}
+
+#[test]
+fn each_source_gets_its_own_stereo_filter_and_input() {
+    let mut value: serde_json::Value = serde_json::from_str(&corrugated()).unwrap();
+    value["moreSources"] = serde_json::json!([{ "kind": "point", "position": [1, 0, 1.2], "slot": 3, "input": "sideRight" }, { "on": false }]);
+    let built = compute(&value.to_string(), None, None, Arc::new(|| true)).unwrap().unwrap();
+    let heard: Vec<(usize, &str, usize, usize)> = built.sources.iter().map(|s| (s.number, s.input, s.first, s.count)).collect();
+    assert_eq!(heard, vec![(1, "main", 0, 2), (3, "sideRight", 2, 2)]);
+    assert_eq!(built.channels.len(), 4);
+    assert_ne!(built.sources[0].stereo, built.sources[1].stereo);
 }
 
 #[test]
@@ -38,7 +49,7 @@ fn a_space_without_listeners_builds_silence() {
     let json = serde_json::json!({ "kind": "neartect.space", "microphones": [] }).to_string();
     let built = compute(&json, None, None, Arc::new(|| true)).unwrap().unwrap();
     assert!(built.channels.is_empty());
-    assert_eq!(built.stereo, [vec![0.0], vec![0.0]]);
+    assert_eq!(built.sources[0].stereo, [vec![0.0], vec![0.0]]);
 }
 
 #[test]
@@ -76,7 +87,7 @@ fn a_moving_surface_keeps_building_on_the_clock_until_it_stands_still() {
         if let Outcome::Built { computed, page, .. } = heard.recv().unwrap() {
             assert!(computed.moving);
             assert!(filters.is_empty() == page.is_some());
-            filters.push(computed.stereo[0].clone());
+            filters.push(computed.sources[0].stereo[0].clone());
         }
     }
     assert_ne!(filters[0], filters[1]);
