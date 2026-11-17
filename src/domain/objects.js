@@ -331,7 +331,7 @@ export function firstListener(space) {
 }
 
 export function boundPoints(space) {
-  return [...space.microphones, ...(space.rigs ?? []), space.source];
+  return [...space.microphones, ...(space.rigs ?? []), space.source, ...(space.moreSources ?? [])];
 }
 
 export function placePoints(space) {

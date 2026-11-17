@@ -77,6 +77,14 @@
   font-size: 11px;
   font-weight: 600;
 }
+.source-badge {
+  min-width: 14px;
+  margin: 0 4px;
+  color: var(--source);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
 .rig-badge .object-glyph {
   width: 16px;
   height: 16px;

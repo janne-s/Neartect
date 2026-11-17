@@ -84,7 +84,21 @@ export function jobBytes({ settings, surfaces, spectra }) {
   return ALLOCATION_SLACK * ((pipe ? 2 : 1) * outside + 2 * bins * BYTES_PER_COMPLEX) + BASE_BYTES;
 }
 
+export function sourceSpaces(space) {
+  return JSON.parse(core.sourceSpaces(JSON.stringify(space)));
+}
+
+export function withSources(sampleRateHz, sources) {
+  const first = sources[0] ?? { channels: [], names: [], pans: [] };
+  return { sampleRateHz, sources, channels: first.channels, names: first.names, pans: first.pans };
+}
+
 export async function computeFilter(space, run) {
+  const sources = await Promise.all(sourceSpaces(space).map(async ({ number, name, input, space: alone }) => ({ number, name, input, ...await computeSource(alone, run) })));
+  return withSources(space.render.sampleRateHz, sources);
+}
+
+async function computeSource(space, run) {
   const list = listeners(space);
   const jobs = await Promise.all(channelJobs(space).map(async ({ variants, channels: count }) => {
     const settings = variants[0].settings;
@@ -95,8 +109,7 @@ export async function computeFilter(space, run) {
     const length = filters.length / count;
     return Array.from({ length: count }, (_, channel) => filters.slice(channel * length, (channel + 1) * length));
   }));
-  const channels = jobs.flat();
-  return { sampleRateHz: space.render.sampleRateHz, channels, names: list.map(l => l.name), pans: list.map(l => l.pan) };
+  return { channels: jobs.flat(), names: list.map(l => l.name), pans: list.map(l => l.pan) };
 }
 
 export async function nearFilter(space) {

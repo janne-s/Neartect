@@ -1,5 +1,6 @@
 import { fitCanvas, palette } from '../shared/ui/canvas.js';
 import { arrivalVector, signedTurn } from '../domain/space.js';
+import { sourceByNumber, sourceEntries, sourceKey } from '../domain/sources.js';
 import { aimAt, aimVector, boundPoints, expandObject, followResize, resizedPosition, objectBounds, objectFrame, placePointAt, pointFrame, pointPosition, referenceObject, surfacePoint, toWorld } from '../domain/objects.js';
 import { bentNormal, bentPoint } from '../domain/bend.js';
 import { wheelGesture } from '../shared/ui/wheel.js';
@@ -177,15 +178,15 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
   function points() {
     const list = space.microphones.map((point, index) => ({ key: `microphone:${point.id}`, type: 'microphone', id: point.id, index, point }));
     (space.rigs ?? []).forEach((point, index) => list.push({ key: `rig:${point.id}`, type: 'rig', id: point.id, index: RIG_COLOUR_START + index, point }));
-    if (space.source.kind === 'point') list.push({ key: 'source', type: 'source', point: space.source });
+    sourceEntries(space).forEach(({ number, source }) => { if (source.kind === 'point') list.push({ key: sourceKey(number), type: 'source', number, point: source }); });
     return list;
   }
 
   const grouped = () => (selection?.type === 'group' ? selection : null);
   const inGroup = key => Boolean(grouped()?.points.includes(key));
   const objectInGroup = id => Boolean(grouped()?.objects.includes(id));
-  const isSelected = item => (selection?.type === item.type && (item.type === 'source' || selection.id === item.id)) || inGroup(item.key);
-  const itemKey = item => (item.type === 'source' ? 'source' : item.type === 'microphone' || item.type === 'rig' ? `${item.type}:${item.id}` : null);
+  const isSelected = item => (selection?.type === item.type && (item.type === 'source' ? (selection.number ?? 1) === item.number : selection.id === item.id)) || inGroup(item.key);
+  const itemKey = item => (item.type === 'source' ? sourceKey(item.number ?? 1) : item.type === 'microphone' || item.type === 'rig' ? `${item.type}:${item.id}` : null);
 
   function groupCentre() {
     const group = grouped();
@@ -219,7 +220,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       placePointAt(next, point, map(p.position));
     }
   }
-  const findPoint = (next, key) => (key === 'source' ? next.source
+  const findPoint = (next, key) => (key.startsWith('source:') ? sourceByNumber(next, Number(key.slice(7)))?.source
     : key.startsWith('rig:') ? next.rigs.find(r => `rig:${r.id}` === key)
     : next.microphones.find(m => `microphone:${m.id}` === key));
 
@@ -561,15 +562,20 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
 
     drawFaces(context, colors, fill, edge);
 
-    if (space.source.kind === 'far') {
+    const entries = sourceEntries(space);
+    const numbered = entries.length > 1;
+    context.font = '11px system-ui, sans-serif';
+    for (const { number, source, arrival: aim } of entries) {
+      if (source.kind !== 'far') continue;
       const centre = listeningCentre();
       const reach = pixelsToMetres(ARROW_PIXELS * 1.6, centre);
-      const arrival = arrivalVector(space.arrival);
+      const arrival = arrivalVector(aim);
       const from = project(add(centre, scale(arrival, reach)));
       const to = project(add(centre, scale(arrival, reach * ARRIVAL_STOP)));
       if (from && to) {
-        const handle = { id: 'arrival', type: 'arrival', point: from };
+        const handle = { id: `arrival:${number}`, type: 'arrival', number, point: from };
         const color = isHot(handle) ? colors.accent : colors.direct;
+        context.globalAlpha = source.on === false ? MUTED_ALPHA : 1;
         context.strokeStyle = color;
         context.fillStyle = color;
         context.lineWidth = 2;
@@ -582,24 +588,33 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
         context.beginPath();
         context.arc(from[0], from[1], 5, 0, 2 * Math.PI);
         context.fill();
+        if (numbered) context.fillText(String(number), from[0] + 8, from[1] - 6);
+        context.globalAlpha = 1;
         handles.push(handle);
       }
-    } else {
-      const source = space.source.position;
+    }
+    for (const { number, source: point } of entries) {
+      if (point.kind !== 'point') continue;
+      const source = point.position;
+      const chosen = selection?.type === 'source' && (selection.number ?? 1) === number;
       context.strokeStyle = sourceColor;
-      context.globalAlpha = 0.5;
+      context.globalAlpha = 0.5 * (point.on === false ? MUTED_ALPHA : 1);
       context.setLineDash([2, 4]);
       const listeners = [...space.microphones.map(m => ['microphone', m]), ...(space.rigs ?? []).map(r => ['rig', r])];
       const labelled = [];
       listeners.forEach(([type, m]) => {
         const ends = line(context, source, m.position);
-        if (ends && (selection?.type === 'source' || (selection?.type === type && selection.id === m.id))) labelled.push([ends, m]);
+        if (ends && (chosen || (selection?.type === type && selection.id === m.id))) labelled.push([ends, m]);
       });
       context.setLineDash([]);
       context.globalAlpha = 1;
       context.fillStyle = colors.muted;
-      context.font = '11px system-ui, sans-serif';
       labelled.forEach(([[a, b], m]) => context.fillText(formatGap(Math.hypot(...sub(m.position, source))), (a[0] + b[0]) / 2 + 6, (a[1] + b[1]) / 2 - 6));
+      const at = numbered ? project(source) : null;
+      if (at) {
+        context.fillStyle = sourceColor;
+        context.fillText(String(number), at[0] + 16, at[1] - 10);
+      }
     }
 
     const selectedPoint = grouped() ? null : points().find(isSelected);
@@ -899,7 +914,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
 
   function itemAt(point) {
     const onPoint = pointAt(point);
-    if (onPoint) return onPoint.type === 'source' ? { type: 'source' } : { type: onPoint.type, id: onPoint.id };
+    if (onPoint) return onPoint.type === 'source' ? { type: 'source', number: onPoint.number } : { type: onPoint.type, id: onPoint.id };
     for (let i = faces.length - 1; i >= 0; i -= 1) {
       if (insidePolygon(point, faces[i].corners)) return { type: 'object', id: faces[i].object.id };
     }
@@ -937,7 +952,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     }
     const object = space.objects.find(o => o.id === activeObjectId());
     const bound = handle.target !== 'object' && handle.type === 'move' ? findPoint(space, handle.target) : null;
-    const snapshot = JSON.parse(JSON.stringify(bound ?? (handle.type === 'arrival' ? { arrival: space.arrival } : object)));
+    const snapshot = JSON.parse(JSON.stringify(bound ?? (handle.type === 'arrival' ? { arrival: sourceByNumber(space, handle.number).arrival } : object)));
     const centre = bound ? bound.position : handle.type === 'arrival' ? listeningCentre() : object ? objectCentre(object) : null;
     const start = { point };
     if (handle.type === 'size') start.offsets = new Map(boundPoints(space).filter(p => p.reference === object.id).map(p => [p, [...p.offset]]));
@@ -1106,7 +1121,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     } else if (handle.type === 'arrival') {
       const microphone = listeningCentre();
       const r = ray(...point);
-      const radius = Math.hypot(...sub(drag.start.tail ?? arrivalTail(), microphone));
+      const radius = Math.hypot(...sub(drag.start.tail ?? arrivalTail(handle.number), microphone));
       const oc = sub(r.origin, microphone);
       const b = dot(oc, r.direction);
       const disc = b * b - (dot(oc, oc) - radius * radius);
@@ -1115,13 +1130,18 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
       const azimuth = wrap(snap(degrees(Math.atan2(direction[0], direction[1])), ANGLE_SNAP_DEGREES, free));
       const elevation = snap(degrees(Math.asin(Math.max(-1, Math.min(1, direction[2])))), ANGLE_SNAP_DEGREES, free);
       readout = { x: point[0], y: point[1], text: `${Math.round(azimuth)}° · ${Math.round(elevation)}°` };
-      onEdit(next => { next.arrival.azimuthDegrees = azimuth; next.arrival.elevationDegrees = elevation; });
+      onEdit(next => {
+        const aim = sourceByNumber(next, handle.number)?.arrival;
+        if (!aim) return;
+        aim.azimuthDegrees = azimuth;
+        aim.elevationDegrees = elevation;
+      });
     }
   }
 
-  function arrivalTail() {
+  function arrivalTail(number) {
     const microphone = listeningCentre();
-    return add(microphone, scale(arrivalVector(space.arrival), pixelsToMetres(ARROW_PIXELS * 1.6, microphone)));
+    return add(microphone, scale(arrivalVector(sourceByNumber(space, number).arrival), pixelsToMetres(ARROW_PIXELS * 1.6, microphone)));
   }
 
   function asGroup(current) {
@@ -1137,7 +1157,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     if (count > 1) return group;
     if (group.objects.length) return { type: 'object', id: group.objects[0] };
     const key = group.points[0];
-    if (key === 'source') return { type: 'source' };
+    if (key.startsWith('source:')) return { type: 'source', number: Number(key.slice(7)) };
     const [type, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     return { type, id };
   }
@@ -1204,7 +1224,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const handle = event.button === 0 ? handleAt(point) : null;
     if (handle) {
       drag = startDrag(handle, point);
-      if (handle.type === 'arrival') drag.start.tail = arrivalTail();
+      if (handle.type === 'arrival') drag.start.tail = arrivalTail(handle.number);
       if (handle.type !== 'arrival' && !drag.bound && !drag.group && selection?.id !== drag.objectId) onSelect({ type: 'object', id: drag.objectId });
       return;
     }
@@ -1333,7 +1353,7 @@ export function createNearView(canvas, { onSelect, onEdit, onCommit, onAreaEnd =
     const item = itemAt(pointer(event));
     if (item?.type === 'object') camera.target = objectCentre(space.objects.find(o => o.id === item.id));
     if (item?.type === 'microphone') camera.target = [...space.microphones.find(m => m.id === item.id).position];
-    if (item?.type === 'source') camera.target = [...space.source.position];
+    if (item?.type === 'source') camera.target = [...sourceByNumber(space, item.number).source.position];
     if (item?.type === 'rig') camera.target = [...space.rigs.find(r => r.id === item.id).position];
     draw();
     if (item) onCamera();

@@ -1,5 +1,6 @@
 import { FilterCancelled } from './filter-pool.js';
 import { createParameterSync } from './plugin-parameters.js';
+import { withSources } from './domain/near-filter.js';
 
 export const inPlugin = typeof window.sendToPlugin === 'function';
 
@@ -33,7 +34,14 @@ export function createPluginHost({ onSpace, onScene, onCamera, onClock, onAuditi
       waiting.delete(message.id);
       if (message.cancelled) wait.reject(new FilterCancelled());
       else if (message.error) wait.reject(new Error(message.error));
-      else wait.resolve({ sampleRateHz: message.sampleRateHz, channels: message.channels.map(c => Float32Array.from(c)), names: message.names, pans: message.pans });
+      else {
+        const channels = message.channels.map(c => Float32Array.from(c));
+        const sources = message.sources.map(({ number, name, input, first, count }) => ({
+          number, name, input,
+          channels: channels.slice(first, first + count), names: message.names.slice(first, first + count), pans: message.pans.slice(first, first + count)
+        }));
+        wait.resolve(withSources(message.sampleRateHz, sources));
+      }
     }
   };
   window.addEventListener('error', event => send({ type: 'log', text: `${event.message} ${event.filename}:${event.lineno}` }));

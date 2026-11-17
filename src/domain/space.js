@@ -1,6 +1,7 @@
 import { core } from './core-ready.js';
 import { DEFAULT_MATERIAL } from './materials.js';
 import { OBJECT_DEFAULTS, placePoints, referTo } from './objects.js';
+import { fillSourceSlots } from './sources.js';
 
 export const SPACE_KIND = 'neartect.space';
 export const SPACE_VERSION = 1;
@@ -34,7 +35,8 @@ export const RANGES = Object.freeze({
   reliefDetail: [1, 24],
   elementLimit: [1000, 5000000],
   movingDetail: [0.1, 1],
-  pan: [-1, 1]
+  pan: [-1, 1],
+  levelDb: [-36, 12]
 });
 
 export const DEFAULT_QUALITY = Object.freeze({ reliefDetail: 6, elementLimit: 400000, movingDetail: 0.5 });
@@ -70,6 +72,10 @@ export function defaultMicrophone(index, overrides = {}) {
   return keepBinding(readAlone('microphones', { id: freshId(), name: `Mic ${index + 1}`, ...overrides }), overrides);
 }
 
+export function defaultSource(slot, overrides = {}) {
+  return { ...keepBinding(readAlone('moreSources', { id: freshId(), name: `Source ${slot}`, ...overrides }), overrides), slot };
+}
+
 export function defaultRig(kind, overrides = {}) {
   return keepBinding(readAlone('rigs', { id: freshId(), kind, ...overrides }), overrides);
 }
@@ -89,6 +95,7 @@ export function fillSlots(space) {
   fill(space.objects, OBJECT_SLOTS, null);
   fill(space.microphones, MOST_MICROPHONES, 0);
   fill(space.rigs, MOST_RIGS, 0);
+  fillSourceSlots(space);
 }
 
 export function defaultSpace() {

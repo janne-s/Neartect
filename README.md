@@ -83,9 +83,11 @@ processed sound itself.
 
 ## Source and listening
 
-- **Source** — Far away, as a plane wave from a direction, or a point in the
-  scene, bound to an object like a microphone. A point source falls with
-  distance from a 1 m reference unless 1/r is off.
+- **Sources** — Up to four, each far away as a plane wave from a direction or
+  a point in the scene, bound to an object like a microphone, with its own
+  level. A point source falls with distance from a 1 m reference unless 1/r
+  is off. Each source plays its own signal in the preview. In the plugin,
+  each one plays an input: main, sidechain, or either side of them.
 - **Signal** — Pink noise, clicks, a sweep, or a sound file, with a
   free-field comparison.
 - **Preview** — Microphones follow their pan; mid-side decodes to

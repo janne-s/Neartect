@@ -3,7 +3,7 @@ import { createFields } from './shared/ui/fields.js';
 import { attachSplitters } from './shared/ui/splitters.js';
 import { encodeFloat32Wav, wavByteLength } from './shared/domain/wav.js';
 import { zipStore } from './shared/domain/zip.js';
-import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSpace, fillSlots, MOST_MICROPHONES, MOST_RIGS, OBJECT_SLOTS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
+import { arrivalVector, defaultMicrophone, defaultObject, defaultRig, defaultSource, defaultSpace, fillSlots, MOST_MICROPHONES, MOST_RIGS, OBJECT_SLOTS, PATTERNS, RANGES, readSpace, SpaceError } from './domain/space.js';
 import { HEAD_ATTRIBUTION, HEADS, RIG_ANGLE_DEGREES, RIG_KINDS, rigMembers } from './domain/rigs.js';
 import { aimAt, centredOffset, firstListener, fittedOpening, followResize, FLAT_KINDS, placePoints, pointPosition, referTo, referenceObject, releaseObject, RELIEF_SHAPES } from './domain/objects.js';
 import { BUILD_KINDS, headIcon, objectIcon, patternIcon, reliefIcon, situationIcon } from './ui/icons.js';
@@ -12,7 +12,8 @@ import { BEND_KINDS, SPHERE_KINDS } from './domain/bend.js';
 import { MATERIAL_ATTRIBUTION, MATERIALS } from './domain/materials.js';
 import { SMALLEST_GAP_METRES, spaceCentre } from './domain/placement.js';
 import { DISPLAY, PARAMETERS } from './domain/parameters.js';
-import { TEST_SIGNALS } from './domain/signals.js';
+import { pinkNoise, SIGNAL_SECONDS, TEST_SIGNALS } from './domain/signals.js';
+import { MOST_SOURCES, newSourcePlace, SOURCE_INPUTS, SOURCE_LEVEL_DB, sourceByNumber, sourceEntries, sourceKey } from './domain/sources.js';
 import { createNearView, formatGap } from './ui/near-view.js';
 import { drawImpulse, drawResponse } from './ui/response-plots.js';
 import { createPreview, stereo } from './audio/preview.js';
@@ -31,7 +32,7 @@ const HORIZONTAL_RANGE_METRES = [-5, 5];
 const HEIGHT_RANGE_METRES = [0, 5];
 const SLIDER_STEPS = 1000;
 const MOST_GLIDE_SECONDS = 10;
-const SHEET_TITLES = Object.freeze({ emitters: 'Objects', receivers: 'Microphones and source', output: 'Air and output' });
+const SHEET_TITLES = Object.freeze({ emitters: 'Objects', receivers: 'Microphones and sources', output: 'Air and output' });
 
 const $ = id => document.getElementById(id);
 const element = (tag, className, text) => {
@@ -62,6 +63,7 @@ const state = {
   selection: null,
   signal: 'pink',
   file: null,
+  sourceSignals: {},
   filter: null,
   audioRate: null,
   status: ''
@@ -223,7 +225,7 @@ async function refreshFilter() {
     const result = await timedFilter(space, 'Preview', building);
     mayCancel = true;
     state.filter = result;
-    setStatus(`${formatMilliseconds(result.milliseconds)} · order ${space.render.order}`);
+    setStatus(result.sources.length ? `${formatMilliseconds(result.milliseconds)} · order ${space.render.order}` : 'All sources are off');
     const gliding = pageMoves(space);
     preview.setFilter(result, gliding ? Math.min(MOST_GLIDE_SECONDS, result.milliseconds / 1000) : undefined);
     drawPlots();
@@ -256,8 +258,15 @@ function shownChannel() {
   return 0;
 }
 
+function shownSource() {
+  const sources = state.filter?.sources ?? [];
+  const number = state.selection?.type === 'source' ? state.selection.number ?? 1 : null;
+  return sources.find(s => s.number === number) ?? sources[0] ?? null;
+}
+
 function drawPlots() {
-  const filter = state.filter && { sampleRateHz: state.filter.sampleRateHz, samples: state.filter.channels[shownChannel()] ?? state.filter.channels[0] };
+  const source = shownSource();
+  const filter = source?.channels.length ? { sampleRateHz: state.filter.sampleRateHz, samples: source.channels[shownChannel()] ?? source.channels[0] } : null;
   drawImpulse($('impulse'), filter);
   drawResponse($('response'), filter);
 }
@@ -404,6 +413,7 @@ function editSceneName(button, number) {
 function changed({ save = true, panel = false, compute = true } = {}) {
   fillSlots(state.space);
   placePoints(state.space);
+  if (!inPlugin && preview.playing && heardSources(state.space).join() !== playedSources) startPlayback();
   pluginHost?.parameters.push(state.space, save);
   if (save) {
     keepSpace();
@@ -759,18 +769,11 @@ function refreshPanel() {
     b.disabled = b.dataset.kind === 'mono' ? state.space.microphones.length >= MOST_MICROPHONES : state.space.rigs.length >= MOST_RIGS;
   });
 
-  const source = state.space.source;
-  document.querySelectorAll('#source-kind [data-kind]').forEach(button => button.setAttribute('aria-checked', String(button.dataset.kind === source.kind)));
-  $('source-distance').hidden = source.kind !== 'point';
-  $('source-distance').setAttribute('aria-pressed', String(source.distance));
-  const sourceMacros = $('source-macros');
-  sourceMacros.replaceChildren();
-  if (source.kind === 'point') {
-    pointControls(sourceMacros, () => state.space.source, 1);
-  } else {
-    macro(sourceMacros, { label: 'From', title: 'Compass direction the sound comes from', range: [0, 360], fallback: 0, format: degrees, read: () => state.space.arrival.azimuthDegrees, write: v => { state.space.arrival.azimuthDegrees = v % 360; } });
-    macro(sourceMacros, { label: 'Elevation', range: [-90, 90], fallback: 10, format: degrees, read: () => state.space.arrival.elevationDegrees, write: v => { state.space.arrival.elevationDegrees = v; } });
-  }
+  const sources = $('source-list');
+  sources.replaceChildren();
+  const entries = sourceEntries(state.space);
+  entries.forEach(entry => sourceCard(sources, entry.number));
+  $('add-source').disabled = entries.length >= MOST_SOURCES;
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -824,18 +827,124 @@ function pointControls(macros, current, gapFallback) {
 }
 
 function sourceDistanceRow(macros, current) {
-  if (state.space.source.kind !== 'point') return;
-  const value = element('span', 'macro-value');
-  const sync = () => {
-    const point = current();
-    if (!point) return;
-    const from = pointPosition(state.space, point);
-    const to = pointPosition(state.space, state.space.source);
-    value.textContent = formatGap(Math.hypot(...to.map((v, i) => v - from[i])));
-  };
-  macros.append(element('label', null, 'To source'), element('span', null), value);
-  live.push(sync);
-  sync();
+  const points = sourceEntries(state.space).filter(({ source }) => source.kind === 'point' && source.on !== false);
+  for (const { number, source } of points) {
+    const value = element('span', 'macro-value');
+    const sync = () => {
+      const point = current();
+      const target = sourceByNumber(state.space, number)?.source;
+      if (!point || !target) return;
+      const from = pointPosition(state.space, point);
+      const to = pointPosition(state.space, target);
+      value.textContent = formatGap(Math.hypot(...to.map((v, i) => v - from[i])));
+    };
+    macros.append(element('label', null, points.length > 1 ? `To ${source.name}` : 'To source'), element('span', null), value);
+    live.push(sync);
+    sync();
+  }
+}
+
+const SOURCE_KINDS = Object.freeze([
+  ['far', 'Far away: a plane wave from a direction', '<i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i>'],
+  ['point', 'A point in the scene', '<i class="fa-solid fa-circle-dot" aria-hidden="true"></i>']
+]);
+const formatLevel = value => `${value > 0 ? '+' : ''}${value.toFixed(1)} dB`;
+
+function sourceCard(container, number) {
+  const entry = () => sourceByNumber(state.space, number);
+  const current = () => entry()?.source;
+  const source = current();
+  const selected = state.selection?.type === 'source' && (state.selection.number ?? 1) === number;
+  const card = element('div', 'card');
+  card.setAttribute('aria-selected', String(selected || Boolean(state.selection?.points?.includes(sourceKey(number)))));
+  cardHeader(card, {
+    lead: [hearingBox(source), element('span', 'source-badge', String(number))], name: source.name, kind: source.kind === 'far' ? 'Far' : 'Point', selected,
+    onToggle: () => select(selected ? null : { type: 'source', number }),
+    onRename: next => { current().name = next; },
+    onRemove: number === 1 ? null : () => removeSource(number), removeLabel: `Remove ${source.name}`
+  });
+  if (selected) {
+    const { group, macros } = cardGroup(card, 'Place');
+    tileRow(group, macros, { label: 'Source kind', chosen: source.kind, items: SOURCE_KINDS, onPick: kind => setSourceKind(number, kind) });
+    if (source.kind === 'point') {
+      const row = group.querySelector('.tile-row');
+      const distance = element('button', 'build-button', '1/r');
+      distance.type = 'button';
+      distance.title = 'Level falls with distance (1 m reference)';
+      distance.setAttribute('aria-label', 'Level falls with distance');
+      distance.setAttribute('aria-pressed', String(source.distance));
+      distance.addEventListener('click', () => { current().distance = !current().distance; changed({ panel: true }); });
+      row.append(distance);
+      pointControls(macros, current, 1);
+    } else {
+      const aim = () => entry().arrival;
+      macro(macros, { label: 'From', title: 'Compass direction the sound comes from', range: [0, 360], fallback: 0, format: degrees, read: () => aim().azimuthDegrees, write: v => { aim().azimuthDegrees = v % 360; } });
+      macro(macros, { label: 'Elevation', range: [-90, 90], fallback: 10, format: degrees, read: () => aim().elevationDegrees, write: v => { aim().elevationDegrees = v; } });
+    }
+    const sound = cardGroup(card, 'Sound').macros;
+    macro(sound, { label: 'Level', range: SOURCE_LEVEL_DB, snap: v => Math.round(v * 2) / 2, format: formatLevel, fallback: 0, read: () => current().levelDb, write: v => { current().levelDb = v; } });
+    if (inPlugin) {
+      selectRow(sound, { label: 'Input', title: 'The plugin input this source plays', value: source.input, options: Object.entries(SOURCE_INPUTS), onChange: v => { current().input = v; changed({ panel: true }); } });
+    } else if (number > 1) {
+      signalRow(sound, number);
+    }
+  }
+  container.append(card);
+}
+
+function signalOf(number) {
+  if (number === 1) return { signal: state.signal, file: state.file };
+  return state.sourceSignals[number] ?? { signal: 'pink', file: null };
+}
+
+function signalRow(macros, number) {
+  const { signal, file } = signalOf(number);
+  const options = [...$('signal').options].filter(o => o.value !== 'file').map(o => [o.value, o.textContent]);
+  if (file) options.push(['file', file.name]);
+  const load = element('button', 'icon-toggle row-button');
+  load.type = 'button';
+  load.title = 'Load a sound file';
+  load.setAttribute('aria-label', load.title);
+  load.innerHTML = '<i class="fa-solid fa-file-audio" aria-hidden="true"></i>';
+  load.addEventListener('click', () => { signalTarget = number; $('signal-file').click(); });
+  selectRow(macros, {
+    label: 'Signal', title: 'What this source plays in the preview', value: signal, options, extra: load,
+    onChange: value => {
+      state.sourceSignals[number] = { ...signalOf(number), signal: value };
+      if (playing()) startPlayback();
+    }
+  });
+}
+
+function setSourceKind(number, kind) {
+  const { source, arrival } = sourceByNumber(state.space, number);
+  if (source.kind === kind) return;
+  source.kind = kind;
+  if (kind === 'point' && !source.reference) {
+    const at = activeListener().position;
+    const toward = [Math.sin(arrival.azimuthDegrees * Math.PI / 180), Math.cos(arrival.azimuthDegrees * Math.PI / 180)];
+    source.position = [at[0] + toward[0], at[1] + toward[1], at[2]];
+  }
+  changed({ panel: true });
+}
+
+function addSource() {
+  const taken = new Set(sourceEntries(state.space).map(e => e.number));
+  const slot = [2, 3, 4].find(n => !taken.has(n));
+  if (!slot) return;
+  const position = newSourcePlace(state.space, slot);
+  const source = defaultSource(slot, { kind: 'point', position, distance: true });
+  state.space.moreSources = [...(state.space.moreSources ?? []), source];
+  state.selection = { type: 'source', number: slot };
+  changed({ panel: true });
+}
+
+function removeSource(number) {
+  if (number === 1) return;
+  state.space.moreSources = (state.space.moreSources ?? []).filter(s => s.slot !== number);
+  delete state.sourceSignals[number];
+  if (state.selection?.type === 'source' && state.selection.number === number) state.selection = null;
+  changed({ panel: true });
 }
 
 function hearingBox(point) {
@@ -914,9 +1023,10 @@ function setAreaSelect(on) {
 $('select-area').addEventListener('click', () => setAreaSelect($('select-area').getAttribute('aria-pressed') !== 'true'));
 
 function towardsSource(microphone) {
-  if (state.space.source.kind === 'far') return arrivalVector(state.space.arrival);
+  const { source, arrival } = sourceEntries(state.space).find(e => e.source.on !== false) ?? sourceEntries(state.space)[0];
+  if (source.kind === 'far') return arrivalVector(arrival);
   const from = pointPosition(state.space, microphone);
-  const to = pointPosition(state.space, state.space.source);
+  const to = pointPosition(state.space, source);
   const d = to.map((v, i) => v - from[i]);
   const n = Math.hypot(...d) || 1;
   return d.map(v => v / n);
@@ -1059,22 +1169,7 @@ function addListener(kind) {
   for (const [kind, { label, short }] of Object.entries(RIG_KINDS)) tile(kind, label, kind === 'binaural' ? headIcon() : short);
 }
 
-document.querySelectorAll('#source-kind [data-kind]').forEach(button => button.addEventListener('click', () => {
-  const source = state.space.source;
-  if (source.kind === button.dataset.kind) return;
-  source.kind = button.dataset.kind;
-  if (source.kind === 'point' && !source.reference) {
-    const at = activeListener().position;
-    const toward = [Math.sin(state.space.arrival.azimuthDegrees * Math.PI / 180), Math.cos(state.space.arrival.azimuthDegrees * Math.PI / 180)];
-    source.position = [at[0] + toward[0], at[1] + toward[1], at[2]];
-  }
-  state.selection = source.kind === 'point' ? { type: 'source' } : null;
-  changed({ panel: true });
-}));
-$('source-distance').addEventListener('click', () => {
-  state.space.source.distance = !state.space.source.distance;
-  changed({ panel: true });
-});
+$('add-source').addEventListener('click', addSource);
 
 function openDetails(id) {
   const object = state.space.objects.find(o => o.id === id);
@@ -1209,14 +1304,24 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     removeMicrophone(state.selection.id);
   }
+  if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.type === 'source' && state.selection.number > 1) {
+    event.preventDefault();
+    removeSource(state.selection.number);
+  }
   if (event.key === 'Escape' && $('select-area').getAttribute('aria-pressed') === 'true') setAreaSelect(false);
   else if (event.key === 'Escape' && state.selection) select(null);
 });
 
-async function signalSamples(sampleRate) {
-  if (state.signal === 'file' && state.file) return state.file;
-  return { samples: TEST_SIGNALS[state.signal === 'file' ? 'pink' : state.signal](sampleRate), sampleRate };
+async function signalSamples(sampleRate, number = 1) {
+  const { signal, file } = signalOf(number);
+  if (signal === 'file' && file) return file;
+  const chosen = signal === 'file' ? 'pink' : signal;
+  const samples = chosen === 'pink' ? pinkNoise(sampleRate, SIGNAL_SECONDS, number) : TEST_SIGNALS[chosen](sampleRate);
+  return { samples, sampleRate };
 }
+
+const heardSources = space => sourceEntries(space).filter(e => e.source.on !== false).map(e => e.number);
+let playedSources = '';
 
 function showPlaying(on) {
   $('play').setAttribute('aria-pressed', String(on));
@@ -1238,8 +1343,9 @@ async function startPlayback() {
     state.audioRate = rate;
     await refreshFilter();
   }
-  const { samples, sampleRate } = await signalSamples(rate);
-  await preview.play(samples, sampleRate);
+  const numbers = heardSources(state.space);
+  playedSources = numbers.join();
+  await preview.play(await Promise.all(numbers.map(async number => ({ number, ...await signalSamples(rate, number) }))));
   $('play').setAttribute('aria-pressed', 'true');
   $('play').textContent = 'Stop';
   if (moving(state.space)) refreshFilter();
@@ -1282,9 +1388,12 @@ $('signal').addEventListener('change', () => {
   showFileName();
   if (playing()) startPlayback();
 });
-$('load-signal').addEventListener('click', () => $('signal-file').click());
+let signalTarget = 1;
+$('load-signal').addEventListener('click', () => { signalTarget = 1; $('signal-file').click(); });
 $('signal-file').addEventListener('change', async () => {
   const file = $('signal-file').files[0];
+  const target = signalTarget;
+  signalTarget = 1;
   $('signal-file').value = '';
   if (!file) { $('signal').value = state.signal; return; }
   try {
@@ -1293,6 +1402,12 @@ $('signal-file').addEventListener('change', async () => {
     for (let c = 0; c < audio.numberOfChannels; c += 1) {
       const channel = audio.getChannelData(c);
       for (let i = 0; i < samples.length; i += 1) samples[i] += channel[i] / audio.numberOfChannels;
+    }
+    if (target > 1) {
+      state.sourceSignals[target] = { signal: 'file', file: { samples, sampleRate: audio.sampleRate, name: file.name } };
+      refreshPanel();
+      if (playing()) startPlayback();
+      return;
     }
     state.file = { samples, sampleRate: audio.sampleRate, name: file.name };
     state.signal = 'file';
@@ -1335,7 +1450,7 @@ const EXPORT_STORAGE_KEY = 'neartect.export';
 const formatBytes = bytes => (bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`);
 const fileStem = text => text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'neartect';
 const exportDialog = $('export-dialog');
-let exportSignal = null;
+let exportSignals = new Map();
 
 const exportSelection = () => new Set([...document.querySelectorAll('#export-list input:checked')].map(input => input.value));
 
@@ -1349,9 +1464,12 @@ function exportSizes(selected) {
     space: JSON.stringify(withReliability(state.space)).length,
     stereo: wavByteLength(filter, 2),
     microphones: names.length * wavByteLength(filter, 1),
-    filtered: exportSignal ? wavByteLength(exportSignal.samples.length + filter, 2) : 0
+    filtered: exportSignals.size ? wavByteLength(Math.max(...[...exportSignals.values()].map(s => s.samples.length)) + filter, 2) : 0
   };
-  const count = [...selected].reduce((sum, item) => sum + (item === 'microphones' ? names.length : 1), 0);
+  const sources = Math.max(1, heardSources(state.space).length);
+  sizes.stereo *= sources;
+  sizes.microphones *= sources;
+  const count = [...selected].reduce((sum, item) => sum + (item === 'microphones' ? names.length * sources : item === 'stereo' ? sources : 1), 0);
   return { sizes, count, bytes: [...selected].reduce((sum, item) => sum + sizes[item], 0) };
 }
 
@@ -1365,7 +1483,7 @@ function updateExportSummary() {
 }
 
 $('export').addEventListener('click', async () => {
-  exportSignal = await signalSamples(state.space.render.sampleRateHz);
+  exportSignals = new Map(await Promise.all(heardSources(state.space).map(async number => [number, await signalSamples(state.space.render.sampleRateHz, number)])));
   const stored = readStored(EXPORT_STORAGE_KEY) ?? {};
   const chosen = new Set(stored.items ?? ['space', 'stereo']);
   $('export-list').replaceChildren(...Object.entries(EXPORT_LABELS).map(([item, label]) => {
@@ -1397,10 +1515,10 @@ function normalised(channels) {
   return channels.map(c => c.map(x => x / peak));
 }
 
-async function filteredSignal(filter, { samples, sampleRate }) {
-  const frames = samples.length + filter.channels[0].length - 1;
+async function filteredSignal(filter, { samples, sampleRate: signalRate }, sampleRate) {
+  const frames = Math.ceil(samples.length * sampleRate / signalRate) + filter.channels[0].length - 1;
   const offline = new OfflineAudioContext(filter.channels.length, frames, sampleRate);
-  const input = offline.createBuffer(1, samples.length, sampleRate);
+  const input = offline.createBuffer(1, samples.length, signalRate);
   input.copyToChannel(samples, 0);
   const source = offline.createBufferSource();
   source.buffer = input;
@@ -1443,16 +1561,27 @@ $('export-form').addEventListener('submit', async event => {
     const needsFilter = ['stereo', 'microphones'].some(item => selected.has(item));
     const filter = needsFilter ? await timedFilter(clone(state.space), 'Export') : null;
     const shaped = channels => (peak === 'normalised' ? normalised(channels) : channels);
-    if (selected.has('stereo')) wav('-ir-stereo', shaped(stereo(filter.channels, filter.pans)), filter.sampleRateHz, 'IR, stereo as heard in the preview');
-    if (selected.has('microphones')) {
-      const channels = shaped(filter.channels);
-      filter.names.forEach((label, index) => wav(`-ir-${fileStem(label)}`, [channels[index]], filter.sampleRateHz, `IR, ${label}`));
+    const several = (filter?.sources.length ?? 0) > 1;
+    const sourcePart = source => (several ? `-${fileStem(source.name)}` : '');
+    const sourceText = source => (several ? `${source.name}, ` : '');
+    for (const source of filter?.sources ?? []) {
+      if (selected.has('stereo')) wav(`-ir${sourcePart(source)}-stereo`, shaped(stereo(source.channels, source.pans)), filter.sampleRateHz, `IR, ${sourceText(source)}stereo as heard in the preview`);
+      if (selected.has('microphones')) {
+        const channels = shaped(source.channels);
+        source.names.forEach((label, index) => wav(`-ir${sourcePart(source)}-${fileStem(label)}`, [channels[index]], filter.sampleRateHz, `IR, ${sourceText(source)}${label}`));
+      }
     }
-    if (selected.has('filtered')) {
+    if (selected.has('filtered') && exportSignals.size) {
+      const rate = exportSignals.get(heardSources(state.space)[0])?.sampleRate ?? state.space.render.sampleRateHz;
       const space = clone(state.space);
-      space.render.sampleRateHz = exportSignal.sampleRate;
-      const signalFilter = filter && filter.sampleRateHz === exportSignal.sampleRate ? filter : await timedFilter(space, 'Export');
-      wav('-filtered', await filteredSignal(signalFilter, exportSignal), exportSignal.sampleRate, `${$('signal').selectedOptions[0].textContent} through the filter, stereo`);
+      space.render.sampleRateHz = rate;
+      const signalFilter = filter && filter.sampleRateHz === rate ? filter : await timedFilter(space, 'Export');
+      const parts = await Promise.all(signalFilter.sources.filter(source => exportSignals.has(source.number)).map(source => filteredSignal(source, exportSignals.get(source.number), rate)));
+      const length = Math.max(...parts.map(part => part[0].length));
+      const mixed = [new Float32Array(length), new Float32Array(length)];
+      parts.forEach(part => part.forEach((side, ear) => side.forEach((x, i) => { mixed[ear][i] += x; })));
+      const label = parts.length > 1 ? 'The sources' : $('signal').selectedOptions[0].textContent;
+      wav('-filtered', mixed, rate, `${label} through the filter, stereo`);
     }
     if (selected.has('space')) {
       const document = { ...withReliability(state.space), export: { files: manifest, sampleFormat: 'ieee-float32', irPeak: peak, exportedAt: new Date().toISOString() } };

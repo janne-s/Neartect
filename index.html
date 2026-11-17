@@ -100,13 +100,11 @@
           <div class="build-menu" id="listener-menu" role="toolbar" aria-label="Add a microphone or a layout"></div>
         </section>
         <section data-sheet="receivers">
-          <h2><i class="fa-solid fa-volume-low" aria-hidden="true"></i>Source</h2>
-          <div class="build-menu" id="source-kind" role="radiogroup" aria-label="Source">
-            <button type="button" class="build-button" data-kind="far" role="radio" title="Far away: a plane wave from a direction" aria-label="Far away"><i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i></button>
-            <button type="button" class="build-button" data-kind="point" role="radio" title="A point in the scene" aria-label="Point"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i></button>
-            <button type="button" class="build-button" id="source-distance" aria-pressed="true" title="Level falls with distance (1 m reference)" aria-label="Level falls with distance">1/r</button>
+          <h2><i class="fa-solid fa-volume-low" aria-hidden="true"></i>Sources</h2>
+          <div class="list" id="source-list"></div>
+          <div class="build-menu" role="toolbar" aria-label="Add a source">
+            <button type="button" class="build-button" id="add-source" title="Add a source" aria-label="Add a source"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
           </div>
-          <div class="macros" id="source-macros"></div>
         </section>
         <details class="group" data-sheet="output">
           <summary><i class="fa-solid fa-volume-high" aria-hidden="true"></i>Air and output</summary>
@@ -127,7 +125,7 @@
       </section>
       <nav class="sheet-tabs" aria-label="Panels">
         <button type="button" data-sheet="emitters" aria-label="Objects" title="Objects"><i class="fa-solid fa-cubes" aria-hidden="true"></i></button>
-        <button type="button" data-sheet="receivers" aria-label="Microphones and source" title="Microphones and source"><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
+        <button type="button" data-sheet="receivers" aria-label="Microphones and sources" title="Microphones and sources"><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
         <button type="button" data-sheet="output" aria-label="Air and output" title="Air and output"><i class="fa-solid fa-volume-high" aria-hidden="true"></i></button>
         <button type="button" id="results-toggle" class="results-toggle" aria-expanded="false" aria-controls="results" aria-label="Plots" title="Plots"><i class="fa-solid fa-wave-square" aria-hidden="true"></i></button>
       </nav>

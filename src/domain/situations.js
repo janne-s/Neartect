@@ -62,8 +62,10 @@ export function situationSpace(id, current) {
   const first = firstListener(current)?.position ?? microphone;
   const shift = microphone.map((v, i) => v - first[i]);
   const moved = point => ({ ...point, reference: null, offset: [0, 0, 0], position: point.position.map((v, i) => v + shift[i]) });
-  const source = current.source.kind === 'point' ? moved(current.source) : { ...current.source, reference: null };
+  const placed = source => (source.kind === 'point' ? moved(source) : { ...source, reference: null });
+  const source = placed(current.source);
+  const moreSources = (current.moreSources ?? []).map(placed);
   const rigs = (current.rigs ?? []).map(moved);
   const microphones = current.microphones.length + rigs.length ? current.microphones.map(moved) : [{ position: microphone }];
-  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphones, rigs, source, arrival }, objects.length - 1);
+  return readSpace({ kind: SPACE_KIND, air: current.air, render: current.render, objects, microphones, rigs, source, arrival, moreSources }, objects.length - 1);
 }
