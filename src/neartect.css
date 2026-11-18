@@ -16,6 +16,9 @@
   gap: 4px;
   margin: 0 0 12px;
 }
+.list + .build-menu {
+  margin-top: 10px;
+}
 .build-button {
   display: grid;
   place-items: center;

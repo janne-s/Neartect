@@ -774,6 +774,7 @@ function refreshPanel() {
   const entries = sourceEntries(state.space);
   entries.forEach(entry => sourceCard(sources, entry.number));
   $('add-source').disabled = entries.length >= MOST_SOURCES;
+  showFileName();
 
   const output = $('output-fields');
   output.replaceChildren();
@@ -885,7 +886,7 @@ function sourceCard(container, number) {
     macro(sound, { label: 'Level', range: SOURCE_LEVEL_DB, snap: v => Math.round(v * 2) / 2, format: formatLevel, fallback: 0, read: () => current().levelDb, write: v => { current().levelDb = v; } });
     if (inPlugin) {
       selectRow(sound, { label: 'Input', title: 'The plugin input this source plays', value: source.input, options: Object.entries(SOURCE_INPUTS), onChange: v => { current().input = v; changed({ panel: true }); } });
-    } else if (number > 1) {
+    } else {
       signalRow(sound, number);
     }
   }
@@ -910,7 +911,13 @@ function signalRow(macros, number) {
   selectRow(macros, {
     label: 'Signal', title: 'What this source plays in the preview', value: signal, options, extra: load,
     onChange: value => {
-      state.sourceSignals[number] = { ...signalOf(number), signal: value };
+      if (number === 1) {
+        state.signal = value;
+        $('signal').value = value;
+        showFileName();
+      } else {
+        state.sourceSignals[number] = { ...signalOf(number), signal: value };
+      }
       if (playing()) startPlayback();
     }
   });
@@ -1378,14 +1385,14 @@ document.addEventListener('keydown', event => {
 });
 function showFileName() {
   const name = $('file-name');
-  name.hidden = state.signal !== 'file' || !state.file;
+  name.hidden = state.signal !== 'file' || !state.file || sourceEntries(state.space).length > 1;
   name.textContent = state.file?.name ?? '';
   name.title = name.textContent;
 }
 
 $('signal').addEventListener('change', () => {
   state.signal = $('signal').value;
-  showFileName();
+  refreshPanel();
   if (playing()) startPlayback();
 });
 let signalTarget = 1;
@@ -1413,7 +1420,7 @@ $('signal-file').addEventListener('change', async () => {
     state.signal = 'file';
     $('signal').options[3].hidden = false;
     $('signal').value = 'file';
-    showFileName();
+    refreshPanel();
     if (playing()) startPlayback();
   } catch {
     setStatus('The file could not be read as audio.', true);
