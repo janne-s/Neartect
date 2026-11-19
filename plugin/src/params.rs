@@ -4,6 +4,7 @@ use neartect_core::space::{self, MOST_MICROPHONES, MOST_RIGS, MOST_SOURCES, OBJE
 use nih_plug::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -196,9 +197,10 @@ impl Entry {
     }
 }
 
-fn entry(spec: &Spec, wake: &Sender<()>) -> Entry {
+fn entry(spec: &Spec, wake: &Sender<()>, moved: Arc<Moves>, index: usize) -> Entry {
     let wake = wake.clone();
     let woken = move || {
+        moved.mark(index);
         let _ = wake.try_send(());
     };
     match &spec.kind {
@@ -225,16 +227,50 @@ fn entry(spec: &Spec, wake: &Sender<()>) -> Entry {
     }
 }
 
+#[derive(Default)]
+pub struct Moves {
+    block: AtomicU64,
+    switched: AtomicU64,
+    last: Vec<AtomicU64>,
+}
+
+impl Moves {
+    fn new(count: usize) -> Moves {
+        Moves { last: (0..count).map(|_| AtomicU64::new(0)).collect(), ..Moves::default() }
+    }
+
+    pub fn next_block(&self) {
+        self.block.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn mark(&self, index: usize) {
+        if let Some(last) = self.last.get(index) {
+            last.store(self.block.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn mark_switch(&self) {
+        self.switched.store(self.block.load(Ordering::Relaxed) + 1, Ordering::Relaxed);
+    }
+
+    pub fn moving_at_switch(&self, index: usize) -> bool {
+        let last = self.last.get(index).map_or(0, |l| l.load(Ordering::Relaxed));
+        last > 0 && last + 1 >= self.switched.load(Ordering::Relaxed)
+    }
+}
+
 pub struct SlotParams {
     pub specs: Vec<Spec>,
     pub entries: Vec<Entry>,
+    pub moves: Arc<Moves>,
 }
 
 impl SlotParams {
     pub fn new(wake: Sender<()>) -> SlotParams {
         let specs = specs();
-        let entries = specs.iter().map(|s| entry(s, &wake)).collect();
-        SlotParams { specs, entries }
+        let moves = Arc::new(Moves::new(specs.len()));
+        let entries = specs.iter().enumerate().map(|(i, s)| entry(s, &wake, moves.clone(), i)).collect();
+        SlotParams { specs, entries, moves }
     }
 
     pub fn values(&self) -> Vec<f64> {
@@ -375,20 +411,23 @@ const SAME: f64 = 1e-6;
 #[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Latch {
     pub scene: usize,
-    pub baseline: Vec<f64>,
+    pub baseline: Vec<Option<f64>>,
 }
 
 impl Latch {
-    pub fn enter(&mut self, scene: usize, values: &[f64]) {
+    pub fn enter(&mut self, scene: usize, values: &[f64], moving: impl Fn(usize) -> bool) {
         if self.scene == 0 {
             self.scene = scene;
         } else if self.scene != scene {
             self.scene = scene;
-            self.baseline = values.to_vec();
+            self.baseline = values.iter().enumerate().map(|(i, &v)| (!moving(i)).then_some(v)).collect();
         }
     }
 
     pub fn overrides(&self, index: usize, value: f64) -> bool {
-        self.baseline.get(index).is_none_or(|&b| (value - b).abs() > SAME * b.abs().max(1.0))
+        match self.baseline.get(index) {
+            Some(Some(b)) => (value - b).abs() > SAME * b.abs().max(1.0),
+            _ => true,
+        }
     }
 }

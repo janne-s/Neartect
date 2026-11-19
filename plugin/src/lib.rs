@@ -180,6 +180,8 @@ impl NeartectParams {
         let flag = bypass_changed.clone();
         let scene_changed = Arc::new(AtomicBool::new(false));
         let (scene_flag, scene_wake) = (scene_changed.clone(), wake.clone());
+        let slots = SlotParams::new(wake);
+        let moves = slots.moves.clone();
         Self {
             space: Arc::new(RwLock::new(String::new())),
             filter: Arc::new(RwLock::new(StoredFilter::default())),
@@ -187,6 +189,7 @@ impl NeartectParams {
             camera: Arc::new(RwLock::new(serde_json::Value::Null)),
             latch: Arc::new(RwLock::new(Latch::default())),
             scene: IntParam::new("Scene", 1, IntRange::Linear { min: 1, max: scenes::SCENES as i32 }).with_callback(Arc::new(move |_| {
+                moves.mark_switch();
                 scene_flag.store(true, Ordering::Release);
                 let _ = scene_wake.try_send(());
             })),
@@ -213,7 +216,7 @@ impl NeartectParams {
                 .make_bypass()
                 .with_callback(Arc::new(move |_| flag.store(true, Ordering::Relaxed))),
             bypass_changed,
-            slots: SlotParams::new(wake),
+            slots,
         }
     }
 
@@ -229,7 +232,7 @@ impl NeartectParams {
         let values = self.slots.values();
         let latch = match self.latch.write() {
             Ok(mut latch) => {
-                latch.enter(number, &values);
+                latch.enter(number, &values, |i| self.slots.moves.moving_at_switch(i));
                 latch.clone()
             }
             Err(_) => Latch::default(),
@@ -292,13 +295,48 @@ struct Neartect {
     page_out: Sender<Outcome>,
     page_in: Receiver<Outcome>,
     editor_open: Arc<AtomicBool>,
+    wake: Sender<()>,
 }
 
-struct OpenWindow(Arc<AtomicBool>);
+struct OpenWindow(Arc<AtomicBool>, Sender<()>);
 
 impl Drop for OpenWindow {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
+        let _ = self.1.try_send(());
+    }
+}
+
+struct WatchedEditor {
+    inner: WebViewEditor,
+    open: Arc<AtomicBool>,
+    wake: Sender<()>,
+}
+
+impl Editor for WatchedEditor {
+    fn spawn(&self, parent: ParentWindowHandle, context: Arc<dyn GuiContext>) -> Box<dyn std::any::Any + Send> {
+        let window = self.inner.spawn(parent, context);
+        Box::new((window, OpenWindow(self.open.clone(), self.wake.clone())))
+    }
+
+    fn size(&self) -> (u32, u32) {
+        self.inner.size()
+    }
+
+    fn set_scale_factor(&self, factor: f32) -> bool {
+        self.inner.set_scale_factor(factor)
+    }
+
+    fn param_value_changed(&self, id: &str, normalized_value: f32) {
+        self.inner.param_value_changed(id, normalized_value)
+    }
+
+    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {
+        self.inner.param_modulation_changed(id, modulation_offset)
+    }
+
+    fn param_values_changed(&self) {
+        self.inner.param_values_changed()
     }
 }
 
@@ -307,6 +345,7 @@ impl Default for Neartect {
         let (retired_out, retired_in) = bounded(RETIRED_QUEUE);
         let (page_out, page_in) = unbounded();
         let (wake_out, wake_in) = bounded(1);
+        let wake = wake_out.clone();
         let params = Arc::new(NeartectParams::new(wake_out));
         let sample_rate = Arc::new(AtomicU32::new(48000.0f32.to_bits()));
         let editor_open = Arc::new(AtomicBool::new(false));
@@ -376,6 +415,7 @@ impl Default for Neartect {
             page_out,
             page_in,
             editor_open,
+            wake,
         }
     }
 }
@@ -674,6 +714,7 @@ impl Plugin for Neartect {
             }
         }
         self.clock.fetch_add(buffer.samples() as u64, Ordering::Relaxed);
+        self.params.slots.moves.next_block();
         let stereo_input = self.main_channels > 1;
         let side = aux.inputs.first().map(|b| b.as_slice_immutable());
         let rate = f32::from_bits(self.sample_rate.load(Ordering::Relaxed));
@@ -722,7 +763,6 @@ impl Plugin for Neartect {
         let page_out = self.page_out.clone();
         let editor_open = self.editor_open.clone();
         let (clock, audition, signal_change) = (self.clock.clone(), self.audition.clone(), self.signal_change.clone());
-        let window_open = OpenWindow(editor_open.clone());
         let pending: Mutex<Option<Dialog>> = Mutex::new(None);
         let held: Mutex<(HashSet<usize>, Vec<f64>)> = Mutex::new((HashSet::new(), Vec::new()));
         let editor = WebViewEditor::new(HTMLSource::URL("neartect://localhost/index.html"), WINDOW_SIZE)
@@ -737,7 +777,6 @@ impl Plugin for Neartect {
             })
             .with_keyboard_handler(|event| event.key == Key::Escape)
             .with_event_loop(move |window, setter, base| {
-                let _ = &window_open;
                 while let Ok(outcome) = page_in.try_recv() {
                     if let Some(message) = outcome_json(&outcome) {
                         window.send_json(message);
@@ -887,7 +926,7 @@ impl Plugin for Neartect {
                     }
                 }
             });
-        Some(Box::new(editor))
+        Some(Box::new(WatchedEditor { inner: editor, open: self.editor_open.clone(), wake: self.wake.clone() }))
     }
 }
 

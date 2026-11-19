@@ -66,13 +66,22 @@ fn making_a_scene_active_keeps_the_previous_body_in_the_list() {
 #[test]
 fn a_switch_latches_the_host_values() {
     let mut latch = Latch::default();
-    latch.enter(1, &[0.5, 2.0]);
+    latch.enter(1, &[0.5, 2.0], |_| false);
     assert!(latch.overrides(0, 0.5) && latch.overrides(1, 2.0), "before any switch every host value counts");
-    latch.enter(1, &[0.7, 2.0]);
+    latch.enter(1, &[0.7, 2.0], |_| false);
     assert!(latch.overrides(0, 0.7));
-    latch.enter(2, &[0.7, 2.0]);
+    latch.enter(2, &[0.7, 2.0], |_| false);
     assert!(!latch.overrides(0, 0.7) && !latch.overrides(1, 2.0));
     assert!(latch.overrides(0, 0.8));
-    latch.enter(2, &[0.8, 2.0]);
+    latch.enter(2, &[0.8, 2.0], |_| false);
     assert!(latch.overrides(0, 0.8), "staying in the scene keeps the baseline");
+}
+
+#[test]
+fn a_parameter_moving_at_the_switch_keeps_the_host_value() {
+    let mut latch = Latch::default();
+    latch.enter(1, &[0.5, 2.0], |_| false);
+    latch.enter(2, &[0.6, 2.0], |i| i == 0);
+    assert!(latch.overrides(0, 0.6), "a moving parameter goes on following the host");
+    assert!(!latch.overrides(1, 2.0), "a parameter at rest takes the scene's value");
 }
