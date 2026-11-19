@@ -989,7 +989,7 @@ function microphoneCard(container, microphone, index) {
   if (selected) {
     const current = () => state.space.microphones.find(m => m.id === microphone.id);
     const place = cardGroup(card, 'Place').macros;
-    layoutSelect(place, 'mono', kind => changeLayout(current(), kind));
+    layoutSelect(place, 'mono', kind => changeLayout(current(), kind), PATTERN_LABELS[microphone.pattern]);
     slotRow(place, state.space.microphones, current(), MOST_MICROPHONES, false);
     pointControls(place, current, 0.3);
     sourceDistanceRow(place, current);
@@ -1059,7 +1059,7 @@ function rigCard(container, rig, index) {
   if (selected) {
     const current = () => state.space.rigs.find(r => r.id === rig.id);
     const place = cardGroup(card, 'Place').macros;
-    layoutSelect(place, rig.kind, kind => changeLayout(current(), kind));
+    layoutSelect(place, rig.kind, kind => changeLayout(current(), kind), PATTERN_LABELS.cardioid);
     slotRow(place, state.space.rigs, current(), MOST_RIGS, false);
     pointControls(place, current, 0.5);
     sourceDistanceRow(place, current);
@@ -1099,10 +1099,10 @@ function removeMicrophone(id) {
 
 const LAYOUT_TILES = () => [['mono', 'Microphone', '<i class="fa-solid fa-microphone" aria-hidden="true"></i>'], ...Object.entries(RIG_KINDS).map(([kind, { label, short }]) => [kind, label, kind === 'binaural' ? headIcon() : short])];
 
-function layoutSelect(macros, chosen, onPick) {
+function layoutSelect(macros, chosen, onPick, monoLabel) {
   selectRow(macros, {
     label: 'Layout', title: 'Change this microphone’s layout in place', value: chosen,
-    options: LAYOUT_TILES().map(([kind, title]) => [kind, title]),
+    options: LAYOUT_TILES().map(([kind, title]) => [kind, kind === 'mono' ? monoLabel : title]),
     onChange: onPick
   });
 }
@@ -1378,8 +1378,9 @@ function stopPlayback() {
 }
 
 $('play').addEventListener('click', () => (playing() ? stopPlayback() : startPlayback()));
+if (inPlugin) $('play').removeAttribute('aria-keyshortcuts');
 document.addEventListener('keydown', event => {
-  if (event.code !== 'Space' || event.target.closest('input, select, textarea, button, dialog')) return;
+  if (inPlugin || event.code !== 'Space' || event.target.closest('input, select, textarea, button, dialog')) return;
   event.preventDefault();
   $('play').click();
 });
